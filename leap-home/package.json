@@ -3,8 +3,33 @@
   "displayName": "Leap Home",
   "description": "Cursor / VS Code 编辑窗口里的个人知识库首页。",
   "version": "0.1.0",
-  "publisher": "z-leap-kit",
-  "license": "UNLICENSED",
+  "publisher": "whyisee",
+  "author": "whyisee",
+  "license": "MIT",
+  "icon": "resources/icon-128.png",
+  "homepage": "https://github.com/whyisee/z-leap-kit/tree/main/leap-home",
+  "bugs": {
+    "url": "https://github.com/whyisee/z-leap-kit/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/whyisee/z-leap-kit.git",
+    "directory": "leap-home"
+  },
+  "keywords": [
+    "cursor",
+    "vscode",
+    "knowledge-base",
+    "productivity",
+    "dashboard",
+    "notes",
+    "search",
+    "ai"
+  ],
+  "galleryBanner": {
+    "color": "#101214",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -100,7 +125,7 @@
             "minimal"
           ],
           "enumDescriptions": [
-            "项目工作台：优先展示搜索、快速记录、Prompt、收藏和今日安排。",
+            "默认工作台：覆盖搜索、做什么、番茄、倒计日、记录、四象限、日历、知识图谱和统计。",
             "第二大脑首页：更适合从知识库入口开始检索、沉淀和整理。",
             "Prompt 控制台：优先展示 Prompt 模板，并保留快速记录、收藏和周计划。",
             "今日启动页：突出快速记录、常用上下文和今日安排。",

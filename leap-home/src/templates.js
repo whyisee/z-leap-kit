@@ -1,17 +1,19 @@
 const BUILTIN_TEMPLATES = {
   'project-workbench': {
     id: 'project-workbench',
-    title: '项目工作台',
-    description: '优先展示搜索、快速记录、Prompt、收藏和今日安排。',
+    title: '默认工作台',
+    description: '覆盖搜索、做什么、番茄、倒计日、记录、四象限、日历、知识图谱和统计。',
     layout: [
-      { id: 'search', component: 'search', col: 1, row: 1, colSpan: 12, rowSpan: 1 },
-      { id: 'capture', component: 'quickCapture', col: 1, row: 2, colSpan: 4, rowSpan: 2 },
-      { id: 'prompts', component: 'prompts', col: 5, row: 2, colSpan: 4, rowSpan: 4, options: { limit: 10 } },
-      { id: 'favorites', component: 'favorites', col: 9, row: 2, colSpan: 4, rowSpan: 2, options: { limit: 8 } },
-      { id: 'focus', component: 'focusTimer', col: 1, row: 4, colSpan: 4, rowSpan: 2 },
-      { id: 'next', component: 'nextAction', col: 5, row: 6, colSpan: 4, rowSpan: 3 },
-      { id: 'stats', component: 'stats', col: 9, row: 4, colSpan: 4, rowSpan: 2 },
-      { id: 'week', component: 'weekCalendar', col: 1, row: 9, colSpan: 12, rowSpan: 3 }
+      { id: 'search', component: 'search', title: '搜索', col: 1, row: 1, colSpan: 12, rowSpan: 2 },
+      { id: 'next-action', component: 'nextAction', title: '做什么', col: 1, row: 3, colSpan: 6, rowSpan: 5 },
+      { id: 'focus-timer', component: 'focusTimer', title: '番茄时钟', col: 7, row: 3, colSpan: 6, rowSpan: 2 },
+      { id: 'countdown', component: 'countdown', title: '倒计日', col: 7, row: 5, colSpan: 6, rowSpan: 3 },
+      { id: 'quick-capture', component: 'quickCapture', title: '快速记录', col: 1, row: 8, colSpan: 12, rowSpan: 4 },
+      { id: 'quadrants', component: 'fourQuadrants', title: '四象限', col: 1, row: 12, colSpan: 12, rowSpan: 3 },
+      { id: 'week-calendar', component: 'weekCalendar', title: '周历', col: 1, row: 15, colSpan: 12, rowSpan: 3 },
+      { id: 'month-calendar', component: 'monthCalendar', title: '月历', col: 1, row: 18, colSpan: 12, rowSpan: 5 },
+      { id: 'knowledge-graph', component: 'knowledgeGraph', title: '知识图谱', col: 1, row: 23, colSpan: 12, rowSpan: 5 },
+      { id: 'stats', component: 'stats', title: '统计', col: 1, row: 28, colSpan: 12, rowSpan: 5 }
     ]
   },
   'second-brain': {

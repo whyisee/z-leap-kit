@@ -2,19 +2,35 @@
 
 Leap Home 是一个 Cursor / VS Code 插件，用编辑窗口里的 Webview 面板作为个人知识库首页。
 
+## 项目信息
+
+- GitHub 仓库：[whyisee/z-leap-kit](https://github.com/whyisee/z-leap-kit/tree/main/leap-home)
+- 问题反馈：[GitHub Issues](https://github.com/whyisee/z-leap-kit/issues)
+- 开源协议：[MIT](LICENSE)
+
+## 效果预览
+
+![Leap Home 首页总览](resources/screenshots/home-overview.webp)
+
+![快速记录](resources/screenshots/quick-capture.webp)
+
+![四象限、周历和月历联动](resources/screenshots/planning-calendar.webp)
+
+![知识图谱](resources/screenshots/knowledge-graph.webp)
+
 ## MVP 功能
 
 - 通过命令在编辑区打开知识库首页，不占用侧边栏。
 - 首页由组件和 12 列网格布局驱动，支持内置模板和多个自定义主页。
 - 自定义主页编辑器：可视化添加组件、拖拽调整位置和大小、碰撞自动让位、修改标题和数量限制。
-- 自动索引当前工作区中的 Markdown / `.mdc` 文件。
+- 自动索引当前工作区中的 Markdown、代码、配置和常见文本文件，知识图谱仅处理 Markdown 类文档。
 - 支持配置多个本地知识源。
 - 支持按标题、文件名、知识源、相对路径、完整路径搜索。
 - 自动展示当前项目的 README、docs、TODO、CHANGELOG 和 `.cursor` 相关文件。
 - 支持收藏常用文件。
 - 记录从 Leap Home 打开的最近文件。
 - 展示 Prompt 模板，并支持一键复制到剪贴板。
-- 支持四象限、周历、月历、统计组件。
+- 支持搜索、快速记录、番茄时钟、倒计日、做什么推荐、四象限、周历、月历、知识图谱和统计组件。
 - 插件数据默认存放在当前工作区的 `.leap` 目录。
 - 支持把临时内容追加到 `.leap/inbox.md`。
 
@@ -104,26 +120,22 @@ AI 能力默认优先接入 DeepSeek。直接执行 `Leap Home: 配置 AI`，按
       "col": 1,
       "row": 1,
       "colSpan": 12,
-      "rowSpan": 1
-    },
-    {
-      "id": "project",
-      "component": "currentProject",
-      "title": "当前项目",
-      "col": 1,
-      "row": 2,
-      "colSpan": 8,
-      "rowSpan": 4,
-      "options": {
-        "limit": 8
-      }
+      "rowSpan": 2
     },
     {
       "id": "capture",
       "component": "quickCapture",
-      "col": 9,
-      "row": 2,
-      "colSpan": 4,
+      "col": 1,
+      "row": 3,
+      "colSpan": 6,
+      "rowSpan": 2
+    },
+    {
+      "id": "focus",
+      "component": "focusTimer",
+      "col": 7,
+      "row": 3,
+      "colSpan": 6,
       "rowSpan": 2
     }
   ]
@@ -153,11 +165,12 @@ AI 能力默认优先接入 DeepSeek。直接执行 `Leap Home: 配置 AI`，按
 | --- | --- |
 | 搜索 | `search` |
 | 快速记录 | `quickCapture` |
-| 当前项目 | `currentProject` |
+| 番茄时钟 | `focusTimer` |
+| 倒计日 | `countdown` |
+| 做什么 | `nextAction` |
+| 知识图谱 | `knowledgeGraph` |
 | 收藏 | `favorites` |
-| 最近打开 | `recent` |
 | Prompt 模板 | `prompts` |
-| 知识源状态 | `sources` |
 | 四象限 | `fourQuadrants` |
 | 周历 | `weekCalendar` |
 | 月历 | `monthCalendar` |
@@ -169,7 +182,7 @@ AI 能力默认优先接入 DeepSeek。直接执行 `Leap Home: 配置 AI`，按
 
 | 模板 | 配置值 |
 | --- | --- |
-| 项目工作台 | `project-workbench` |
+| 默认工作台 | `project-workbench` |
 | 第二大脑首页 | `second-brain` |
 | Prompt 控制台 | `prompt-console` |
 | 今日启动页 | `daily-start` |
@@ -188,6 +201,12 @@ Leap Home 的运行数据默认写入当前工作区的 `.leap` 目录。`.leap/
     recent.json
     four-quadrants.json
     calendar.json
+    search-history.json
+    quick-capture.json
+    focus-timer.json
+    countdown.json
+    next-action.json
+    knowledge-graph.json
 ```
 
 ## 知识源类型

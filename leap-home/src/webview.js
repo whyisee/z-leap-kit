@@ -145,7 +145,7 @@ function getWebviewHtml(webview) {
     .grid {
       display: grid;
       grid-template-columns: repeat(12, minmax(0, 1fr));
-      grid-auto-rows: minmax(64px, auto);
+      grid-auto-rows: 92px;
       grid-auto-flow: row dense;
       gap: 12px;
       align-items: stretch;
@@ -162,12 +162,14 @@ function getWebviewHtml(webview) {
     }
     .block {
       position: relative;
+      display: flex;
+      flex-direction: column;
       min-width: 0;
       min-height: 0;
       border: 1px solid var(--vscode-panel-border);
       border-radius: 8px;
       background: var(--vscode-sideBar-background);
-      overflow: visible;
+      overflow: hidden;
     }
     body.design-mode .block { cursor: move; }
     body.design-mode .block.dragging,
@@ -240,6 +242,7 @@ function getWebviewHtml(webview) {
     }
     .block-title {
       overflow: hidden;
+      min-width: 0;
       margin: 0;
       font-size: 13px;
       font-weight: 700;
@@ -251,7 +254,27 @@ function getWebviewHtml(webview) {
       color: var(--vscode-descriptionForeground);
       font-size: 12px;
     }
-    .block-body { padding: 10px; }
+    .block-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      padding: 10px;
+      overflow: auto;
+      overscroll-behavior: auto;
+      scrollbar-gutter: stable;
+    }
+    .block-body-knowledge-graph {
+      overflow: hidden;
+    }
+    .block-search {
+      overflow: visible;
+      z-index: 30;
+    }
+    .block-search:focus-within {
+      z-index: 80;
+    }
+    .block-body-search {
+      overflow: visible;
+    }
     .stack, .list {
       display: flex;
       flex-direction: column;
@@ -289,6 +312,24 @@ function getWebviewHtml(webview) {
     }
     .search-results {
       gap: 10px;
+    }
+    .block-body-search .stack {
+      position: relative;
+      z-index: 1;
+    }
+    .block-body-search .search-results[data-floating="true"] {
+      position: relative;
+      z-index: 40;
+      max-height: min(560px, calc(100vh - 220px));
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 7px;
+      margin-top: 2px;
+      padding: 8px;
+      overflow: auto;
+      overscroll-behavior: auto;
+      scrollbar-gutter: stable;
+      background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
     }
     .search-input-row {
       display: grid;
@@ -342,6 +383,17 @@ function getWebviewHtml(webview) {
       padding: 4px;
       background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
       box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+    }
+    .block-body-search .search-suggest {
+      position: absolute;
+      top: 38px;
+      right: 50px;
+      left: 0;
+      z-index: 90;
+      max-height: 210px;
+      overflow: auto;
+      overscroll-behavior: auto;
+      scrollbar-gutter: stable;
     }
     .search-suggest[hidden] {
       display: none;
@@ -1173,7 +1225,10 @@ function getWebviewHtml(webview) {
     }
     .knowledge-graph {
       display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
       gap: 8px;
+      height: 100%;
+      min-height: 0;
       min-width: 0;
     }
     .knowledge-graph-toolbar {
@@ -1217,10 +1272,13 @@ function getWebviewHtml(webview) {
       grid-template-columns: minmax(0, 1fr) minmax(160px, 0.45fr);
       gap: 8px;
       align-items: stretch;
+      min-height: 0;
     }
     .knowledge-graph-svg {
+      display: block;
       width: 100%;
-      min-height: 220px;
+      height: 100%;
+      min-height: 0;
       border: 1px solid var(--vscode-panel-border);
       border-radius: 7px;
       background:
@@ -1257,8 +1315,11 @@ function getWebviewHtml(webview) {
     .knowledge-graph-side {
       display: grid;
       gap: 7px;
-      align-content: start;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      align-content: stretch;
+      min-height: 0;
       min-width: 0;
+      overflow: hidden;
     }
     .knowledge-graph-summary,
     .knowledge-graph-relation {
@@ -1284,9 +1345,29 @@ function getWebviewHtml(webview) {
       display: grid;
       gap: 3px;
     }
+    .knowledge-graph-relations {
+      display: grid;
+      gap: 7px;
+      max-height: 118px;
+      min-height: 0;
+      overflow: hidden;
+    }
     .knowledge-graph-insights {
       display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      align-content: start;
       gap: 6px;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .knowledge-graph-insight-list {
+      display: grid;
+      align-content: start;
+      gap: 6px;
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: auto;
+      scrollbar-gutter: stable;
     }
     .knowledge-graph-ai-status {
       display: grid;
@@ -1345,11 +1426,6 @@ function getWebviewHtml(webview) {
     .knowledge-graph-insight-actions button:disabled {
       cursor: wait;
       opacity: 0.72;
-    }
-    @media (max-width: 760px) {
-      .knowledge-graph-canvas {
-        grid-template-columns: 1fr;
-      }
     }
     .quadrant-grid {
       display: grid;
@@ -2141,62 +2217,6 @@ function getWebviewHtml(webview) {
       margin-top: 0;
       margin-bottom: 12px;
     }
-    @media (max-width: 780px) {
-      .app { padding: 16px; }
-      .top {
-        align-items: flex-start;
-        flex-direction: column;
-      }
-      body.design-mode .design-toolbar {
-        justify-content: flex-start;
-        width: 100%;
-      }
-      .design-toolbar,
-      .toolbar-group {
-        flex-wrap: wrap;
-      }
-      .toolbar-select {
-        flex: 1 1 180px;
-        width: auto;
-      }
-      body.design-mode .designer-shell {
-        grid-template-columns: 1fr;
-      }
-      .grid { grid-template-columns: 1fr; }
-      .calendar-week,
-      .quadrant-grid,
-      .quadrant-ai,
-      .quadrant-add-form,
-      .countdown-form,
-      .quick-capture-controls,
-      .focus-main,
-      .focus-task-new,
-      .focus-metrics,
-      .month-add-form,
-      .stats-grid {
-        grid-template-columns: 1fr;
-      }
-      .focus-task-binding {
-        border-left: 0;
-        border-top: 1px solid var(--vscode-panel-border);
-        padding-top: 10px;
-        padding-left: 0;
-      }
-      .task {
-        grid-template-columns: 26px minmax(0, 1fr) 26px;
-      }
-      .task .date-picker {
-        grid-column: 2 / 3;
-      }
-      .block {
-        grid-column: 1 / -1 !important;
-        grid-row: auto !important;
-      }
-      .design-panel {
-        position: static;
-        max-height: none;
-      }
-    }
   </style>
 </head>
 <body>
@@ -2332,6 +2352,7 @@ function getWebviewHtml(webview) {
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', finishDrag);
     document.addEventListener('click', closeDatePickers);
+    document.addEventListener('wheel', releasePageScrollAtNestedBoundary, { passive: false });
     if (els.editHomeButton) {
       els.editHomeButton.addEventListener('click', () => setDesignMode(true));
     }
@@ -2430,6 +2451,57 @@ function getWebviewHtml(webview) {
       render();
     }
 
+    function releasePageScrollAtNestedBoundary(event) {
+      if (!event || event.defaultPrevented || state.designMode || !event.deltaY) {
+        return;
+      }
+      if (event.target && event.target.closest && event.target.closest('textarea, select')) {
+        return;
+      }
+      const scroller = getNestedScrollElement(event.target);
+      if (!scroller || !canScrollVertically(scroller)) {
+        return;
+      }
+      const deltaY = normalizeWheelDelta(event);
+      const atTop = scroller.scrollTop <= 0;
+      const atBottom = Math.ceil(scroller.scrollTop + scroller.clientHeight) >= scroller.scrollHeight;
+      if ((deltaY < 0 && atTop) || (deltaY > 0 && atBottom)) {
+        const page = document.scrollingElement || document.documentElement;
+        const pageAtTop = page.scrollTop <= 0;
+        const pageAtBottom = Math.ceil(page.scrollTop + window.innerHeight) >= page.scrollHeight;
+        if ((deltaY < 0 && !pageAtTop) || (deltaY > 0 && !pageAtBottom)) {
+          event.preventDefault();
+          window.scrollBy({ top: deltaY, left: 0, behavior: 'auto' });
+        }
+      }
+    }
+
+    function getNestedScrollElement(target) {
+      let element = target && target.nodeType === Node.ELEMENT_NODE ? target : target && target.parentElement;
+      while (element && element !== document.body) {
+        if (element.matches && element.matches('.block-body, .search-results[data-floating="true"], .search-suggest, .knowledge-graph-insight-list')) {
+          return element;
+        }
+        element = element.parentElement;
+      }
+      return undefined;
+    }
+
+    function canScrollVertically(element) {
+      const style = window.getComputedStyle(element);
+      return /(auto|scroll|overlay)/.test(style.overflowY) && element.scrollHeight > element.clientHeight + 1;
+    }
+
+    function normalizeWheelDelta(event) {
+      if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+        return event.deltaY * 16;
+      }
+      if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+        return event.deltaY * window.innerHeight;
+      }
+      return event.deltaY;
+    }
+
     function render() {
       try {
         renderContent();
@@ -2459,7 +2531,10 @@ function getWebviewHtml(webview) {
 
     function renderBlock(block) {
       const wrapper = document.createElement('section');
-      wrapper.className = block.id === state.selectedBlockId && state.designMode ? 'block selected' : 'block';
+      const wrapperClasses = ['block'];
+      if (block.component === 'search') wrapperClasses.push('block-search');
+      if (block.id === state.selectedBlockId && state.designMode) wrapperClasses.push('selected');
+      wrapper.className = wrapperClasses.join(' ');
       wrapper.dataset.layoutId = block.id;
       applyGridPosition(wrapper, block);
       if (state.designMode) {
@@ -2493,6 +2568,12 @@ function getWebviewHtml(webview) {
 
       const body = document.createElement('div');
       body.className = 'block-body';
+      if (block.component === 'knowledgeGraph') {
+        body.classList.add('block-body-knowledge-graph');
+      }
+      if (block.component === 'search') {
+        body.classList.add('block-body-search');
+      }
       renderComponentBody(body, block);
       wrapper.append(header, body);
       if (state.designMode) {
@@ -2597,6 +2678,7 @@ function getWebviewHtml(webview) {
     function renderSearchResults(container, block) {
       container.textContent = '';
       container.dataset.limit = String(getLimit(block, 30));
+      container.dataset.floating = state.query ? 'true' : 'false';
       if (!state.query) return container.appendChild(empty('输入关键词开始搜索代码、正文、标题、路径和 Prompt。'));
       if (state.search.error) {
         container.append(empty('搜索失败：' + state.search.error), actionsWrap([actionButton('刷新索引', 'refresh', true)]));
@@ -4021,6 +4103,7 @@ function getWebviewHtml(webview) {
         return side;
       }
       const nodeMap = new Map((graph.nodes || []).map((node) => [node.id, node]));
+      const relationList = div('knowledge-graph-relations');
       for (const edge of relations) {
         const relation = div('knowledge-graph-relation');
         const left = nodeMap.get(edge.source);
@@ -4029,8 +4112,9 @@ function getWebviewHtml(webview) {
           div('knowledge-graph-title', truncateGraphLabel((left && left.title || '') + ' ↔ ' + (right && right.title || ''), 28)),
           div('knowledge-graph-reason', edge.reasons.join(' · ') + ' · ' + edge.weight)
         );
-        side.appendChild(relation);
+        relationList.appendChild(relation);
       }
+      side.appendChild(relationList);
       return side;
     }
 
@@ -4043,13 +4127,15 @@ function getWebviewHtml(webview) {
       if (insights.length === 0 && !hasStatus && !selectedNode) return undefined;
       const panel = div('knowledge-graph-insights');
       panel.appendChild(div('knowledge-graph-title', selectedNode ? '节点洞察' : '全局洞察'));
-      panel.appendChild(knowledgeGraphAiStatus());
+      const list = div('knowledge-graph-insight-list');
+      list.appendChild(knowledgeGraphAiStatus());
       if (insights.length === 0 && selectedNode) {
-        panel.appendChild(div('knowledge-graph-reason', '当前节点暂时没有需要处理的洞察。'));
+        list.appendChild(div('knowledge-graph-reason', '当前节点暂时没有需要处理的洞察。'));
       }
       for (const insight of insights) {
-        panel.appendChild(knowledgeGraphInsightCard(insight));
+        list.appendChild(knowledgeGraphInsightCard(insight));
       }
+      panel.appendChild(list);
       return panel;
     }
 
