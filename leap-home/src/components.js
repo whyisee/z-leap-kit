@@ -37,6 +37,14 @@ const COMPONENT_DEFINITIONS = {
     defaultColSpan: 4,
     defaultRowSpan: 3
   },
+  knowledgeGraph: {
+    type: 'knowledgeGraph',
+    title: '知识图谱',
+    description: '展示文档、Prompt 和知识源之间的关系',
+    dataKey: 'knowledgeGraph',
+    defaultColSpan: 8,
+    defaultRowSpan: 4
+  },
   favorites: {
     type: 'favorites',
     title: '收藏',

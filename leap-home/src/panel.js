@@ -1,5 +1,7 @@
+const fs = require('fs/promises');
+const path = require('path');
 const vscode = require('vscode');
-const { classifyQuadrantTask, recommendNextActions, understandSearchQuery } = require('./ai');
+const { classifyQuadrantTask, organizeKnowledgeInsight, recommendNextActions, understandSearchQuery } = require('./ai');
 const { PANEL_VIEW_TYPE } = require('./constants');
 const {
   addQuadrantTask,
@@ -52,6 +54,7 @@ class LeapHomePanelController {
     this.index = index;
     this.panel = undefined;
     this.readyPromise = undefined;
+    this.knowledgeGraphAiBusy = false;
   }
 
   async open() {
@@ -170,7 +173,11 @@ class LeapHomePanelController {
         source: message.source,
         reason: message.reason
       });
+      await this.recordNextActionFromMessage(message);
       this.postModel();
+      if (message.nextAction) {
+        vscode.window.setStatusBarMessage('Leap Home: 已按推荐加入待办', 2500);
+      }
       return;
     }
 
@@ -200,7 +207,11 @@ class LeapHomePanelController {
         task,
         saveDefaultDuration: message.saveDefaultDuration
       });
+      await this.recordNextActionFromMessage(message);
       this.postModel();
+      if (message.nextAction) {
+        vscode.window.setStatusBarMessage(sessionType === 'focus' ? 'Leap Home: 已按推荐开始番茄' : 'Leap Home: 已开始休息', 2500);
+      }
       return;
     }
 
@@ -265,11 +276,17 @@ class LeapHomePanelController {
 
     if (message.type === 'nextActionAdoption') {
       await recordNextActionAdoption(this.context, message.item, message.action);
+      this.postModel();
       return;
     }
 
     if (message.type === 'nextActionAiRecommend') {
       await this.optimizeNextActionWithAi(message.question);
+      return;
+    }
+
+    if (message.type === 'knowledgeGraphAiOrganize') {
+      await this.organizeKnowledgeGraphInsight(message.insight);
       return;
     }
 
@@ -284,7 +301,11 @@ class LeapHomePanelController {
 
     if (message.type === 'toggleQuadrantTask') {
       await toggleQuadrantTask(this.context, message.quadrantId, message.taskId, message.done);
+      await this.recordNextActionFromMessage(message);
       this.postModel();
+      if (message.nextAction) {
+        vscode.window.setStatusBarMessage('Leap Home: 已按推荐完成事项', 2500);
+      }
       return;
     }
 
@@ -417,6 +438,139 @@ class LeapHomePanelController {
         await vscode.commands.executeCommand('leapHome.configureAi');
       }
     }
+  }
+
+  async recordNextActionFromMessage(message) {
+    if (!message || !message.nextAction) {
+      return;
+    }
+    await recordNextActionAdoption(
+      this.context,
+      message.nextAction.item,
+      message.nextAction.action
+    );
+  }
+
+  async organizeKnowledgeGraphInsight(insight) {
+    const source = insight && typeof insight === 'object' ? insight : {};
+    const insightId = String(source.id || source.title || '');
+    const targetFile = String(source.filePath || '').trim();
+    if (this.knowledgeGraphAiBusy) {
+      this.postKnowledgeGraphAiStatus({
+        insightId,
+        phase: 'busy',
+        message: 'AI 整理正在进行',
+        detail: '上一条整理还没有结束，先等它完成，避免同时写入文档。',
+        targetFile
+      });
+      return;
+    }
+    if (!targetFile) {
+      this.postKnowledgeGraphAiStatus({
+        insightId,
+        phase: 'error',
+        message: '无法开始 AI 整理',
+        detail: '这条图谱洞察没有目标文档，无法读取和写回。',
+        targetFile
+      });
+      vscode.window.showWarningMessage('Leap Home: 图谱洞察缺少目标文档。');
+      return;
+    }
+    if (!isMarkdownFile(targetFile)) {
+      this.postKnowledgeGraphAiStatus({
+        insightId,
+        phase: 'error',
+        message: '无法整理非 Markdown 文档',
+        detail: 'AI 整理目前只支持 Markdown、MDX、MDC 文档，避免误写代码或二进制文件。',
+        targetFile
+      });
+      vscode.window.showWarningMessage('Leap Home: AI 整理目前只支持 Markdown/MDX/MDC 文档。');
+      return;
+    }
+
+    this.knowledgeGraphAiBusy = true;
+    try {
+      this.postKnowledgeGraphAiStatus({
+        insightId,
+        phase: 'reading',
+        message: '正在读取文档',
+        detail: '读取目标文档元数据，并收集最多 4 个相关文档片段作为整理上下文。',
+        targetFile
+      });
+      const targetContent = await fs.readFile(targetFile, 'utf8');
+      const relatedDocuments = await readKnowledgeInsightRelatedDocuments(source, targetFile);
+      this.postKnowledgeGraphAiStatus({
+        insightId,
+        phase: 'thinking',
+        message: '正在让 AI 生成文档元数据',
+        detail: `已读取 ${relatedDocuments.length + 1} 个文档片段，DeepSeek 会输出 tags、topics、summary、related。`,
+        targetFile
+      });
+      const result = await organizeKnowledgeInsight(source, {
+        targetDocument: {
+          filePath: targetFile,
+          relativePath: source.relativePath || path.basename(targetFile),
+          content: targetContent.slice(0, 12000)
+        },
+        relatedDocuments
+      });
+      this.postKnowledgeGraphAiStatus({
+        insightId,
+        phase: 'writing',
+        message: '正在写回元数据',
+        detail: '只更新 Markdown frontmatter 中的 Leap Home 元数据字段，不改正文。',
+        targetFile
+      });
+      const nextContent = upsertKnowledgeDocumentMetadata(targetContent, source, result, relatedDocuments);
+      await fs.writeFile(targetFile, nextContent, 'utf8');
+      await this.index.refresh();
+      this.postModel();
+      this.postKnowledgeGraphAiStatus({
+        insightId,
+        phase: 'done',
+        message: 'AI 整理完成',
+        detail: `已更新 ${path.basename(targetFile)} 的文档元数据，并刷新知识图谱。`,
+        targetFile
+      });
+      vscode.window.setStatusBarMessage(`Leap Home: AI 已更新「${path.basename(targetFile)}」元数据`, 3500);
+    } catch (error) {
+      const errorMessage = error && (error.message || String(error)) || '未知错误';
+      logger.warn('knowledge graph AI organize failed', {
+        error: errorMessage,
+        insightTitle: source.title,
+        targetFile
+      });
+      this.postKnowledgeGraphAiStatus({
+        insightId,
+        phase: 'error',
+        message: 'AI 整理失败',
+        detail: errorMessage,
+        targetFile
+      });
+      const action = await vscode.window.showWarningMessage(
+        `Leap Home AI 整理失败：${errorMessage}`,
+        '配置 AI'
+      );
+      if (action === '配置 AI') {
+        await vscode.commands.executeCommand('leapHome.configureAi');
+      }
+    } finally {
+      this.knowledgeGraphAiBusy = false;
+    }
+  }
+
+  postKnowledgeGraphAiStatus(payload) {
+    if (!this.panel) {
+      return;
+    }
+    logger.info('knowledge graph AI organize status', {
+      insightId: payload && payload.insightId,
+      phase: payload && payload.phase,
+      targetFile: payload && payload.targetFile
+    });
+    this.panel.webview.postMessage(Object.assign({
+      type: 'knowledgeGraphAiStatus'
+    }, payload || {}));
   }
 
   postModel() {
@@ -689,6 +843,200 @@ function summarizeAiFocus(focusTimer) {
       completedAt: item.completedAt
     }))
   };
+}
+
+async function readKnowledgeInsightRelatedDocuments(insight, targetFile) {
+  const files = Array.isArray(insight.relatedFiles) ? insight.relatedFiles : [];
+  const result = [];
+  const seen = new Set([targetFile]);
+  for (const file of files.slice(0, 4)) {
+    const filePath = String(file && file.filePath || '').trim();
+    if (!filePath || seen.has(filePath) || !isMarkdownFile(filePath)) continue;
+    seen.add(filePath);
+    try {
+      const content = await fs.readFile(filePath, 'utf8');
+      result.push({
+        title: String(file.title || path.basename(filePath)).slice(0, 120),
+        filePath,
+        relativePath: String(file.relativePath || path.basename(filePath)),
+        content: content.slice(0, 5000)
+      });
+    } catch (error) {
+      // Ignore missing related files; the target document is enough for a useful cleanup.
+    }
+  }
+  return result;
+}
+
+function isMarkdownFile(filePath) {
+  return ['.md', '.mdx', '.mdc', '.markdown'].includes(path.extname(filePath).toLowerCase());
+}
+
+function upsertKnowledgeDocumentMetadata(content, insight, result, relatedDocuments) {
+  const document = splitMarkdownFrontmatter(content);
+  const existingLines = document.frontmatter
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+$/, ''));
+  const metadata = result && result.metadata && typeof result.metadata === 'object' ? result.metadata : {};
+  const tags = uniqueValues(
+    parseYamlValues(existingLines, 'tags')
+      .concat(metadata.tags || [])
+      .map(normalizeFrontmatterTag)
+      .filter(Boolean)
+  ).slice(0, 16);
+  const topics = uniqueValues((metadata.topics || []).map(normalizeFrontmatterText).filter(Boolean)).slice(0, 12);
+  const aliases = uniqueValues((metadata.aliases || []).map(normalizeFrontmatterText).filter(Boolean)).slice(0, 8);
+  const related = collectKnowledgeRelatedPaths(metadata.related || [], insight, relatedDocuments);
+  const summary = normalizeFrontmatterText(result && result.summary || insight.title || '');
+  const preserved = removeYamlKeys(existingLines, [
+    'tags',
+    'leap_summary',
+    'leap_topics',
+    'leap_related',
+    'leap_aliases',
+    'leap_organized_at',
+    'leap_organized_by'
+  ]).filter((line, index, lines) => line.trim() || (index > 0 && index < lines.length - 1));
+  const generated = [];
+  if (tags.length) appendYamlList(generated, 'tags', tags);
+  if (summary) generated.push(`leap_summary: ${quoteYaml(summary)}`);
+  if (topics.length) appendYamlList(generated, 'leap_topics', topics);
+  if (related.length) appendYamlList(generated, 'leap_related', related);
+  if (aliases.length) appendYamlList(generated, 'leap_aliases', aliases);
+  generated.push('leap_organized_by: "Leap Home AI"');
+  generated.push(`leap_organized_at: ${quoteYaml(new Date().toISOString())}`);
+
+  const frontmatter = preserved.concat(preserved.length ? [''] : [], generated).join('\n');
+  return `---\n${frontmatter}\n---\n${document.body.replace(/^\s*\n/, '')}`;
+}
+
+function splitMarkdownFrontmatter(content) {
+  const text = String(content || '');
+  const match = text.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*(?:\r?\n)?/);
+  if (!match) {
+    return { frontmatter: '', body: text };
+  }
+  return {
+    frontmatter: match[1],
+    body: text.slice(match[0].length)
+  };
+}
+
+function removeYamlKeys(lines, keys) {
+  const blocked = new Set(keys.map((key) => key.toLowerCase()));
+  const result = [];
+  for (let index = 0; index < lines.length;) {
+    const match = String(lines[index] || '').match(/^([A-Za-z0-9_-]+)\s*:/);
+    if (!match || !blocked.has(match[1].toLowerCase())) {
+      result.push(lines[index]);
+      index += 1;
+      continue;
+    }
+    index += 1;
+    while (index < lines.length && !String(lines[index] || '').match(/^[A-Za-z0-9_-]+\s*:/)) {
+      index += 1;
+    }
+  }
+  return result;
+}
+
+function parseYamlValues(lines, key) {
+  const expression = new RegExp(`^${escapeRegExp(key)}\\s*:\\s*(.*)$`, 'i');
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = String(lines[index] || '').match(expression);
+    if (!match) continue;
+    const inline = match[1].trim();
+    if (inline) {
+      return splitYamlInlineList(inline);
+    }
+    const result = [];
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      if (String(lines[cursor] || '').match(/^[A-Za-z0-9_-]+\s*:/)) break;
+      const item = String(lines[cursor] || '').match(/^\s*-\s*(.+)$/);
+      if (item) result.push(unquoteYaml(item[1]));
+    }
+    return result;
+  }
+  return [];
+}
+
+function splitYamlInlineList(value) {
+  const text = String(value || '').trim();
+  const inline = text.startsWith('[') && text.endsWith(']') ? text.slice(1, -1) : text;
+  return inline.split(/[,，]/).map(unquoteYaml).filter(Boolean);
+}
+
+function appendYamlList(lines, key, values) {
+  lines.push(`${key}:`);
+  for (const value of values) {
+    lines.push(`  - ${quoteYaml(value)}`);
+  }
+}
+
+function collectKnowledgeRelatedPaths(values, insight, relatedDocuments) {
+  const allowed = new Map();
+  for (const item of (Array.isArray(relatedDocuments) ? relatedDocuments : [])) {
+    const relativePath = normalizeFrontmatterPath(item && item.relativePath);
+    if (relativePath) allowed.set(relativePath.toLowerCase(), relativePath);
+  }
+  for (const item of (Array.isArray(insight && insight.relatedFiles) ? insight.relatedFiles : [])) {
+    const relativePath = normalizeFrontmatterPath(item && item.relativePath);
+    if (relativePath) allowed.set(relativePath.toLowerCase(), relativePath);
+  }
+  const selected = [];
+  for (const value of (Array.isArray(values) ? values : [])) {
+    const relativePath = normalizeFrontmatterPath(value && typeof value === 'object' ? value.relativePath || value.path || value.filePath : value);
+    const allowedValue = allowed.get(relativePath.toLowerCase());
+    if (allowedValue) selected.push(allowedValue);
+  }
+  return uniqueValues(selected.length ? selected : Array.from(allowed.values())).slice(0, 8);
+}
+
+function normalizeFrontmatterTag(value) {
+  return String(value || '')
+    .replace(/^#/, '')
+    .replace(/[^\p{L}\p{N}_/-]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+    .slice(0, 40);
+}
+
+function normalizeFrontmatterText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+}
+
+function normalizeFrontmatterPath(value) {
+  return String(value || '')
+    .replace(/\\/g, '/')
+    .replace(/^\.\/+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 220);
+}
+
+function quoteYaml(value) {
+  return JSON.stringify(String(value || ''));
+}
+
+function unquoteYaml(value) {
+  return String(value || '').trim().replace(/^['"]|['"]$/g, '').trim();
+}
+
+function uniqueValues(values) {
+  const result = [];
+  const seen = new Set();
+  for (const value of values) {
+    const text = String(value || '').trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    result.push(text);
+  }
+  return result;
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 module.exports = {

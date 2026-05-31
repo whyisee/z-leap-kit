@@ -26,7 +26,8 @@ const BUILTIN_TEMPLATES = {
       { id: 'countdown', component: 'countdown', col: 5, row: 4, colSpan: 4, rowSpan: 2, options: { limit: 5 } },
       { id: 'prompts', component: 'prompts', col: 9, row: 4, colSpan: 4, rowSpan: 2, options: { limit: 8 } },
       { id: 'quadrants', component: 'fourQuadrants', col: 1, row: 6, colSpan: 6, rowSpan: 4 },
-      { id: 'month', component: 'monthCalendar', col: 7, row: 6, colSpan: 6, rowSpan: 4 }
+      { id: 'month', component: 'monthCalendar', col: 7, row: 6, colSpan: 6, rowSpan: 4 },
+      { id: 'graph', component: 'knowledgeGraph', col: 1, row: 10, colSpan: 8, rowSpan: 4 }
     ]
   },
   'prompt-console': {

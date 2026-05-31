@@ -130,6 +130,7 @@
                   "focusTimer",
                   "countdown",
                   "nextAction",
+                  "knowledgeGraph",
                   "favorites",
                   "prompts",
                   "fourQuadrants",

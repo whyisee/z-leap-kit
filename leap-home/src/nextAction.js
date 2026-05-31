@@ -119,6 +119,13 @@ async function recordNextActionAdoption(context, item, action) {
     actionLabel: cleanInline(action && action.label).slice(0, 32),
     aiGeneratedAt: eventItem.aiGeneratedAt
   }]);
+  if (shouldHideAfterAdoption(eventItem, actionType)) {
+    const until = new Date(Date.now() + DISMISS_HOURS * 60 * 60 * 1000).toISOString();
+    feedback.dismissed = [
+      { key: eventItem.key, until, reason: `adopted:${actionType}` },
+      ...feedback.dismissed.filter((dismissed) => dismissed.key !== eventItem.key)
+    ].slice(0, MAX_FEEDBACK_ITEMS);
+  }
   await writeNextActionFeedback(context, feedback);
   return feedback;
 }
@@ -590,6 +597,11 @@ function buildNextActionMetrics(events) {
     aiAdopted: aiAdopted.length,
     latestEventAt: list[0] ? list[0].createdAt : ''
   };
+}
+
+function shouldHideAfterAdoption(item, actionType) {
+  if (item.key && item.key.startsWith('ai:')) return true;
+  return ['createTask', 'startFocus', 'startBreak', 'completeTask'].includes(actionType);
 }
 
 function formatDatePart(value) {

@@ -1,3 +1,21 @@
+---
+tags:
+  - "月历"
+  - "组件设计"
+  - "mvp"
+leap_summary: "月历组件设计文档，定义MVP功能、交互及TODO清单。"
+leap_topics:
+  - "月历组件"
+  - "四象限事项"
+  - "日历事件"
+  - "交互设计"
+leap_related:
+  - "docs/month-calendar-design.md"
+leap_aliases:
+  - "月历组件设计"
+leap_organized_by: "Leap Home AI"
+leap_organized_at: "2026-05-31T08:55:13.959Z"
+---
 # 月历组件设计文档
 
 ## 目标

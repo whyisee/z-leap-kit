@@ -1,3 +1,21 @@
+---
+tags:
+  - "countdown"
+  - "组件设计"
+  - "mvp"
+  - "leap-home"
+leap_summary: "倒计日/时组件的设计文档，定义其目标、产品定位、MVP范围、数据模型、计算规则、交互设计及与Leap Home的关系。"
+leap_topics:
+  - "倒计日时组件"
+  - "组件设计"
+  - "Leap Home 组件"
+leap_related:
+  - "README.md"
+leap_aliases:
+  - "倒计日时组件设计"
+leap_organized_by: "Leap Home AI"
+leap_organized_at: "2026-05-31T08:54:56.791Z"
+---
 # 倒计日/时组件设计文档
 
 ## 目标

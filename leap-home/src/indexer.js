@@ -17,6 +17,7 @@ const {
 const { getComponentDefinitions } = require('./components');
 const { readCountdowns } = require('./countdown');
 const { readFocusTimerSnapshot } = require('./focusTimer');
+const { buildKnowledgeGraph } = require('./knowledgeGraph');
 const { getHomeConfiguration, getTemplateSummaries } = require('./layout');
 const { resolveInboxPath } = require('./inbox');
 const { buildNextActionAiRecommendations, buildNextActionRecommendations, readNextActionFeedback } = require('./nextAction');
@@ -141,6 +142,7 @@ class LeapHomeIndex {
       searchHistory,
       nextActionFeedback
     });
+    const knowledgeGraph = buildKnowledgeGraph(this.context, this.items, favorites);
     const systemRecommendations = buildNextActionRecommendations({
       quadrants: leapState.quadrants,
       calendarEvents: leapState.calendarEvents,
@@ -181,6 +183,7 @@ class LeapHomeIndex {
         focusTimer,
         countdown,
         nextAction,
+        knowledgeGraph,
         quickCaptures,
         searchHistory,
         stats,
@@ -612,7 +615,7 @@ function parseFrontmatterText(content) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .join(' ')
+    .join('\n')
     .slice(0, 4096);
 }
 
@@ -660,7 +663,7 @@ function parseTags(content) {
 
 function addTag(tags, value) {
   const tag = String(value || '').replace(/^#/, '').replace(/['"]/g, '').trim().toLowerCase();
-  if (tag) {
+  if (tag && tag !== '-' && /[\p{L}\p{N}]/u.test(tag)) {
     tags.add(tag);
   }
 }

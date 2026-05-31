@@ -63,6 +63,23 @@ async function recommendNextActions(candidates, context) {
   return parseNextActionRecommendation(response, items);
 }
 
+async function organizeKnowledgeInsight(insight, context) {
+  const source = insight && typeof insight === 'object' ? insight : {};
+  if (!source.title && !source.reason) {
+    throw new Error('图谱洞察内容不能为空。');
+  }
+  const config = getAiConfiguration();
+  if (config.provider !== 'deepseek') {
+    throw new Error(`暂不支持 AI 服务：${config.provider}`);
+  }
+  if (!config.apiKey) {
+    throw new Error('未配置 DeepSeek API Key。请设置环境变量 DEEPSEEK_API_KEY，或配置 leapHome.ai.deepseekApiKey。');
+  }
+
+  const response = await requestDeepSeekKnowledgeOrganization(config, source, context || {});
+  return parseKnowledgeOrganization(response, source);
+}
+
 function getAiConfiguration() {
   const config = vscode.workspace.getConfiguration('leapHome');
   return {
@@ -222,6 +239,51 @@ function requestDeepSeekNextActions(config, candidates, context) {
   return postJson(endpoint, body, config.apiKey, config.timeoutMs);
 }
 
+function requestDeepSeekKnowledgeOrganization(config, insight, context) {
+  const endpoint = `${String(config.baseUrl).replace(/\/+$/, '')}/chat/completions`;
+  const body = {
+    model: config.model,
+    messages: [
+      {
+        role: 'system',
+        content: [
+          '你是 Leap Home 的个人知识库文档整理助手。',
+          '你会收到一个知识图谱洞察、目标文档片段和相关文档摘要。',
+          '你的任务是为目标 Markdown 文档补充结构化元数据，帮助知识图谱形成更准确的关系。',
+          '要求：',
+          '- 不要重写全文。',
+          '- 不要编造不存在的文件或事实。',
+          '- tags 是简短标签，适合放进 Markdown frontmatter 的 tags 字段。',
+          '- topics 是主题词，可比 tags 更接近自然语言。',
+          '- related 只能从输入的 relatedDocuments.relativePath 中选择，不要创造新路径。',
+          '- summary 是一句话文档摘要，适合放进 frontmatter。',
+          '只返回严格 JSON，不要 Markdown 代码围栏，不要解释性段落。',
+          'JSON 格式：{"summary":"一句话文档摘要","metadata":{"tags":["tag"],"topics":["主题"],"related":["docs/example.md"],"aliases":["可选别名"]}}'
+        ].join('\n')
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          insight: {
+            type: insight.type || '',
+            title: insight.title || '',
+            reason: insight.reason || '',
+            query: insight.query || ''
+          },
+          targetDocument: context.targetDocument || {},
+          relatedDocuments: context.relatedDocuments || []
+        })
+      }
+    ],
+    response_format: { type: 'json_object' },
+    thinking: { type: 'disabled' },
+    max_tokens: 500,
+    stream: false
+  };
+
+  return postJson(endpoint, body, config.apiKey, config.timeoutMs);
+}
+
 function postJson(endpoint, body, apiKey, timeoutMs) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
@@ -319,6 +381,24 @@ function parseNextActionRecommendation(response, candidates) {
       .map((item) => normalizeNextActionAiItem(item, candidateKeys))
       .filter(Boolean)
       .slice(0, 6)
+  };
+}
+
+function parseKnowledgeOrganization(response, insight) {
+  const content = getChoiceContent(response);
+  if (!content) {
+    throw new Error('DeepSeek 没有返回整理内容。');
+  }
+  const parsed = parseJsonObject(content, 'DeepSeek 整理结果不是 JSON。');
+  const metadata = parsed.metadata && typeof parsed.metadata === 'object' ? parsed.metadata : parsed;
+  return {
+    summary: String(parsed.summary || insight.title || '已整理图谱洞察').replace(/\s+/g, ' ').trim().slice(0, 160),
+    metadata: {
+      tags: normalizeMetadataList(metadata.tags, 8, normalizeMetadataTag),
+      topics: normalizeMetadataList(metadata.topics, 8, normalizeMetadataText),
+      related: normalizeMetadataList(metadata.related || metadata.relatedPaths, 8, normalizeMetadataPath),
+      aliases: normalizeMetadataList(metadata.aliases, 6, normalizeMetadataText)
+    }
   };
 }
 
@@ -424,6 +504,42 @@ function normalizeQuadrantId(value) {
   return quadrantId;
 }
 
+function normalizeMetadataList(value, limit, normalize) {
+  const source = Array.isArray(value) ? value : String(value || '').split(/[,，、\n]/);
+  const result = [];
+  const seen = new Set();
+  for (const item of source) {
+    const normalized = normalize(item);
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) continue;
+    seen.add(key);
+    result.push(normalized);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+function normalizeMetadataTag(value) {
+  return String(value || '')
+    .replace(/^#/, '')
+    .replace(/[^\p{L}\p{N}_/-]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+    .slice(0, 40);
+}
+
+function normalizeMetadataText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+
+function normalizeMetadataPath(value) {
+  return String(value && typeof value === 'object' ? value.relativePath || value.path || value.filePath || value.title : value || '')
+    .replace(/\\/g, '/')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 220);
+}
+
 function quadrantFromBooleans(important, urgent) {
   if (important && urgent) return 'importantUrgent';
   if (important && !urgent) return 'importantNotUrgent';
@@ -485,6 +601,7 @@ function clampNumber(value, min, max) {
 
 module.exports = {
   classifyQuadrantTask,
+  organizeKnowledgeInsight,
   recommendNextActions,
   understandSearchQuery
 };
