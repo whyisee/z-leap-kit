@@ -9,8 +9,9 @@ const BUILTIN_TEMPLATES = {
       { id: 'prompts', component: 'prompts', col: 5, row: 2, colSpan: 4, rowSpan: 4, options: { limit: 10 } },
       { id: 'favorites', component: 'favorites', col: 9, row: 2, colSpan: 4, rowSpan: 2, options: { limit: 8 } },
       { id: 'focus', component: 'focusTimer', col: 1, row: 4, colSpan: 4, rowSpan: 2 },
+      { id: 'next', component: 'nextAction', col: 5, row: 6, colSpan: 4, rowSpan: 3 },
       { id: 'stats', component: 'stats', col: 9, row: 4, colSpan: 4, rowSpan: 2 },
-      { id: 'week', component: 'weekCalendar', col: 1, row: 6, colSpan: 12, rowSpan: 3 }
+      { id: 'week', component: 'weekCalendar', col: 1, row: 9, colSpan: 12, rowSpan: 3 }
     ]
   },
   'second-brain': {
@@ -52,7 +53,8 @@ const BUILTIN_TEMPLATES = {
       { id: 'stats', component: 'stats', col: 9, row: 2, colSpan: 4, rowSpan: 2 },
       { id: 'focus', component: 'focusTimer', col: 9, row: 4, colSpan: 4, rowSpan: 2 },
       { id: 'countdown', component: 'countdown', col: 9, row: 6, colSpan: 4, rowSpan: 2, options: { limit: 5 } },
-      { id: 'prompts', component: 'prompts', col: 1, row: 5, colSpan: 8, rowSpan: 3, options: { limit: 10 } },
+      { id: 'next', component: 'nextAction', col: 5, row: 5, colSpan: 4, rowSpan: 3 },
+      { id: 'prompts', component: 'prompts', col: 1, row: 5, colSpan: 4, rowSpan: 3, options: { limit: 8 } },
       { id: 'quadrants', component: 'fourQuadrants', col: 1, row: 8, colSpan: 6, rowSpan: 4 },
       { id: 'week', component: 'weekCalendar', col: 7, row: 8, colSpan: 6, rowSpan: 3 }
     ]

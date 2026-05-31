@@ -997,6 +997,180 @@ function getWebviewHtml(webview) {
       padding: 0 8px;
       font-size: 12px;
     }
+    .next-action {
+      display: grid;
+      gap: 8px;
+    }
+    .next-action-tabs {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+    .next-action-tab-list {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 7px;
+      padding: 2px;
+      background: var(--vscode-editor-background);
+    }
+    .next-action-tab-button {
+      min-height: 24px;
+      height: 24px;
+      border: 0;
+      border-radius: 5px;
+      padding: 0 8px;
+      color: var(--vscode-descriptionForeground);
+      background: transparent;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .next-action-tab-button.active {
+      color: var(--vscode-button-foreground);
+      background: var(--vscode-button-background);
+    }
+    .next-action-tab-button:not(.active):hover {
+      color: var(--vscode-foreground);
+      background: var(--vscode-toolbar-hoverBackground);
+    }
+    .next-action-tab-meta {
+      overflow: hidden;
+      color: var(--vscode-descriptionForeground);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .next-action-panel {
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+    }
+    .next-action-ai-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 6px;
+      align-items: center;
+    }
+    .next-action-ai-form input {
+      width: 100%;
+      height: 28px;
+      min-height: 28px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    .next-action-coach-note {
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      color: var(--vscode-descriptionForeground);
+      background: var(--vscode-editor-background);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    .next-action-ai-button {
+      min-height: 24px;
+      height: 24px;
+      border-color: var(--vscode-panel-border);
+      border-radius: 6px;
+      padding: 0 9px;
+      color: var(--vscode-textLink-foreground, var(--vscode-foreground));
+      background: transparent;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .next-action-ai-button:hover {
+      color: var(--vscode-button-foreground);
+      background: var(--vscode-button-background);
+    }
+    .next-action-card {
+      display: grid;
+      gap: 7px;
+      border: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border));
+      border-left: 3px solid var(--next-accent, var(--vscode-focusBorder));
+      border-radius: 7px;
+      padding: 9px 10px;
+      background:
+        linear-gradient(90deg, color-mix(in srgb, var(--next-accent, var(--vscode-focusBorder)) 12%, transparent), transparent 44%),
+        var(--vscode-editor-background);
+    }
+    .next-action-card.primary {
+      min-height: 94px;
+    }
+    .next-action-card.do-now { --next-accent: var(--vscode-charts-red, #d94b4b); }
+    .next-action-card.plan { --next-accent: var(--vscode-charts-blue, #3794ff); }
+    .next-action-card.review { --next-accent: var(--vscode-charts-yellow, #d7ba7d); }
+    .next-action-card.break { --next-accent: var(--vscode-charts-green, #89d185); }
+    .next-action-card.insight { --next-accent: var(--vscode-charts-purple, #b180d7); }
+    .next-action-card.idea { --next-accent: var(--vscode-charts-blue, #3794ff); }
+    .next-action-card.microtask { --next-accent: var(--vscode-charts-green, #89d185); }
+    .next-action-card.encouragement { --next-accent: var(--vscode-charts-yellow, #d7ba7d); }
+    .next-action-card.ai {
+      border-color: color-mix(in srgb, var(--next-accent, var(--vscode-focusBorder)) 54%, var(--vscode-panel-border));
+    }
+    .next-action-panel.system .next-action-card {
+      border-left-color: var(--vscode-descriptionForeground);
+      background: var(--vscode-editor-background);
+    }
+    .next-action-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: start;
+    }
+    .next-action-title {
+      overflow: hidden;
+      font-weight: 800;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .next-action-card.primary .next-action-title {
+      font-size: 15px;
+    }
+    .next-action-badge {
+      border: 1px solid color-mix(in srgb, var(--next-accent, var(--vscode-focusBorder)) 62%, var(--vscode-panel-border));
+      border-radius: 999px;
+      padding: 1px 7px;
+      color: var(--next-accent, var(--vscode-descriptionForeground));
+      font-size: 10px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .next-action-reason {
+      display: -webkit-box;
+      overflow: hidden;
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
+      line-height: 1.45;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+    .next-action-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .next-action-actions button {
+      min-height: 24px;
+      height: 24px;
+      border-radius: 6px;
+      padding: 0 8px;
+      font-size: 11px;
+    }
+    .next-action-secondary {
+      display: grid;
+      gap: 6px;
+    }
+    .next-action-empty {
+      border: 1px dashed var(--vscode-panel-border);
+      border-radius: 7px;
+      padding: 9px;
+      color: var(--vscode-descriptionForeground);
+      background: var(--vscode-editor-background);
+    }
     .quadrant-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1866,7 +2040,7 @@ function getWebviewHtml(webview) {
     const vscodeApi = acquireVsCodeApi();
     const state = {
       model: {
-        data: { items: [], prompts: [], projectItems: [], favorites: [], recent: [], sources: [], focusTimer: {}, countdown: { items: [] }, quickCaptures: [], searchHistory: [] },
+        data: { items: [], prompts: [], projectItems: [], favorites: [], recent: [], sources: [], focusTimer: {}, countdown: { items: [] }, nextAction: { recommendations: [], systemRecommendations: [], aiRecommendations: [] }, quickCaptures: [], searchHistory: [] },
         layout: [],
         components: [],
         activeTemplateTitle: ''
@@ -1902,6 +2076,10 @@ function getWebviewHtml(webview) {
       focusTimerHistoryVisible: false,
       countdownFormId: '',
       countdownShowDone: false,
+      nextActionAiLoading: false,
+      nextActionQuestion: '',
+      nextActionTab: 'system',
+      nextActionSeen: {},
       selectedCalendarDate: '',
       calendarMonthOffset: 0,
       calendarWeekOffset: 0,
@@ -1932,6 +2110,10 @@ function getWebviewHtml(webview) {
       if (event.data && event.data.type === 'model') {
         hasModel = true;
         state.model = event.data.model;
+        state.nextActionAiLoading = false;
+        if (!state.nextActionQuestion && state.model && state.model.data && state.model.data.nextAction && state.model.data.nextAction.ai) {
+          state.nextActionQuestion = state.model.data.nextAction.ai.question || '';
+        }
         logToExtension('model received', summarizeModel(state.model));
         render();
       }
@@ -2114,6 +2296,7 @@ function getWebviewHtml(webview) {
       if (block.component === 'quickCapture') return renderQuickCapture(container);
       if (block.component === 'focusTimer') return renderFocusTimer(container);
       if (block.component === 'countdown') return renderCountdown(container, block);
+      if (block.component === 'nextAction') return renderNextAction(container, block);
       if (block.component === 'favorites') return renderItemList(container, state.model.data.favorites, '还没有收藏。', block, true);
       if (block.component === 'prompts') return renderPromptList(container, block);
       if (block.component === 'fourQuadrants') return renderFourQuadrants(container, block);
@@ -3386,6 +3569,297 @@ function getWebviewHtml(webview) {
       return new Date(date.getFullYear(), date.getMonth(), date.getDate());
     }
 
+    function renderNextAction(container, block) {
+      const wrap = div('next-action');
+      const data = state.model.data.nextAction || {};
+      const legacyRecommendations = Array.isArray(data.recommendations) ? data.recommendations : [];
+      const systemRecommendations = Array.isArray(data.systemRecommendations)
+        ? data.systemRecommendations
+        : legacyRecommendations.filter((item) => !item.ai);
+      const aiRecommendations = Array.isArray(data.aiRecommendations)
+        ? data.aiRecommendations
+        : legacyRecommendations.filter((item) => item.ai);
+      const limit = getLimit(block, 4);
+      const activeTab = state.nextActionTab === 'ai' ? 'ai' : 'system';
+      wrap.appendChild(nextActionTabs({
+        activeTab,
+        systemCount: systemRecommendations.length,
+        aiCount: aiRecommendations.length,
+        ai: data.ai
+      }));
+      if (activeTab === 'ai') {
+        const visible = aiRecommendations.slice(0, limit);
+        wrap.appendChild(nextActionAiPanel(data, visible));
+        recordNextActionImpressions(visible);
+      } else {
+        const visible = systemRecommendations.slice(0, limit);
+        wrap.appendChild(nextActionPanel({
+          items: visible,
+          emptyTitle: '当前没有高优先级推荐',
+          emptyReason: '可以先补充四象限事项、倒计节点，或把快速记录整理成明确任务。',
+          className: 'system'
+        }));
+        recordNextActionImpressions(visible);
+      }
+      container.appendChild(wrap);
+    }
+
+    function nextActionTabs(options) {
+      const tabs = div('next-action-tabs');
+      const list = div('next-action-tab-list');
+      list.append(
+        nextActionTabButton('system', '系统推荐', options.systemCount, options.activeTab === 'system'),
+        nextActionTabButton('ai', 'AI 建议', options.aiCount, options.activeTab === 'ai')
+      );
+      const ai = options.ai || {};
+      const meta = options.activeTab === 'ai'
+        ? (ai.generatedAt ? 'DeepSeek · ' + formatTimeOfDay(ai.generatedAt) : '可输入问题')
+        : '本地规则 · ' + String(options.systemCount);
+      tabs.append(list, div('next-action-tab-meta', meta));
+      return tabs;
+    }
+
+    function nextActionTabButton(tab, label, count, active) {
+      const control = button(label + ' ' + String(count || 0), () => {
+        state.nextActionTab = tab;
+        render();
+      }, true);
+      control.className = 'next-action-tab-button' + (active ? ' active' : '');
+      control.setAttribute('aria-pressed', active ? 'true' : 'false');
+      return control;
+    }
+
+    function recordNextActionImpressions(items) {
+      const payload = (items || []).map(nextActionEventItem).filter(Boolean);
+      const fresh = [];
+      for (const item of payload) {
+        const signature = [item.sourceKind, item.key, item.aiGeneratedAt || ''].join('|');
+        if (state.nextActionSeen[signature]) continue;
+        state.nextActionSeen[signature] = true;
+        fresh.push(item);
+      }
+      if (fresh.length > 0) {
+        post('nextActionImpressions', { items: fresh });
+      }
+    }
+
+    function nextActionPanel(options) {
+      const section = div('next-action-panel ' + (options.className || ''));
+      if (!options.items || options.items.length === 0) {
+        section.appendChild(nextActionEmpty(options.emptyTitle, options.emptyReason));
+        return section;
+      }
+      section.appendChild(nextActionCard(options.items[0], true));
+      if (options.items.length > 1) {
+        const list = div('next-action-secondary');
+        for (const item of options.items.slice(1)) {
+          list.appendChild(nextActionCard(item, false));
+        }
+        section.appendChild(list);
+      }
+      return section;
+    }
+
+    function nextActionAiPanel(data, recommendations) {
+      const section = div('next-action-panel ai');
+      section.appendChild(nextActionAiQuestionForm(data && data.ai ? data.ai : {}));
+      const coachNote = nextActionCoachNote(data);
+      if (coachNote) section.appendChild(coachNote);
+      if (!recommendations || recommendations.length === 0) {
+        section.appendChild(nextActionEmpty('还没有 AI 建议', '输入你的问题，例如“帮我拆一下不想开始的任务”或“我现在应该先做什么”。'));
+        return section;
+      }
+      section.appendChild(nextActionCard(recommendations[0], true));
+      if (recommendations.length > 1) {
+        const list = div('next-action-secondary');
+        for (const item of recommendations.slice(1)) {
+          list.appendChild(nextActionCard(item, false));
+        }
+        section.appendChild(list);
+      }
+      return section;
+    }
+
+    function nextActionAiQuestionForm(ai) {
+      const form = document.createElement('form');
+      form.className = 'next-action-ai-form';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = state.nextActionQuestion || ai.question || '';
+      input.placeholder = '问 AI：现在先做什么 / 帮我拆小任务';
+      input.addEventListener('input', () => {
+        state.nextActionQuestion = input.value;
+      });
+      const label = state.nextActionAiLoading ? '思考中...' : '提问';
+      const trigger = button(label, () => requestNextActionAi(input.value), true);
+      trigger.className = 'next-action-ai-button';
+      trigger.disabled = state.nextActionAiLoading;
+      trigger.title = ai.reason ? '上次 AI 理由：' + ai.reason : '让 DeepSeek 根据当前知识库和任务回答';
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        requestNextActionAi(input.value);
+      });
+      form.append(input, trigger);
+      return form;
+    }
+
+    function requestNextActionAi(question) {
+      if (state.nextActionAiLoading) return;
+      state.nextActionQuestion = String(question || '').trim();
+      state.nextActionTab = 'ai';
+      state.nextActionAiLoading = true;
+      render();
+      post('nextActionAiRecommend', { question: state.nextActionQuestion });
+    }
+
+    function nextActionEmpty(title, reason) {
+      const emptyState = div('next-action-empty');
+      emptyState.append(
+        div('next-action-title', title),
+        div('next-action-reason', reason)
+      );
+      const actions = div('next-action-actions');
+      actions.append(
+        button('查看待办', () => runSearchFromCommand('@todo'), true),
+        button('快速记录', () => post('openInbox'), true)
+      );
+      emptyState.appendChild(actions);
+      return emptyState;
+    }
+
+    function nextActionCoachNote(data) {
+      const ai = data && data.ai ? data.ai : {};
+      const question = ai.question ? '问：' + ai.question : '';
+      const text = [question, ai.summary, ai.encouragement].filter(Boolean).join(' · ');
+      return text ? div('next-action-coach-note', text) : undefined;
+    }
+
+    function nextActionCard(item, primary) {
+      const card = div(['next-action-card', primary ? 'primary' : '', item.type || 'plan', item.sourceType || '', item.ai ? 'ai' : ''].filter(Boolean).join(' '));
+      const head = div('next-action-head');
+      const title = div('next-action-title', item.title || '下一步行动');
+      title.title = item.title || '';
+      const badgeText = (item.ai ? 'AI · ' : '') + formatNextActionType(item.type, item.sourceType) + ' · ' + String(Math.max(0, Math.round(item.score || 0)));
+      head.append(title, div('next-action-badge', badgeText));
+      const reason = div('next-action-reason', item.reason || '根据当前上下文推荐。');
+      if (item.aiReason) reason.title = 'AI 整体理由：' + item.aiReason;
+      card.append(head, reason, nextActionButtons(item));
+      return card;
+    }
+
+    function nextActionButtons(item) {
+      const actions = div('next-action-actions');
+      for (const action of item.actions || []) {
+        actions.appendChild(nextActionButton(item, action));
+      }
+      const pin = button(item.pinned ? '取消置顶' : '置顶', () => {
+        post('pinNextAction', { key: item.key, pinned: !item.pinned, item: nextActionEventItem(item) });
+      }, true);
+      pin.title = item.pinned ? '取消置顶这条推荐' : '置顶这条推荐';
+      actions.appendChild(pin);
+      if (!(item.actions || []).some((action) => action.type === 'dismiss')) {
+        actions.appendChild(nextActionButton(item, { type: 'dismiss', label: '忽略' }));
+      }
+      return actions;
+    }
+
+    function nextActionButton(item, action) {
+      const control = button(action.label || formatNextActionButton(action.type), () => handleNextAction(item, action), action.type !== 'startFocus');
+      control.title = action.query ? '搜索：' + action.query : '';
+      return control;
+    }
+
+    function handleNextAction(item, action) {
+      if (action.type !== 'dismiss') {
+        post('nextActionAdoption', {
+          item: nextActionEventItem(item),
+          action: nextActionEventAction(action)
+        });
+      }
+      if (action.type === 'startFocus') {
+        post('focusTimerStart', {
+          sessionType: 'focus',
+          task: {
+            quadrantId: action.quadrantId || item.source && item.source.quadrantId,
+            taskId: action.taskId || item.source && item.source.taskId
+          }
+        });
+        return;
+      }
+      if (action.type === 'startBreak') {
+        post('focusTimerStart', { sessionType: action.sessionType || 'shortBreak' });
+        return;
+      }
+      if (action.type === 'completeTask') {
+        post('toggleQuadrantTask', {
+          quadrantId: action.quadrantId || item.source && item.source.quadrantId,
+          taskId: action.taskId || item.source && item.source.taskId,
+          done: true
+        });
+        return;
+      }
+      if (action.type === 'search') {
+        runSearchFromCommand(action.query || item.title || '');
+        return;
+      }
+      if (action.type === 'createTask') {
+        post('addQuadrantTask', {
+          quadrantId: action.quadrantId || 'importantNotUrgent',
+          text: action.title || item.title || 'AI 建议事项',
+          source: 'next-action-ai',
+          reason: item.reason || 'AI 做什么推荐生成'
+        });
+        return;
+      }
+      if (action.type === 'dismiss') {
+        post('dismissNextAction', { key: item.key, reason: 'not-now', item: nextActionEventItem(item) });
+      }
+    }
+
+    function nextActionEventItem(item) {
+      if (!item || !item.key) return undefined;
+      return {
+        key: item.key,
+        sourceKind: item.ai ? 'ai' : 'system',
+        ai: Boolean(item.ai),
+        type: item.type || '',
+        title: item.title || '',
+        score: item.score || 0,
+        aiGeneratedAt: item.aiGeneratedAt || ''
+      };
+    }
+
+    function nextActionEventAction(action) {
+      return {
+        type: action && action.type || '',
+        label: action && action.label || ''
+      };
+    }
+
+    function formatNextActionType(type, sourceType) {
+      if (sourceType === 'microtask') return '小任务';
+      if (sourceType === 'insight') return '洞察';
+      if (sourceType === 'encouragement') return '鼓励';
+      if (sourceType === 'idea') return '想法';
+      return {
+        'do-now': '现在做',
+        plan: '安排',
+        review: '整理',
+        break: '休息'
+      }[type] || '推荐';
+    }
+
+    function formatNextActionButton(type) {
+      return {
+        startFocus: '开始番茄',
+        startBreak: '短休息',
+        completeTask: '完成',
+        createTask: '加入待办',
+        search: '查上下文',
+        dismiss: '忽略'
+      }[type] || '执行';
+    }
+
     function renderItemList(container, items, emptyText, block, allowFavorite) {
       const list = div('list');
       const data = (items || []).slice(0, getLimit(block, 8));
@@ -3967,6 +4441,13 @@ function getWebviewHtml(webview) {
           statItem('完成/终止', String(stats.completedFocusRecords || 0) + '/' + String(stats.abortedFocusRecords || 0), '', stats.abortedFocusRecords ? 'warn' : '', '完成记录 / 手动终止记录，完成率 ' + String(stats.focusCompletionRate || 0) + '%'),
           statItem('事项关联', String(stats.focusLinkedRate || 0) + '%', '', stats.focusRecords && stats.focusLinkedRate < 60 ? 'warn' : '', '已关联事项的番茄记录：' + String(stats.linkedFocusRecords || 0) + '/' + String(stats.focusRecords || 0))
         ]),
+        statsSection('推荐', [
+          statItem('曝光', stats.nextActionImpressions || 0, '', '', '做什么组件展示过的推荐数'),
+          statItem('采纳', stats.nextActionAdopted || 0, '', '', '点击开始番茄、完成、查上下文、加入待办等推荐动作的次数'),
+          statItem('采纳率', String(stats.nextActionAdoptionRate || 0) + '%', '', '', '采纳次数 / 推荐曝光次数'),
+          statItem('准确率', String(stats.nextActionAccuracyRate || 0) + '%', '', stats.nextActionAccuracyRate && stats.nextActionAccuracyRate < 50 ? 'warn' : '', '采纳次数 / 有明确反馈次数（采纳 + 忽略）'),
+          statItem('AI/系统', String(stats.nextActionAiAdopted || 0) + '/' + String(stats.nextActionSystemAdopted || 0), '', '', 'AI 建议采纳数 / 系统推荐采纳数')
+        ]),
         statsSection('知识库', [
           statItem('知识文件', stats.totalItems || 0, '@docs', '', '索引到的知识文件'),
           statItem('Prompt', stats.prompts || 0, '@prompt', '', 'Prompt 模板'),
@@ -4192,7 +4673,7 @@ function getWebviewHtml(webview) {
     }
 
     function componentUsesLimit(componentType) {
-      return ['search', 'favorites', 'prompts', 'fourQuadrants', 'countdown'].includes(componentType);
+      return ['search', 'favorites', 'prompts', 'fourQuadrants', 'countdown', 'nextAction'].includes(componentType);
     }
 
     function layoutNumberField(labelText, value, min, max, onChange) {
@@ -4607,6 +5088,14 @@ function getWebviewHtml(webview) {
       if (block.component === 'quickCapture') return String((data.quickCaptures || []).length);
       if (block.component === 'focusTimer') return '';
       if (block.component === 'countdown') return String(((data.countdown && data.countdown.items) || []).filter((item) => !item.done).length);
+      if (block.component === 'nextAction') {
+        const nextAction = data.nextAction || {};
+        const systemCount = Array.isArray(nextAction.systemRecommendations)
+          ? nextAction.systemRecommendations.length
+          : Array.isArray(nextAction.recommendations) ? nextAction.recommendations.length : 0;
+        const aiCount = Array.isArray(nextAction.aiRecommendations) ? nextAction.aiRecommendations.length : 0;
+        return String(systemCount + aiCount);
+      }
       if (block.component === 'favorites') return String((data.favorites || []).length);
       if (block.component === 'prompts') return String((data.prompts || []).length);
       if (block.component === 'fourQuadrants') return String((data.quadrants || []).reduce((count, quadrant) => count + (quadrant.items || []).length, 0));
@@ -4834,6 +5323,8 @@ function getWebviewHtml(webview) {
         recent: Array.isArray(data.recent) ? data.recent.length : 0,
         quickCaptures: Array.isArray(data.quickCaptures) ? data.quickCaptures.length : 0,
         countdowns: data.countdown && Array.isArray(data.countdown.items) ? data.countdown.items.length : 0,
+        recommendations: data.nextAction && Array.isArray(data.nextAction.recommendations) ? data.nextAction.recommendations.length : 0,
+        aiRecommendations: data.nextAction && Array.isArray(data.nextAction.aiRecommendations) ? data.nextAction.aiRecommendations.length : 0,
         quadrants: Array.isArray(data.quadrants) ? data.quadrants.length : 0
       };
     }

@@ -19,6 +19,7 @@ const { readCountdowns } = require('./countdown');
 const { readFocusTimerSnapshot } = require('./focusTimer');
 const { getHomeConfiguration, getTemplateSummaries } = require('./layout');
 const { resolveInboxPath } = require('./inbox');
+const { buildNextActionAiRecommendations, buildNextActionRecommendations, readNextActionFeedback } = require('./nextAction');
 const { readQuickCaptures } = require('./quickCapture');
 const { readSearchHistory } = require('./searchHistory');
 const { getMaxRecentItems, getStoredPaths } = require('./state');
@@ -116,6 +117,7 @@ class LeapHomeIndex {
     const leapState = readLeapState(this.context);
     const focusTimer = readFocusTimerSnapshot(this.context);
     const countdown = readCountdowns(this.context);
+    const nextActionFeedback = readNextActionFeedback(this.context);
     const searchHistory = readSearchHistory(this.context);
     const quickCaptures = readQuickCaptures(this.context);
     const favorites = getStoredPaths(this.context, FAVORITES_KEY)
@@ -136,8 +138,25 @@ class LeapHomeIndex {
       calendarEvents: leapState.calendarEvents,
       focusTimer,
       countdown,
-      searchHistory
+      searchHistory,
+      nextActionFeedback
     });
+    const systemRecommendations = buildNextActionRecommendations({
+      quadrants: leapState.quadrants,
+      calendarEvents: leapState.calendarEvents,
+      countdown,
+      quickCaptures,
+      focusTimer,
+      searchHistory
+    }, nextActionFeedback);
+    const nextAction = {
+      systemRecommendations,
+      aiRecommendations: buildNextActionAiRecommendations(systemRecommendations, nextActionFeedback),
+      recommendations: systemRecommendations,
+      ai: nextActionFeedback.ai,
+      feedback: nextActionFeedback,
+      metrics: nextActionFeedback.metrics
+    };
 
     return {
       ready: this.ready,
@@ -161,6 +180,7 @@ class LeapHomeIndex {
         calendarEvents: leapState.calendarEvents,
         focusTimer,
         countdown,
+        nextAction,
         quickCaptures,
         searchHistory,
         stats,
@@ -771,6 +791,7 @@ function buildStats(data) {
   const latestUpdatedAt = (data.items || []).reduce((latest, item) => Math.max(latest, item.updatedAt || 0), 0);
   const searchHistory = Array.isArray(data.searchHistory) ? data.searchHistory : [];
   const aiSearches = searchHistory.filter((item) => item.mode === 'ai').length;
+  const nextActionMetrics = data.nextActionFeedback && data.nextActionFeedback.metrics ? data.nextActionFeedback.metrics : {};
   const focusHistory = data.focusTimer && Array.isArray(data.focusTimer.history) ? data.focusTimer.history : [];
   const focusRecords = focusHistory.filter((item) => item.type === 'focus');
   const completedFocusRecords = focusRecords.filter((item) => item.result !== 'aborted');
@@ -809,6 +830,13 @@ function buildStats(data) {
     monthScheduledDays,
     searchHistory: searchHistory.length,
     aiSearches,
+    nextActionImpressions: nextActionMetrics.impressions || 0,
+    nextActionAdopted: nextActionMetrics.adopted || 0,
+    nextActionDismissed: nextActionMetrics.dismissed || 0,
+    nextActionAdoptionRate: nextActionMetrics.adoptionRate || 0,
+    nextActionAccuracyRate: nextActionMetrics.accuracyRate || 0,
+    nextActionAiAdopted: nextActionMetrics.aiAdopted || 0,
+    nextActionSystemAdopted: nextActionMetrics.systemAdopted || 0,
     focusRecords: focusRecords.length,
     completedFocusRecords: completedFocusRecords.length,
     abortedFocusRecords: abortedFocusRecords.length,

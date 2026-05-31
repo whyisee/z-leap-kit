@@ -13,7 +13,8 @@ const COMPONENT_DATA_FILES = {
   searchHistory: 'search-history.json',
   quickCapture: 'quick-capture.json',
   focusTimer: 'focus-timer.json',
-  countdown: 'countdown.json'
+  countdown: 'countdown.json',
+  nextAction: 'next-action.json'
 };
 
 const QUADRANT_DEFINITIONS = [
@@ -57,7 +58,8 @@ function getLeapDataPaths(context) {
       searchHistory: getLeapComponentDataPath(context, 'searchHistory'),
       quickCapture: getLeapComponentDataPath(context, 'quickCapture'),
       focusTimer: getLeapComponentDataPath(context, 'focusTimer'),
-      countdown: getLeapComponentDataPath(context, 'countdown')
+      countdown: getLeapComponentDataPath(context, 'countdown'),
+      nextAction: getLeapComponentDataPath(context, 'nextAction')
     }
   };
 }

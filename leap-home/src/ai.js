@@ -49,6 +49,20 @@ async function understandSearchQuery(text, options) {
   return parseSearchQueryUnderstanding(response, queryText);
 }
 
+async function recommendNextActions(candidates, context) {
+  const items = Array.isArray(candidates) ? candidates.slice(0, 8) : [];
+  const config = getAiConfiguration();
+  if (config.provider !== 'deepseek') {
+    throw new Error(`暂不支持 AI 服务：${config.provider}`);
+  }
+  if (!config.apiKey) {
+    throw new Error('未配置 DeepSeek API Key。请设置环境变量 DEEPSEEK_API_KEY，或配置 leapHome.ai.deepseekApiKey。');
+  }
+
+  const response = await requestDeepSeekNextActions(config, items, context || {});
+  return parseNextActionRecommendation(response, items);
+}
+
 function getAiConfiguration() {
   const config = vscode.workspace.getConfiguration('leapHome');
   return {
@@ -146,6 +160,68 @@ function requestDeepSeekSearchQuery(config, queryText) {
   return postJson(endpoint, body, config.apiKey, config.timeoutMs);
 }
 
+function requestDeepSeekNextActions(config, candidates, context) {
+  const endpoint = `${String(config.baseUrl).replace(/\/+$/, '')}/chat/completions`;
+  const today = formatDate(new Date());
+  const question = String(context.question || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+  const compactCandidates = candidates.map((item) => ({
+    key: item.key,
+    type: item.type,
+    title: item.title,
+    reason: item.reason,
+    score: item.score,
+    source: item.source,
+    actions: (item.actions || []).map((action) => action.type)
+  }));
+  const body = {
+    model: config.model,
+    messages: [
+      {
+        role: 'system',
+        content: [
+          '你是 Leap Home 的个人行动教练。',
+          `今天日期：${today}。`,
+          '目标：帮用户更愿意开始行动，而不是只做排序。',
+          '你会收到本地候选推荐，以及最近任务、快速记录、倒计节点、番茄记录、搜索历史等上下文。',
+          '你可以做两类输出：',
+          '1. 选择/重排本地候选：必须保留候选 key，不能修改不可执行的 source/action。',
+          '2. 生成新的 AI 建议：key 必须以 ai: 开头，sourceType 使用 microtask、insight、encouragement 或 idea。',
+          question
+            ? `用户这次明确提问：${question}。你必须优先回答这个问题，再给出可执行建议。`
+            : '如果用户没有输入问题，就主动判断现在最值得开始的事。',
+          '新的 AI 建议必须来自上下文，不允许凭空编事实；要尽量小、具体、能立刻开始。',
+          '尤其要做：总结最近笔记，建议新事项；把用户可能不愿意开始的大任务拆成 10-15 分钟小步骤；给一句具体鼓励；推荐一个创新探索方向。',
+          '允许的新建议 action 类型只有 createTask、search、dismiss。',
+          'createTask 必须包含 title 和 quadrantId；quadrantId 只能是 importantUrgent、importantNotUrgent、notImportantUrgent、notImportantNotUrgent。',
+          'search 必须包含 query。',
+          '如果是选择本地候选，可以省略 actions，系统会保留原动作。',
+          '只返回严格 JSON 对象，不要 Markdown，不要解释性段落。',
+          'JSON 格式：{"summary":"最近上下文一句话总结","encouragement":"一句具体鼓励","reason":"整体推荐理由","items":[{"key":"候选 key 或 ai:xxx","type":"do-now|plan|review|break","sourceType":"candidate|microtask|insight|encouragement|idea","title":"行动标题","reason":"一句话解释","basedOnKey":"可选，来源候选 key","actions":[{"type":"createTask|search|dismiss","label":"按钮文案","title":"新待办标题","quadrantId":"importantNotUrgent","query":"搜索词"}]}]}'
+        ].join('\n')
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          workspaceName: context.workspaceName || '',
+          question,
+          candidates: compactCandidates,
+          recentNotes: context.recentNotes || [],
+          openTasks: context.openTasks || [],
+          countdowns: context.countdowns || [],
+          focus: context.focus || {},
+          recentSearches: context.recentSearches || []
+        })
+      }
+    ],
+    response_format: { type: 'json_object' },
+    thinking: { type: 'disabled' },
+    max_tokens: 700,
+    stream: false
+  };
+
+  return postJson(endpoint, body, config.apiKey, config.timeoutMs);
+}
+
 function postJson(endpoint, body, apiKey, timeoutMs) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
@@ -224,6 +300,95 @@ function parseSearchQueryUnderstanding(response, fallbackQuery) {
     query,
     reason: String(parsed.reason || '').trim().slice(0, 160)
   };
+}
+
+function parseNextActionRecommendation(response, candidates) {
+  const content = getChoiceContent(response);
+  if (!content) {
+    throw new Error('DeepSeek 没有返回推荐结果。');
+  }
+  const candidateKeys = new Set(candidates.map((item) => item.key));
+  const parsed = parseJsonObject(content, 'DeepSeek 推荐结果不是 JSON。');
+  const items = Array.isArray(parsed.items) ? parsed.items : [];
+  return {
+    question: String(parsed.question || '').replace(/\s+/g, ' ').trim().slice(0, 240),
+    reason: String(parsed.reason || '').replace(/\s+/g, ' ').trim().slice(0, 220),
+    summary: String(parsed.summary || '').replace(/\s+/g, ' ').trim().slice(0, 220),
+    encouragement: String(parsed.encouragement || '').replace(/\s+/g, ' ').trim().slice(0, 180),
+    items: items
+      .map((item) => normalizeNextActionAiItem(item, candidateKeys))
+      .filter(Boolean)
+      .slice(0, 6)
+  };
+}
+
+function normalizeNextActionAiItem(value, candidateKeys) {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const key = String(value.key || '').trim();
+  const generated = key.startsWith('ai:');
+  if (!generated && !candidateKeys.has(key)) {
+    return undefined;
+  }
+  const type = normalizeNextActionType(value.type);
+  return {
+    key,
+    type,
+    sourceType: normalizeNextActionSourceType(value.sourceType, generated),
+    title: String(value.title || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+    reason: String(value.reason || '').replace(/\s+/g, ' ').trim().slice(0, 180),
+    basedOnKey: String(value.basedOnKey || '').trim(),
+    actions: generated ? normalizeNextActionAiActions(value.actions) : []
+  };
+}
+
+function normalizeNextActionType(value) {
+  const type = String(value || '').trim();
+  return ['do-now', 'plan', 'review', 'break'].includes(type) ? type : '';
+}
+
+function normalizeNextActionSourceType(value, generated) {
+  const sourceType = String(value || '').trim();
+  if (['candidate', 'microtask', 'insight', 'encouragement', 'idea'].includes(sourceType)) {
+    return sourceType;
+  }
+  return generated ? 'insight' : 'candidate';
+}
+
+function normalizeNextActionAiActions(value) {
+  const actions = Array.isArray(value) ? value : [];
+  return actions.map(normalizeNextActionAiAction).filter(Boolean).slice(0, 3);
+}
+
+function normalizeNextActionAiAction(value) {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const type = String(value.type || '').trim();
+  const label = String(value.label || '').replace(/\s+/g, ' ').trim().slice(0, 16);
+  if (type === 'createTask') {
+    const title = String(value.title || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    const quadrantId = normalizeOptionalQuadrantId(value.quadrantId);
+    if (!title || !quadrantId) return undefined;
+    return { type, label: label || '加入待办', title, quadrantId };
+  }
+  if (type === 'search') {
+    const query = String(value.query || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+    if (!query) return undefined;
+    return { type, label: label || '查上下文', query };
+  }
+  if (type === 'dismiss') {
+    return { type, label: label || '忽略' };
+  }
+  return undefined;
+}
+
+function normalizeOptionalQuadrantId(value) {
+  const quadrantId = String(value || '').trim();
+  return QUADRANT_DEFINITIONS.some((definition) => definition.id === quadrantId)
+    ? quadrantId
+    : '';
 }
 
 function getChoiceContent(response) {
@@ -320,5 +485,6 @@ function clampNumber(value, min, max) {
 
 module.exports = {
   classifyQuadrantTask,
+  recommendNextActions,
   understandSearchQuery
 };

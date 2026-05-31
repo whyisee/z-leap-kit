@@ -29,6 +29,14 @@ const COMPONENT_DEFINITIONS = {
     defaultColSpan: 4,
     defaultRowSpan: 3
   },
+  nextAction: {
+    type: 'nextAction',
+    title: '做什么',
+    description: '根据任务、日历、倒计日和番茄状态推荐下一步',
+    dataKey: 'nextAction',
+    defaultColSpan: 4,
+    defaultRowSpan: 3
+  },
   favorites: {
     type: 'favorites',
     title: '收藏',

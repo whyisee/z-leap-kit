@@ -1,5 +1,5 @@
 const vscode = require('vscode');
-const { classifyQuadrantTask, understandSearchQuery } = require('./ai');
+const { classifyQuadrantTask, recommendNextActions, understandSearchQuery } = require('./ai');
 const { PANEL_VIEW_TYPE } = require('./constants');
 const {
   addQuadrantTask,
@@ -30,6 +30,13 @@ const {
   startFocusTimer
 } = require('./focusTimer');
 const logger = require('./logger');
+const {
+  dismissNextAction,
+  pinNextAction,
+  recordNextActionAdoption,
+  recordNextActionImpressions,
+  saveNextActionAiPlan
+} = require('./nextAction');
 const { QUADRANT_DEFINITIONS, readLeapState } = require('./storage');
 const {
   getQuickCaptureKindLabel,
@@ -239,6 +246,33 @@ class LeapHomePanelController {
       return;
     }
 
+    if (message.type === 'dismissNextAction') {
+      await dismissNextAction(this.context, message.key, message.reason, message.item);
+      this.postModel();
+      return;
+    }
+
+    if (message.type === 'pinNextAction') {
+      await pinNextAction(this.context, message.key, message.pinned, message.item);
+      this.postModel();
+      return;
+    }
+
+    if (message.type === 'nextActionImpressions') {
+      await recordNextActionImpressions(this.context, message.items);
+      return;
+    }
+
+    if (message.type === 'nextActionAdoption') {
+      await recordNextActionAdoption(this.context, message.item, message.action);
+      return;
+    }
+
+    if (message.type === 'nextActionAiRecommend') {
+      await this.optimizeNextActionWithAi(message.question);
+      return;
+    }
+
     if (message.type === 'updateQuadrantTask') {
       const patch = {};
       if (Object.prototype.hasOwnProperty.call(message, 'text')) patch.text = message.text;
@@ -347,6 +381,41 @@ class LeapHomePanelController {
         };
       }
       return undefined;
+    }
+  }
+
+  async optimizeNextActionWithAi(question) {
+    try {
+      const model = this.index.getModel();
+      const current = model.data && model.data.nextAction && Array.isArray(model.data.nextAction.systemRecommendations)
+        ? model.data.nextAction.systemRecommendations
+        : model.data && model.data.nextAction && Array.isArray(model.data.nextAction.recommendations)
+          ? model.data.nextAction.recommendations
+          : [];
+      const normalizedQuestion = String(question || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+      const plan = await recommendNextActions(current, Object.assign(buildNextActionAiContext(model), {
+        question: normalizedQuestion
+      }));
+      await saveNextActionAiPlan(this.context, Object.assign({}, plan, {
+        question: plan.question || normalizedQuestion
+      }));
+      this.postModel();
+      vscode.window.setStatusBarMessage(
+        normalizedQuestion ? 'Leap Home: AI 已回答做什么问题' : 'Leap Home: AI 已生成行动建议',
+        3500
+      );
+    } catch (error) {
+      logger.warn('AI next action recommendation failed', {
+        error: error && (error.message || String(error))
+      });
+      this.postModel();
+      const action = await vscode.window.showWarningMessage(
+        `Leap Home AI 推荐失败：${error.message || String(error)}`,
+        '配置 AI'
+      );
+      if (action === '配置 AI') {
+        await vscode.commands.executeCommand('leapHome.configureAi');
+      }
     }
   }
 
@@ -553,6 +622,73 @@ function toFocusTimerTaskRef(quadrantId, task) {
 function normalizeQuadrantId(value) {
   const quadrantId = String(value || '').trim();
   return QUADRANT_DEFINITIONS.some((definition) => definition.id === quadrantId) ? quadrantId : '';
+}
+
+function buildNextActionAiContext(model) {
+  const data = model && model.data ? model.data : {};
+  return {
+    workspaceName: model && model.workspaceName ? model.workspaceName : '',
+    recentNotes: (Array.isArray(data.quickCaptures) ? data.quickCaptures : []).slice(0, 8).map((item) => ({
+      text: item.text,
+      kind: item.kind,
+      target: item.target,
+      label: item.label,
+      createdAt: item.createdAt
+    })),
+    openTasks: flattenAiTasks(data.quadrants).slice(0, 20),
+    countdowns: ((data.countdown && Array.isArray(data.countdown.items)) ? data.countdown.items : [])
+      .filter((item) => !item.done)
+      .slice(0, 10)
+      .map((item) => ({
+        title: item.title,
+        targetDate: item.targetDate,
+        targetTime: item.targetTime,
+        note: item.note
+      })),
+    focus: summarizeAiFocus(data.focusTimer),
+    recentSearches: (Array.isArray(data.searchHistory) ? data.searchHistory : []).slice(0, 6).map((item) => ({
+      query: item.query,
+      effectiveQuery: item.effectiveQuery,
+      resultCount: item.resultCount,
+      mode: item.mode
+    }))
+  };
+}
+
+function flattenAiTasks(quadrants) {
+  const result = [];
+  for (const quadrant of Array.isArray(quadrants) ? quadrants : []) {
+    for (const task of quadrant.items || []) {
+      if (task.done) continue;
+      result.push({
+        text: task.text,
+        dueDate: task.dueDate,
+        quadrantId: quadrant.id,
+        quadrantTitle: quadrant.title,
+        reason: task.reason
+      });
+    }
+  }
+  return result;
+}
+
+function summarizeAiFocus(focusTimer) {
+  const session = focusTimer && focusTimer.activeSession ? focusTimer.activeSession : {};
+  const history = focusTimer && Array.isArray(focusTimer.history) ? focusTimer.history : [];
+  return {
+    status: session.status || 'idle',
+    type: session.type || 'focus',
+    focusedMs: session.focusedMs || 0,
+    interruptions: session.interruptions || 0,
+    recent: history.slice(0, 5).map((item) => ({
+      type: item.type,
+      result: item.result,
+      focusedMs: item.focusedMs,
+      interruptions: item.interruptions,
+      taskTitle: item.task && item.task.title,
+      completedAt: item.completedAt
+    }))
+  };
 }
 
 module.exports = {

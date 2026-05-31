@@ -129,6 +129,7 @@
                   "quickCapture",
                   "focusTimer",
                   "countdown",
+                  "nextAction",
                   "favorites",
                   "prompts",
                   "fourQuadrants",
@@ -312,7 +313,7 @@
         "leapHome.ai.deepseekModel": {
           "type": "string",
           "default": "deepseek-v4-flash",
-          "description": "用于四象限归类和搜索查询理解的 DeepSeek 模型。"
+          "description": "用于四象限归类、搜索查询理解和做什么推荐优化的 DeepSeek 模型。"
         },
         "leapHome.ai.searchQueryUnderstanding": {
           "type": "boolean",
