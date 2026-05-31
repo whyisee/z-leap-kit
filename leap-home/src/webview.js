@@ -217,6 +217,27 @@ function getWebviewHtml(webview) {
       padding: 8px 10px;
       background: var(--vscode-sideBarSectionHeader-background, transparent);
     }
+    .block-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+    .block-header-button {
+      min-height: 22px;
+      height: 22px;
+      border-color: var(--vscode-panel-border);
+      padding: 0 7px;
+      color: var(--vscode-descriptionForeground);
+      background: transparent;
+      font-size: 11px;
+      line-height: 20px;
+    }
+    .block-header-button.active,
+    .block-header-button:hover {
+      color: var(--vscode-button-foreground);
+      background: var(--vscode-button-background);
+    }
     .block-title {
       overflow: hidden;
       margin: 0;
@@ -580,15 +601,27 @@ function getWebviewHtml(webview) {
       white-space: nowrap;
     }
     .focus-timer {
-      display: flex;
-      flex-direction: column;
-      gap: 9px;
+      display: grid;
+      gap: 10px;
     }
     .focus-timer-head {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 10px;
-      align-items: start;
+      grid-template-columns: minmax(0, 1fr) 76px 58px;
+      gap: 12px;
+      align-items: center;
+    }
+    .focus-main {
+      display: grid;
+      grid-template-columns: minmax(108px, 132px) minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      min-width: 0;
+    }
+    .focus-main.active {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .focus-time-panel {
+      min-width: 0;
     }
     .focus-status {
       color: var(--vscode-descriptionForeground);
@@ -602,11 +635,113 @@ function getWebviewHtml(webview) {
       line-height: 1.1;
       letter-spacing: 0;
     }
+    .focus-duration-hero {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+      min-width: 0;
+      margin-top: 1px;
+    }
+    .focus-duration-display {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      min-width: 0;
+    }
+    .focus-duration-input {
+      width: 54px;
+      height: 38px;
+      border-color: transparent;
+      padding: 0;
+      color: var(--vscode-foreground);
+      background: transparent;
+      font-size: 34px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+    .focus-duration-input:hover,
+    .focus-duration-input:focus {
+      border-bottom-color: var(--vscode-focusBorder);
+    }
+    .focus-duration-input::-webkit-inner-spin-button,
+    .focus-duration-input::-webkit-outer-spin-button {
+      margin: 0;
+      appearance: none;
+    }
+    .focus-duration-unit {
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .focus-duration-presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .focus-duration-preset {
+      min-height: 24px;
+      height: 24px;
+      min-width: 34px;
+      border-color: var(--vscode-panel-border);
+      border-radius: 6px;
+      padding: 0 7px;
+      color: var(--vscode-descriptionForeground);
+      background: transparent;
+      font-size: 11px;
+    }
+    .focus-duration-preset.active {
+      color: var(--vscode-button-foreground);
+      background: var(--vscode-button-background);
+    }
+    .focus-task-binding {
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+      border-left: 1px solid var(--vscode-panel-border);
+      padding-left: 12px;
+    }
+    .focus-task-select,
+    .focus-task-new-input,
+    .focus-task-quadrant {
+      min-height: 30px;
+      height: 30px;
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 6px;
+      padding: 0 8px;
+      color: var(--vscode-foreground);
+      background: var(--vscode-input-background, var(--vscode-editor-background));
+      font-size: 12px;
+    }
+    .focus-task-select {
+      width: 100%;
+    }
+    .focus-task-new-input.invalid {
+      border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-focusBorder));
+    }
+    .focus-task-new {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(94px, 112px);
+      gap: 8px;
+      width: 100%;
+    }
+    .focus-task-new[hidden] {
+      display: none;
+    }
+    .focus-linked-task {
+      overflow: hidden;
+      margin-top: 5px;
+      color: var(--vscode-descriptionForeground);
+      font-size: 11px;
+      line-height: 1.25;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .focus-ring {
       display: grid;
       place-items: center;
-      width: 54px;
-      height: 54px;
+      width: 58px;
+      height: 58px;
       border: 1px solid var(--vscode-panel-border);
       border-radius: 50%;
       color: var(--vscode-textLink-foreground, var(--vscode-foreground));
@@ -617,23 +752,39 @@ function getWebviewHtml(webview) {
     .focus-ring-inner {
       display: grid;
       place-items: center;
-      width: 42px;
-      height: 42px;
+      width: 46px;
+      height: 46px;
       border-radius: 50%;
       background: var(--vscode-sideBar-background);
+    }
+    .focus-head-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      align-items: stretch;
+      min-width: 76px;
+    }
+    .focus-head-actions button {
+      min-height: 30px;
+      height: 30px;
+      border-radius: 6px;
+      padding: 0 9px;
+      font-size: 12px;
     }
     .focus-metrics {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 5px;
+      gap: 0;
+      border-top: 1px solid var(--vscode-panel-border);
+      padding-top: 8px;
     }
     .focus-metric {
-      border: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border));
-      border-radius: 5px;
-      padding: 5px;
-      background: var(--vscode-editor-background);
+      border-right: 1px solid var(--vscode-panel-border);
+      padding: 0 10px;
+      background: transparent;
       min-width: 0;
     }
+    .focus-metric:last-child { border-right: 0; }
     .focus-metric-value {
       overflow: hidden;
       font-weight: 700;
@@ -645,14 +796,204 @@ function getWebviewHtml(webview) {
       font-size: 10px;
       line-height: 1.2;
     }
-    .focus-actions {
+    .focus-history {
       display: flex;
-      flex-wrap: wrap;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .focus-history-title {
+      color: var(--vscode-descriptionForeground);
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .focus-history-item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 5px;
+      align-items: center;
+      border: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border));
+      border-radius: 5px;
+      padding: 4px 5px;
+      background: var(--vscode-editor-background);
+      font-size: 11px;
+    }
+    .focus-history-type {
+      color: var(--vscode-descriptionForeground);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .focus-history-main,
+    .focus-history-meta {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .focus-history-meta {
+      color: var(--vscode-descriptionForeground);
+    }
+    .focus-history-empty {
+      border: 1px dashed var(--vscode-panel-border);
+      border-radius: 5px;
+      padding: 5px 6px;
+      color: var(--vscode-descriptionForeground);
+      font-size: 11px;
+    }
+    .countdown {
+      display: grid;
+      gap: 8px;
+    }
+    .countdown-toolbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+    }
+    .countdown-toolbar-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .countdown-add-button,
+    .countdown-toggle-button {
+      min-height: 24px;
+      height: 24px;
+      border-color: var(--vscode-panel-border);
+      border-radius: 6px;
+      padding: 0 8px;
+      color: var(--vscode-descriptionForeground);
+      background: transparent;
+      font-size: 11px;
+    }
+    .countdown-add-button:hover,
+    .countdown-toggle-button:hover,
+    .countdown-toggle-button.active {
+      color: var(--vscode-button-foreground);
+      background: var(--vscode-button-background);
+    }
+    .countdown-hero,
+    .countdown-item {
+      --countdown-accent: var(--vscode-charts-blue, var(--vscode-focusBorder));
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border));
+      border-left: 3px solid var(--countdown-accent);
+      border-radius: 7px;
+      background:
+        linear-gradient(90deg, color-mix(in srgb, var(--countdown-accent) 14%, transparent), transparent 44%),
+        var(--vscode-editor-background);
+    }
+    .countdown-hero {
+      min-height: 74px;
+      padding: 10px 12px;
+    }
+    .countdown-item {
+      min-height: 42px;
+      padding: 7px 9px;
+    }
+    .countdown-item.done,
+    .countdown-hero.done {
+      opacity: 0.58;
+    }
+    .countdown-hero.overdue,
+    .countdown-item.overdue {
+      --countdown-accent: var(--vscode-charts-red, #d94b4b);
+    }
+    .countdown-hero.due-soon,
+    .countdown-item.due-soon {
+      --countdown-accent: var(--vscode-charts-yellow, #d7ba7d);
+    }
+    .countdown-hero.blue,
+    .countdown-item.blue { --countdown-accent: var(--vscode-charts-blue, #3794ff); }
+    .countdown-hero.green,
+    .countdown-item.green { --countdown-accent: var(--vscode-charts-green, #89d185); }
+    .countdown-hero.yellow,
+    .countdown-item.yellow { --countdown-accent: var(--vscode-charts-yellow, #d7ba7d); }
+    .countdown-hero.red,
+    .countdown-item.red { --countdown-accent: var(--vscode-charts-red, #d94b4b); }
+    .countdown-hero.purple,
+    .countdown-item.purple { --countdown-accent: var(--vscode-charts-purple, #b180d7); }
+    .countdown-title {
+      overflow: hidden;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .countdown-meta {
+      overflow: hidden;
+      margin-top: 3px;
+      color: var(--vscode-descriptionForeground);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .countdown-value {
+      color: var(--countdown-accent);
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.1;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .countdown-side {
+      display: grid;
+      justify-items: end;
+      gap: 5px;
+    }
+    .countdown-item .countdown-value {
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .countdown-list {
+      display: grid;
       gap: 6px;
     }
-    .focus-actions button {
-      min-height: 26px;
-      height: 26px;
+    .countdown-actions {
+      display: flex;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 120ms ease;
+    }
+    .countdown-hero:hover .countdown-actions,
+    .countdown-hero:focus-within .countdown-actions,
+    .countdown-item:hover .countdown-actions,
+    .countdown-item:focus-within .countdown-actions {
+      opacity: 1;
+    }
+    .countdown-actions button {
+      min-height: 22px;
+      height: 22px;
+      border-color: var(--vscode-panel-border);
+      border-radius: 5px;
+      padding: 0 6px;
+      background: transparent;
+      font-size: 11px;
+    }
+    .countdown-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 132px 96px 96px auto auto;
+      gap: 6px;
+      align-items: start;
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 7px;
+      padding: 8px;
+      background: var(--vscode-editor-background);
+    }
+    .countdown-form input,
+    .countdown-form select {
+      height: 28px;
+      min-height: 28px;
+      border-radius: 5px;
+      font-size: 12px;
+    }
+    .countdown-form-note {
+      grid-column: 1 / -1;
+    }
+    .countdown-form button {
+      min-height: 28px;
+      height: 28px;
       padding: 0 8px;
       font-size: 12px;
     }
@@ -1472,11 +1813,20 @@ function getWebviewHtml(webview) {
       .quadrant-grid,
       .quadrant-ai,
       .quadrant-add-form,
+      .countdown-form,
       .quick-capture-controls,
+      .focus-main,
+      .focus-task-new,
       .focus-metrics,
       .month-add-form,
       .stats-grid {
         grid-template-columns: 1fr;
+      }
+      .focus-task-binding {
+        border-left: 0;
+        border-top: 1px solid var(--vscode-panel-border);
+        padding-top: 10px;
+        padding-left: 0;
       }
       .task {
         grid-template-columns: 26px minmax(0, 1fr) 26px;
@@ -1516,7 +1866,7 @@ function getWebviewHtml(webview) {
     const vscodeApi = acquireVsCodeApi();
     const state = {
       model: {
-        data: { items: [], prompts: [], projectItems: [], favorites: [], recent: [], sources: [], focusTimer: {}, quickCaptures: [], searchHistory: [] },
+        data: { items: [], prompts: [], projectItems: [], favorites: [], recent: [], sources: [], focusTimer: {}, countdown: { items: [] }, quickCaptures: [], searchHistory: [] },
         layout: [],
         components: [],
         activeTemplateTitle: ''
@@ -1549,6 +1899,9 @@ function getWebviewHtml(webview) {
       layoutNoticeTimer: undefined,
       completedQuadrants: {},
       activeQuadrantAdd: '',
+      focusTimerHistoryVisible: false,
+      countdownFormId: '',
+      countdownShowDone: false,
       selectedCalendarDate: '',
       calendarMonthOffset: 0,
       calendarWeekOffset: 0,
@@ -1729,7 +2082,18 @@ function getWebviewHtml(webview) {
       const count = document.createElement('span');
       count.className = 'count';
       count.textContent = state.designMode ? formatBlockPosition(block) : getComponentCount(block);
-      header.append(title, count);
+      const headerActions = div('block-header-actions');
+      headerActions.appendChild(count);
+      if (!state.designMode && block.component === 'focusTimer') {
+        const historyButton = button(state.focusTimerHistoryVisible ? '时钟' : '记录', () => {
+          state.focusTimerHistoryVisible = !state.focusTimerHistoryVisible;
+          render();
+        }, true);
+        historyButton.className = 'block-header-button' + (state.focusTimerHistoryVisible ? ' active' : '');
+        historyButton.title = state.focusTimerHistoryVisible ? '切换到番茄时钟' : '切换到历史记录';
+        headerActions.appendChild(historyButton);
+      }
+      header.append(title, headerActions);
 
       const body = document.createElement('div');
       body.className = 'block-body';
@@ -1749,6 +2113,7 @@ function getWebviewHtml(webview) {
       if (block.component === 'search') return renderSearch(container, block);
       if (block.component === 'quickCapture') return renderQuickCapture(container);
       if (block.component === 'focusTimer') return renderFocusTimer(container);
+      if (block.component === 'countdown') return renderCountdown(container, block);
       if (block.component === 'favorites') return renderItemList(container, state.model.data.favorites, '还没有收藏。', block, true);
       if (block.component === 'prompts') return renderPromptList(container, block);
       if (block.component === 'fourQuadrants') return renderFourQuadrants(container, block);
@@ -2529,15 +2894,22 @@ function getWebviewHtml(webview) {
     }
 
     function renderFocusTimer(container) {
+      const focusTimer = state.model.data.focusTimer || {};
+      if (!state.designMode && state.focusTimerHistoryVisible) {
+        container.appendChild(focusTimerHistoryList(focusTimer.history || [], 8));
+        return;
+      }
+
       const timer = getFocusTimerSession();
       const wrap = div('focus-timer');
       const head = div('focus-timer-head');
-      const main = div('');
-      main.append(div('focus-status', formatFocusStatus(timer)), div('focus-time', formatClock(timer.remainingMs)));
+      const duration = focusDurationControl((focusTimer.settings || {}).defaultFocusDurationMs || timer.durationMs || 1500000);
+      const taskBinding = focusTaskBindingControl();
+      const main = focusTimerMain(timer, duration, taskBinding);
       const ring = div('focus-ring');
       ring.style.setProperty('--focus-progress', String(timer.progress || 0) + '%');
       ring.appendChild(div('focus-ring-inner', String(timer.progress || 0) + '%'));
-      head.append(main, ring);
+      head.append(main, focusTimerActions(timer, duration, taskBinding), ring);
       wrap.appendChild(head);
 
       const metrics = div('focus-metrics');
@@ -2548,31 +2920,470 @@ function getWebviewHtml(webview) {
       );
       wrap.appendChild(metrics);
 
-      const actions = div('focus-actions');
+      container.appendChild(wrap);
+    }
+
+    function focusTimerMain(timer, duration, taskBinding) {
+      const setupMode = timer.status === 'idle' || timer.status === 'completed';
+      const main = div('focus-main ' + (setupMode ? 'setup' : 'active'));
+      const timePanel = div('focus-time-panel');
+      timePanel.appendChild(div('focus-status', formatFocusStatus(timer)));
+      if (setupMode) {
+        timePanel.appendChild(duration.element);
+        main.appendChild(timePanel);
+        main.appendChild(taskBinding.element);
+      } else {
+        timePanel.appendChild(div('focus-time', formatClock(timer.remainingMs)));
+        const taskLabel = focusTaskTitle(timer.task);
+        if (taskLabel) {
+          timePanel.appendChild(div('focus-linked-task', '事项 · ' + taskLabel));
+        }
+        main.appendChild(timePanel);
+      }
+      return main;
+    }
+
+    function focusTimerActions(timer, duration, taskBinding) {
+      const actions = div('focus-head-actions');
       if (timer.status === 'running') {
         actions.append(
           button('暂停', () => post('focusTimerPause'), true),
-          button('重置', () => post('focusTimerReset'), true)
+          button('终止', () => post('focusTimerReset'), true)
         );
-      } else if (timer.status === 'paused') {
+        return actions;
+      }
+      if (timer.status === 'paused') {
+        actions.append(button('继续', () => post('focusTimerResume'), false), button('终止', () => post('focusTimerReset'), true));
+        return actions;
+      }
+
+      if (timer.status !== 'completed' || timer.type !== 'focus') {
+        actions.append(button('开始', () => {
+          if (!taskBinding.validate()) return;
+          post('focusTimerStart', {
+            durationMs: duration.getValue(),
+            sessionType: 'focus',
+            task: taskBinding.getValue(),
+            saveDefaultDuration: true
+          });
+        }, false));
+      }
+      if (timer.status === 'completed' && timer.type === 'focus') {
         actions.append(
-          button('继续', () => post('focusTimerResume'), false),
-          button('重置', () => post('focusTimerReset'), true)
+          button('短休息', () => post('focusTimerStart', { sessionType: 'shortBreak' }), false),
+          button('长休息', () => post('focusTimerStart', { sessionType: 'longBreak' }), true),
+          button('再专注', () => {
+            if (!taskBinding.validate()) return;
+            post('focusTimerStart', {
+              durationMs: duration.getValue(),
+              sessionType: 'focus',
+              task: taskBinding.getValue(),
+              saveDefaultDuration: true
+            });
+          }, true)
         );
-      } else {
-        actions.append(button('开始 25:00', () => post('focusTimerStart', { durationMs: timer.durationMs || 1500000 }), false));
-        if (timer.status === 'completed') {
-          actions.appendChild(button('清空', () => post('focusTimerReset'), true));
+      }
+      if (timer.status === 'completed') {
+        actions.appendChild(button('清空', () => post('focusTimerReset'), true));
+      }
+      return actions;
+    }
+
+    function focusDurationControl(durationMs) {
+      const wrap = div('focus-duration-hero');
+      const display = div('focus-duration-display');
+      const input = document.createElement('input');
+      input.className = 'focus-duration-input';
+      input.type = 'number';
+      input.min = '5';
+      input.max = '240';
+      input.step = '5';
+      const minutes = Math.max(5, Math.round((Number(durationMs) || 1500000) / 60000));
+      input.value = String(minutes);
+      const unit = spanText('分钟');
+      unit.className = 'focus-duration-unit';
+      display.append(input, unit);
+      const presets = div('focus-duration-presets');
+      for (const value of [15, 25, 45, 60]) {
+        const item = button(String(value), () => {
+          input.value = String(value);
+          syncPresetState();
+        }, true);
+        item.className = 'focus-duration-preset' + (value === minutes ? ' active' : '');
+        item.title = String(value) + ' 分钟';
+        presets.appendChild(item);
+      }
+      input.addEventListener('input', syncPresetState);
+      wrap.append(display, presets);
+      return {
+        element: wrap,
+        getValue() {
+          const selected = Number(input.value);
+          return Math.min(Math.max(Number.isFinite(selected) ? selected : 25, 5), 240) * 60000;
+        }
+      };
+
+      function syncPresetState() {
+        const selected = Number(input.value);
+        for (const item of presets.querySelectorAll('.focus-duration-preset')) {
+          item.classList.toggle('active', Number(item.textContent) === selected);
         }
       }
-      wrap.appendChild(actions);
-      container.appendChild(wrap);
+    }
+
+    function focusTaskBindingControl() {
+      const wrap = div('focus-task-binding');
+      const tasks = getOpenFocusTasks();
+      const select = document.createElement('select');
+      select.className = 'focus-task-select';
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = '不关联事项';
+      select.appendChild(none);
+      for (const task of tasks.slice(0, 40)) {
+        const option = document.createElement('option');
+        option.value = task.quadrantId + '::' + task.id;
+        option.textContent = truncateText(task.text, 22) + ' · ' + task.quadrantTitle;
+        option.title = task.text;
+        select.appendChild(option);
+      }
+      const create = document.createElement('option');
+      create.value = '__new__';
+      create.textContent = '+ 新建事项';
+      select.appendChild(create);
+
+      const newRow = div('focus-task-new');
+      const input = document.createElement('input');
+      input.className = 'focus-task-new-input';
+      input.placeholder = '新事项内容';
+      const quadrantSelect = document.createElement('select');
+      quadrantSelect.className = 'focus-task-quadrant';
+      for (const quadrant of state.model.data.quadrants || []) {
+        const option = document.createElement('option');
+        option.value = quadrant.id;
+        option.textContent = quadrantShortTitle(quadrant.id);
+        option.selected = quadrant.id === 'importantNotUrgent';
+        quadrantSelect.appendChild(option);
+      }
+      newRow.append(input, quadrantSelect);
+      wrap.append(select, newRow);
+      select.addEventListener('change', syncNewTaskVisibility);
+      syncNewTaskVisibility();
+      return {
+        element: wrap,
+        getValue() {
+          if (select.value === '__new__') {
+            return {
+              quadrantId: quadrantSelect.value || 'importantNotUrgent',
+              newTaskText: input.value.trim()
+            };
+          }
+          if (!select.value) {
+            return {};
+          }
+          const parts = select.value.split('::');
+          return {
+            quadrantId: parts[0] || '',
+            taskId: parts[1] || ''
+          };
+        },
+        validate() {
+          if (select.value !== '__new__' || input.value.trim()) {
+            input.classList.remove('invalid');
+            return true;
+          }
+          input.classList.add('invalid');
+          input.focus();
+          return false;
+        }
+      };
+
+      function syncNewTaskVisibility() {
+        newRow.hidden = select.value !== '__new__';
+        if (!newRow.hidden) {
+          window.setTimeout(() => input.focus(), 0);
+        }
+      }
+    }
+
+    function focusTimerHistoryList(history, limit) {
+      const items = Array.isArray(history) ? history.slice(0, limit || 3) : [];
+      const list = div('focus-history');
+      list.appendChild(div('focus-history-title', '最近记录'));
+      if (items.length === 0) {
+        list.appendChild(div('focus-history-empty', '暂无记录'));
+        return list;
+      }
+      for (const item of items) {
+        const row = div('focus-history-item');
+        row.append(
+          div('focus-history-type', formatFocusHistoryBadge(item)),
+          div('focus-history-main', focusHistoryMain(item)),
+          div('focus-history-meta', formatTimeOfDay(item.completedAt))
+        );
+        list.appendChild(row);
+      }
+      return list;
+    }
+
+    function getOpenFocusTasks() {
+      const result = [];
+      for (const quadrant of state.model.data.quadrants || []) {
+        for (const task of quadrant.items || []) {
+          if (task.done) continue;
+          result.push(Object.assign({}, task, {
+            quadrantId: quadrant.id,
+            quadrantTitle: quadrant.title
+          }));
+        }
+      }
+      return result.sort((left, right) => {
+        const leftDue = left.dueDate || '9999-99-99';
+        const rightDue = right.dueDate || '9999-99-99';
+        if (leftDue !== rightDue) return leftDue.localeCompare(rightDue);
+        return getQuadrantSortWeight(left.quadrantId) - getQuadrantSortWeight(right.quadrantId);
+      });
+    }
+
+    function focusTaskTitle(task) {
+      return task && task.title ? task.title : '';
+    }
+
+    function quadrantShortTitle(quadrantId) {
+      return {
+        importantUrgent: '重要紧急',
+        importantNotUrgent: '重要不急',
+        notImportantUrgent: '不重要紧急',
+        notImportantNotUrgent: '不重要不急'
+      }[quadrantId] || '四象限';
     }
 
     function focusMetric(label, value) {
       const item = div('focus-metric');
       item.append(div('focus-metric-value', value), div('focus-metric-label', label));
       return item;
+    }
+
+    function renderCountdown(container, block) {
+      const wrap = div('countdown');
+      const items = getCountdownItems();
+      const doneCount = items.filter((item) => item.done).length;
+      wrap.appendChild(countdownToolbar(items.length, doneCount));
+
+      const editingItem = items.find((item) => item.id === state.countdownFormId);
+      if (state.countdownFormId === 'new') {
+        wrap.appendChild(countdownForm());
+      } else if (editingItem) {
+        wrap.appendChild(countdownForm(editingItem));
+      }
+
+      const limit = getLimit(block, 5);
+      const displayPool = items
+        .filter((item) => state.countdownShowDone || !item.done)
+        .filter((item) => item.id !== state.countdownFormId);
+      const visible = displayPool.slice(0, limit);
+      if (visible.length === 0) {
+        wrap.appendChild(empty(state.countdownShowDone ? '还没有倒计项。' : '没有进行中的倒计项。'));
+        container.appendChild(wrap);
+        return;
+      }
+
+      wrap.appendChild(countdownCard(visible[0], true));
+      const rest = visible.slice(1);
+      if (rest.length > 0) {
+        const list = div('countdown-list');
+        for (const item of rest) {
+          list.appendChild(countdownCard(item, false));
+        }
+        wrap.appendChild(list);
+      }
+      if (displayPool.length > visible.length) {
+        wrap.appendChild(div('muted', '还有 ' + String(displayPool.length - visible.length) + ' 个倒计项未展示'));
+      }
+      container.appendChild(wrap);
+    }
+
+    function countdownToolbar(total, doneCount) {
+      const toolbar = div('countdown-toolbar');
+      toolbar.appendChild(div('muted', total ? '最近节点 ' + String(total - doneCount) : '重要节点'));
+      const actions = div('countdown-toolbar-actions');
+      if (doneCount > 0) {
+        const done = button(state.countdownShowDone ? '隐藏完成' : '完成', () => {
+          state.countdownShowDone = !state.countdownShowDone;
+          render();
+        }, true);
+        done.className = 'countdown-toggle-button' + (state.countdownShowDone ? ' active' : '');
+        done.title = '切换已完成倒计项';
+        actions.appendChild(done);
+      }
+      const add = button('+', () => {
+        state.countdownFormId = state.countdownFormId === 'new' ? '' : 'new';
+        render();
+      }, true);
+      add.className = 'countdown-add-button';
+      add.title = '新增倒计日/时';
+      actions.appendChild(add);
+      toolbar.appendChild(actions);
+      return toolbar;
+    }
+
+    function countdownCard(item, primary) {
+      const card = div([
+        primary ? 'countdown-hero' : 'countdown-item',
+        item.color || 'blue',
+        item.done ? 'done' : '',
+        item.overdue ? 'overdue' : '',
+        item.dueSoon ? 'due-soon' : ''
+      ].filter(Boolean).join(' '));
+      const main = div('countdown-main');
+      main.append(div('countdown-title', item.title), div('countdown-meta', countdownMeta(item)));
+      const side = div('countdown-side');
+      side.append(div('countdown-value', item.label), countdownActions(item));
+      card.append(main, side);
+      return card;
+    }
+
+    function countdownActions(item) {
+      const actions = div('countdown-actions');
+      const done = button(item.done ? '恢复' : '完成', () => {
+        post('toggleCountdownItem', { itemId: item.id, done: !item.done });
+      }, true);
+      const edit = button('编辑', () => {
+        state.countdownFormId = item.id;
+        render();
+      }, true);
+      const remove = button('删除', () => post('deleteCountdownItem', { itemId: item.id }), true);
+      actions.append(done, edit, remove);
+      return actions;
+    }
+
+    function countdownForm(item) {
+      const form = div('countdown-form');
+      const title = document.createElement('input');
+      title.placeholder = '节点名称';
+      title.value = item ? item.title : '';
+      const date = document.createElement('input');
+      date.type = 'date';
+      date.value = item ? item.targetDate : '';
+      const time = document.createElement('input');
+      time.type = 'time';
+      time.value = item ? item.targetTime : '';
+      const color = document.createElement('select');
+      for (const option of countdownColorOptions()) {
+        const node = document.createElement('option');
+        node.value = option.value;
+        node.textContent = option.label;
+        node.selected = option.value === (item ? item.color : 'blue');
+        color.appendChild(node);
+      }
+      const save = button('保存', () => {
+        const payload = {
+          title: title.value,
+          targetDate: date.value,
+          targetTime: time.value,
+          color: color.value,
+          note: note.value
+        };
+        if (!payload.title.trim()) {
+          title.focus();
+          return;
+        }
+        if (!payload.targetDate) {
+          date.focus();
+          return;
+        }
+        post(item ? 'updateCountdownItem' : 'addCountdownItem', item ? { itemId: item.id, item: payload } : { item: payload });
+        state.countdownFormId = '';
+      }, false);
+      const cancel = button('取消', () => {
+        state.countdownFormId = '';
+        render();
+      }, true);
+      const note = document.createElement('input');
+      note.className = 'countdown-form-note';
+      note.placeholder = '备注（可选）';
+      note.value = item ? item.note : '';
+      form.append(title, date, time, color, save, cancel, note);
+      window.setTimeout(() => title.focus(), 0);
+      return form;
+    }
+
+    function getCountdownItems() {
+      const data = state.model.data.countdown || {};
+      const items = Array.isArray(data.items) ? data.items : [];
+      return items.map(addCountdownFields).filter(Boolean).sort(compareCountdownItems);
+    }
+
+    function addCountdownFields(item) {
+      const target = getCountdownTarget(item);
+      if (!target) return undefined;
+      const now = new Date();
+      const dateMode = !item.targetTime;
+      const today = startOfLocalDay(now);
+      const targetDay = startOfLocalDay(target);
+      const dayDiff = Math.round((targetDay.getTime() - today.getTime()) / 86400000);
+      const msDiff = dateMode ? targetDay.getTime() - today.getTime() : target.getTime() - now.getTime();
+      const overdue = dateMode ? dayDiff < 0 : msDiff < 0;
+      const dueSoon = !overdue && (dateMode ? dayDiff <= 1 : msDiff <= 24 * 60 * 60 * 1000);
+      return Object.assign({}, item, {
+        target,
+        dayDiff,
+        msDiff,
+        overdue,
+        dueSoon,
+        label: formatCountdownLabel(item, dayDiff, msDiff)
+      });
+    }
+
+    function compareCountdownItems(left, right) {
+      if (left.done !== right.done) return left.done ? 1 : -1;
+      if (left.overdue !== right.overdue) return left.overdue ? 1 : -1;
+      const leftDistance = Math.abs(left.msDiff || 0);
+      const rightDistance = Math.abs(right.msDiff || 0);
+      return leftDistance - rightDistance || left.title.localeCompare(right.title);
+    }
+
+    function getCountdownTarget(item) {
+      const date = parseDateKey(item.targetDate);
+      if (!date) return undefined;
+      if (item.targetTime) {
+        const parts = String(item.targetTime).split(':').map((part) => Number.parseInt(part, 10));
+        date.setHours(parts[0] || 0, parts[1] || 0, 0, 0);
+      }
+      return date;
+    }
+
+    function formatCountdownLabel(item, dayDiff, msDiff) {
+      if (!item.targetTime) {
+        if (dayDiff > 0) return String(dayDiff) + ' 天';
+        if (dayDiff === 0) return '今天';
+        return '已过 ' + String(Math.abs(dayDiff)) + ' 天';
+      }
+      if (msDiff < 0) return '已过期';
+      const minutes = Math.max(0, Math.ceil(msDiff / 60000));
+      const days = Math.floor(minutes / 1440);
+      const hours = Math.floor((minutes % 1440) / 60);
+      if (days > 0) return String(days) + ' 天 ' + String(hours) + ' 时';
+      if (hours > 0) return String(hours) + ' 时 ' + String(minutes % 60) + ' 分';
+      return String(Math.max(1, minutes)) + ' 分钟';
+    }
+
+    function countdownMeta(item) {
+      return [item.targetDate + (item.targetTime ? ' ' + item.targetTime : ''), item.note].filter(Boolean).join(' · ');
+    }
+
+    function countdownColorOptions() {
+      return [
+        { value: 'blue', label: '蓝色' },
+        { value: 'green', label: '绿色' },
+        { value: 'yellow', label: '黄色' },
+        { value: 'red', label: '红色' },
+        { value: 'purple', label: '紫色' }
+      ];
+    }
+
+    function startOfLocalDay(date) {
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate());
     }
 
     function renderItemList(container, items, emptyText, block, allowFavorite) {
@@ -3148,6 +3959,14 @@ function getWebviewHtml(webview) {
           statItem('本周事件', stats.weekEvents || 0, '@calendar @week', '', '本周日历事件'),
           statItem('本月天数', stats.monthScheduledDays || 0, '@month', '', '本月有安排的天数')
         ]),
+        statsSection('专注', [
+          statItem('今日番茄', stats.todayFocusSessions || 0, '', '', '今日完成的专注轮数；今日记录 ' + String(stats.todayFocusRecords || 0) + ' 条'),
+          statItem('今日专注', formatCompactDuration(stats.todayFocusMs || 0), '', '', '今日所有番茄记录累计专注时间，包含手动终止记录'),
+          statItem('本周专注', formatCompactDuration(stats.weekFocusMs || 0), '', '', '本周番茄记录累计专注时间，共 ' + String(stats.weekFocusRecords || 0) + ' 条记录'),
+          statItem('记录', stats.focusRecords || 0, '', '', '番茄专注记录总数，累计 ' + formatCompactDuration(stats.totalFocusMs || 0)),
+          statItem('完成/终止', String(stats.completedFocusRecords || 0) + '/' + String(stats.abortedFocusRecords || 0), '', stats.abortedFocusRecords ? 'warn' : '', '完成记录 / 手动终止记录，完成率 ' + String(stats.focusCompletionRate || 0) + '%'),
+          statItem('事项关联', String(stats.focusLinkedRate || 0) + '%', '', stats.focusRecords && stats.focusLinkedRate < 60 ? 'warn' : '', '已关联事项的番茄记录：' + String(stats.linkedFocusRecords || 0) + '/' + String(stats.focusRecords || 0))
+        ]),
         statsSection('知识库', [
           statItem('知识文件', stats.totalItems || 0, '@docs', '', '索引到的知识文件'),
           statItem('Prompt', stats.prompts || 0, '@prompt', '', 'Prompt 模板'),
@@ -3373,7 +4192,7 @@ function getWebviewHtml(webview) {
     }
 
     function componentUsesLimit(componentType) {
-      return ['search', 'favorites', 'prompts', 'fourQuadrants'].includes(componentType);
+      return ['search', 'favorites', 'prompts', 'fourQuadrants', 'countdown'].includes(componentType);
     }
 
     function layoutNumberField(labelText, value, min, max, onChange) {
@@ -3786,7 +4605,8 @@ function getWebviewHtml(webview) {
       const data = state.model.data || {};
       if (block.component === 'search') return state.query ? '搜索中' : '';
       if (block.component === 'quickCapture') return String((data.quickCaptures || []).length);
-      if (block.component === 'focusTimer') return formatFocusStatus(getFocusTimerSession());
+      if (block.component === 'focusTimer') return '';
+      if (block.component === 'countdown') return String(((data.countdown && data.countdown.items) || []).filter((item) => !item.done).length);
       if (block.component === 'favorites') return String((data.favorites || []).length);
       if (block.component === 'prompts') return String((data.prompts || []).length);
       if (block.component === 'fourQuadrants') return String((data.quadrants || []).reduce((count, quadrant) => count + (quadrant.items || []).length, 0));
@@ -3804,18 +4624,27 @@ function getWebviewHtml(webview) {
     function getFavoritePaths() { return new Set((state.model.data.favorites || []).map((item) => item.filePath)); }
     function getFocusTimerSession() {
       const timer = state.model.data.focusTimer || {};
+      const settings = timer.settings || {};
       const session = timer.activeSession || {};
-      const durationMs = Number.isFinite(Number(session.durationMs)) ? Number(session.durationMs) : 1500000;
+      const durationMs = Number.isFinite(Number(session.durationMs))
+        ? Number(session.durationMs)
+        : Number.isFinite(Number(settings.defaultFocusDurationMs))
+          ? Number(settings.defaultFocusDurationMs)
+          : 1500000;
       const elapsedMs = Math.min(durationMs, (Number(session.focusedMs) || 0) + (Number(session.blurredMs) || 0));
       return Object.assign({
         id: '',
+        type: 'focus',
         status: 'idle',
         durationMs,
         focused: false,
         focusedMs: 0,
+        strictFocusedMs: 0,
         blurredMs: 0,
         idleMs: 0,
         interruptions: 0,
+        activityEvents: 0,
+        task: undefined,
         elapsedMs,
         remainingMs: Math.max(0, durationMs - elapsedMs),
         progress: durationMs > 0 ? Math.round((elapsedMs / durationMs) * 100) : 0
@@ -3929,11 +4758,42 @@ function getWebviewHtml(webview) {
       }[kind] || '记录';
     }
     function formatFocusStatus(session) {
+      if (session.status === 'running' && session.type === 'shortBreak') return '短休息中';
+      if (session.status === 'running' && session.type === 'longBreak') return '长休息中';
       if (session.status === 'running' && session.focused) return '专注中';
       if (session.status === 'running') return '窗口已离开';
       if (session.status === 'paused') return '已暂停';
-      if (session.status === 'completed') return '已完成';
+      if (session.status === 'completed') return formatFocusSessionType(session.type) + '完成';
       return '未开始';
+    }
+    function formatFocusSessionType(type) {
+      return {
+        focus: '专注',
+        shortBreak: '短休息',
+        longBreak: '长休息'
+      }[type] || '专注';
+    }
+    function formatFocusHistoryBadge(item) {
+      if (item && item.result === 'aborted') return '终止';
+      return formatFocusSessionType(item && item.type);
+    }
+    function focusHistoryMain(item) {
+      const taskPrefix = focusTaskTitle(item && item.task) ? truncateText(focusTaskTitle(item.task), 18) + ' · ' : '';
+      if (item.result === 'aborted') {
+        return taskPrefix + '已进行 ' + formatCompactDuration(getFocusHistoryElapsed(item));
+      }
+      if (item.type === 'focus') {
+        return taskPrefix + '专注 ' + formatCompactDuration(item.focusedMs || 0) + ' · 打断 ' + String(item.interruptions || 0);
+      }
+      return '完成 ' + formatCompactDuration(item.durationMs || 0);
+    }
+    function getFocusHistoryElapsed(item) {
+      return Math.min(item.durationMs || 0, (item.focusedMs || 0) + (item.blurredMs || 0));
+    }
+    function formatTimeOfDay(value) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '';
+      return padDatePart(date.getHours()) + ':' + padDatePart(date.getMinutes());
     }
     function formatClock(ms) {
       const seconds = Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
@@ -3943,8 +4803,14 @@ function getWebviewHtml(webview) {
     function formatCompactDuration(ms) {
       const seconds = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
       const minutes = Math.floor(seconds / 60);
+      if (minutes >= 60) return String(Math.floor(minutes / 60)) + 'h ' + String(minutes % 60) + 'm';
       if (minutes > 0) return String(minutes) + 'm';
       return String(seconds) + 's';
+    }
+    function truncateText(value, maxLength) {
+      const text = String(value || '').replace(/\s+/g, ' ').trim();
+      const limit = Math.max(1, Number(maxLength) || 20);
+      return text.length > limit ? text.slice(0, limit - 1) + '…' : text;
     }
     function padDatePart(value) { return String(value).padStart(2, '0'); }
     function normalizeDateValue(value) { const text = String(value || '').trim(); return /^\\d{4}-\\d{2}-\\d{2}$/.test(text) ? text : ''; }
@@ -3967,6 +4833,7 @@ function getWebviewHtml(webview) {
         favorites: Array.isArray(data.favorites) ? data.favorites.length : 0,
         recent: Array.isArray(data.recent) ? data.recent.length : 0,
         quickCaptures: Array.isArray(data.quickCaptures) ? data.quickCaptures.length : 0,
+        countdowns: data.countdown && Array.isArray(data.countdown.items) ? data.countdown.items.length : 0,
         quadrants: Array.isArray(data.quadrants) ? data.quadrants.length : 0
       };
     }

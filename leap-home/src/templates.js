@@ -22,6 +22,7 @@ const BUILTIN_TEMPLATES = {
       { id: 'favorites', component: 'favorites', col: 1, row: 2, colSpan: 4, rowSpan: 4, options: { limit: 10 } },
       { id: 'stats', component: 'stats', col: 5, row: 2, colSpan: 4, rowSpan: 2 },
       { id: 'capture', component: 'quickCapture', col: 9, row: 2, colSpan: 4, rowSpan: 2 },
+      { id: 'countdown', component: 'countdown', col: 5, row: 4, colSpan: 4, rowSpan: 2, options: { limit: 5 } },
       { id: 'prompts', component: 'prompts', col: 9, row: 4, colSpan: 4, rowSpan: 2, options: { limit: 8 } },
       { id: 'quadrants', component: 'fourQuadrants', col: 1, row: 6, colSpan: 6, rowSpan: 4 },
       { id: 'month', component: 'monthCalendar', col: 7, row: 6, colSpan: 6, rowSpan: 4 }
@@ -50,6 +51,7 @@ const BUILTIN_TEMPLATES = {
       { id: 'favorites', component: 'favorites', col: 5, row: 2, colSpan: 4, rowSpan: 3, options: { limit: 8 } },
       { id: 'stats', component: 'stats', col: 9, row: 2, colSpan: 4, rowSpan: 2 },
       { id: 'focus', component: 'focusTimer', col: 9, row: 4, colSpan: 4, rowSpan: 2 },
+      { id: 'countdown', component: 'countdown', col: 9, row: 6, colSpan: 4, rowSpan: 2, options: { limit: 5 } },
       { id: 'prompts', component: 'prompts', col: 1, row: 5, colSpan: 8, rowSpan: 3, options: { limit: 10 } },
       { id: 'quadrants', component: 'fourQuadrants', col: 1, row: 8, colSpan: 6, rowSpan: 4 },
       { id: 'week', component: 'weekCalendar', col: 7, row: 8, colSpan: 6, rowSpan: 3 }

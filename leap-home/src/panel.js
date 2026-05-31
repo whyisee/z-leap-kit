@@ -7,6 +7,12 @@ const {
   toggleQuadrantTask,
   updateQuadrantTask
 } = require('./quadrants');
+const {
+  addCountdownItem,
+  deleteCountdownItem,
+  toggleCountdownItem,
+  updateCountdownItem
+} = require('./countdown');
 const { toggleFavorite } = require('./state');
 const {
   captureNote,
@@ -24,6 +30,7 @@ const {
   startFocusTimer
 } = require('./focusTimer');
 const logger = require('./logger');
+const { QUADRANT_DEFINITIONS, readLeapState } = require('./storage');
 const {
   getQuickCaptureKindLabel,
   recordQuickCapture,
@@ -176,7 +183,16 @@ class LeapHomePanelController {
     }
 
     if (message.type === 'focusTimerStart') {
-      await startFocusTimer(this.context, message.durationMs);
+      const sessionType = message.sessionType || 'focus';
+      const task = sessionType === 'focus'
+        ? await resolveFocusTimerTask(this.context, message.task)
+        : undefined;
+      await startFocusTimer(this.context, {
+        durationMs: message.durationMs,
+        sessionType,
+        task,
+        saveDefaultDuration: message.saveDefaultDuration
+      });
       this.postModel();
       return;
     }
@@ -195,6 +211,30 @@ class LeapHomePanelController {
 
     if (message.type === 'focusTimerReset') {
       await resetFocusTimer(this.context);
+      this.postModel();
+      return;
+    }
+
+    if (message.type === 'addCountdownItem') {
+      await addCountdownItem(this.context, message.item);
+      this.postModel();
+      return;
+    }
+
+    if (message.type === 'updateCountdownItem') {
+      await updateCountdownItem(this.context, message.itemId, message.item);
+      this.postModel();
+      return;
+    }
+
+    if (message.type === 'toggleCountdownItem') {
+      await toggleCountdownItem(this.context, message.itemId, message.done);
+      this.postModel();
+      return;
+    }
+
+    if (message.type === 'deleteCountdownItem') {
+      await deleteCountdownItem(this.context, message.itemId);
       this.postModel();
       return;
     }
@@ -477,6 +517,42 @@ function getQuadrantName(quadrantId) {
     notImportantUrgent: '不重要但紧急',
     notImportantNotUrgent: '不重要不紧急'
   }[quadrantId] || quadrantId;
+}
+
+async function resolveFocusTimerTask(context, request) {
+  const source = request && typeof request === 'object' ? request : {};
+  const quadrantId = normalizeQuadrantId(source.quadrantId) || 'importantNotUrgent';
+  const newTaskText = String(source.newTaskText || '').replace(/\s+/g, ' ').trim();
+  if (newTaskText) {
+    const task = await addQuadrantTask(context, quadrantId, newTaskText, { source: 'focusTimer' });
+    return task ? toFocusTimerTaskRef(quadrantId, task) : undefined;
+  }
+
+  const taskId = String(source.taskId || '').trim();
+  if (!taskId || !quadrantId) {
+    return undefined;
+  }
+  const state = readLeapState(context);
+  const task = ((state.quadrants && state.quadrants[quadrantId]) || []).find((item) => item.id === taskId);
+  return task && !task.done ? toFocusTimerTaskRef(quadrantId, task) : undefined;
+}
+
+function toFocusTimerTaskRef(quadrantId, task) {
+  if (!task) {
+    return undefined;
+  }
+  return {
+    source: 'quadrant',
+    quadrantId,
+    quadrantTitle: getQuadrantName(quadrantId),
+    taskId: task.id,
+    title: task.text
+  };
+}
+
+function normalizeQuadrantId(value) {
+  const quadrantId = String(value || '').trim();
+  return QUADRANT_DEFINITIONS.some((definition) => definition.id === quadrantId) ? quadrantId : '';
 }
 
 module.exports = {

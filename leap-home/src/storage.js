@@ -12,7 +12,8 @@ const COMPONENT_DATA_FILES = {
   calendarEvents: 'calendar.json',
   searchHistory: 'search-history.json',
   quickCapture: 'quick-capture.json',
-  focusTimer: 'focus-timer.json'
+  focusTimer: 'focus-timer.json',
+  countdown: 'countdown.json'
 };
 
 const QUADRANT_DEFINITIONS = [
@@ -55,7 +56,8 @@ function getLeapDataPaths(context) {
       calendarEvents: getLeapComponentDataPath(context, 'calendarEvents'),
       searchHistory: getLeapComponentDataPath(context, 'searchHistory'),
       quickCapture: getLeapComponentDataPath(context, 'quickCapture'),
-      focusTimer: getLeapComponentDataPath(context, 'focusTimer')
+      focusTimer: getLeapComponentDataPath(context, 'focusTimer'),
+      countdown: getLeapComponentDataPath(context, 'countdown')
     }
   };
 }

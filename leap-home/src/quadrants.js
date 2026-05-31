@@ -4,16 +4,18 @@ function addQuadrantTask(context, quadrantId, text, metadata) {
   const taskText = cleanText(text);
   const dueDate = metadata && typeof metadata.dueDate === 'string' ? normalizeDate(metadata.dueDate) : '';
   if (!taskText || !isQuadrantId(quadrantId)) {
-    return Promise.resolve();
+    return Promise.resolve(undefined);
   }
 
+  let createdTask;
   return updateLeapState(context, (state) => {
+    createdTask = createTask(taskText, Object.assign({}, metadata || {}, { dueDate }));
     state.quadrants[quadrantId] = [
-      createTask(taskText, Object.assign({}, metadata || {}, { dueDate })),
+      createdTask,
       ...(state.quadrants[quadrantId] || [])
     ];
     return state;
-  });
+  }).then(() => createdTask);
 }
 
 function deleteQuadrantTask(context, quadrantId, taskId) {

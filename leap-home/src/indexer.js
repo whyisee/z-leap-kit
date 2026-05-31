@@ -15,6 +15,7 @@ const {
   WORKSPACE_TEXT_FILE_NAMES
 } = require('./constants');
 const { getComponentDefinitions } = require('./components');
+const { readCountdowns } = require('./countdown');
 const { readFocusTimerSnapshot } = require('./focusTimer');
 const { getHomeConfiguration, getTemplateSummaries } = require('./layout');
 const { resolveInboxPath } = require('./inbox');
@@ -114,6 +115,7 @@ class LeapHomeIndex {
   getModel() {
     const leapState = readLeapState(this.context);
     const focusTimer = readFocusTimerSnapshot(this.context);
+    const countdown = readCountdowns(this.context);
     const searchHistory = readSearchHistory(this.context);
     const quickCaptures = readQuickCaptures(this.context);
     const favorites = getStoredPaths(this.context, FAVORITES_KEY)
@@ -132,6 +134,8 @@ class LeapHomeIndex {
       sources: this.sourceSummaries,
       quadrants: leapState.quadrants,
       calendarEvents: leapState.calendarEvents,
+      focusTimer,
+      countdown,
       searchHistory
     });
 
@@ -156,6 +160,7 @@ class LeapHomeIndex {
         quadrants: serializeQuadrants(leapState.quadrants),
         calendarEvents: leapState.calendarEvents,
         focusTimer,
+        countdown,
         quickCaptures,
         searchHistory,
         stats,
@@ -766,6 +771,22 @@ function buildStats(data) {
   const latestUpdatedAt = (data.items || []).reduce((latest, item) => Math.max(latest, item.updatedAt || 0), 0);
   const searchHistory = Array.isArray(data.searchHistory) ? data.searchHistory : [];
   const aiSearches = searchHistory.filter((item) => item.mode === 'ai').length;
+  const focusHistory = data.focusTimer && Array.isArray(data.focusTimer.history) ? data.focusTimer.history : [];
+  const focusRecords = focusHistory.filter((item) => item.type === 'focus');
+  const completedFocusRecords = focusRecords.filter((item) => item.result !== 'aborted');
+  const abortedFocusRecords = focusRecords.filter((item) => item.result === 'aborted');
+  const linkedFocusRecords = focusRecords.filter((item) => item.task && item.task.title);
+  const todayFocusRecords = focusRecords.filter((item) => formatDateKey(new Date(item.completedAt)) === todayKey);
+  const todayCompletedFocusRecords = todayFocusRecords.filter((item) => item.result !== 'aborted');
+  const weekFocusRecords = focusRecords.filter((item) => {
+    const dateKey = formatDateKey(new Date(item.completedAt));
+    return dateKey >= weekRange.start && dateKey <= weekRange.end;
+  });
+  const todayFocusMs = todayFocusRecords.reduce((sum, item) => sum + (item.focusedMs || 0), 0);
+  const todayStrictFocusMs = todayFocusRecords.reduce((sum, item) => sum + (item.strictFocusedMs || 0), 0);
+  const todayFocusInterruptions = todayFocusRecords.reduce((sum, item) => sum + (item.interruptions || 0), 0);
+  const weekFocusMs = weekFocusRecords.reduce((sum, item) => sum + (item.focusedMs || 0), 0);
+  const totalFocusMs = focusRecords.reduce((sum, item) => sum + (item.focusedMs || 0), 0);
   return {
     totalItems: data.items.length,
     prompts: data.prompts.length,
@@ -788,6 +809,20 @@ function buildStats(data) {
     monthScheduledDays,
     searchHistory: searchHistory.length,
     aiSearches,
+    focusRecords: focusRecords.length,
+    completedFocusRecords: completedFocusRecords.length,
+    abortedFocusRecords: abortedFocusRecords.length,
+    linkedFocusRecords: linkedFocusRecords.length,
+    focusLinkedRate: focusRecords.length > 0 ? Math.round(linkedFocusRecords.length / focusRecords.length * 100) : 0,
+    focusCompletionRate: focusRecords.length > 0 ? Math.round(completedFocusRecords.length / focusRecords.length * 100) : 0,
+    totalFocusMs,
+    weekFocusRecords: weekFocusRecords.length,
+    weekFocusMs,
+    todayFocusRecords: todayFocusRecords.length,
+    todayFocusSessions: todayCompletedFocusRecords.length,
+    todayFocusMs,
+    todayStrictFocusMs,
+    todayFocusAverageInterruptions: todayFocusRecords.length > 0 ? Math.round(todayFocusInterruptions / todayFocusRecords.length * 10) / 10 : 0,
     latestSearch: searchHistory[0] ? searchHistory[0].query : '',
     latestUpdatedAt
   };

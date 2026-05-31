@@ -21,6 +21,14 @@ const COMPONENT_DEFINITIONS = {
     defaultColSpan: 4,
     defaultRowSpan: 2
   },
+  countdown: {
+    type: 'countdown',
+    title: '倒计日',
+    description: '展示重要日期、截止时间和阶段节点',
+    dataKey: 'countdown',
+    defaultColSpan: 4,
+    defaultRowSpan: 3
+  },
   favorites: {
     type: 'favorites',
     title: '收藏',
