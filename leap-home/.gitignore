@@ -3,3 +3,5 @@ node_modules/
 .vscode-test/
 .leap/
 resources/image*.png
+resources/screenshots/*.jpg
+resources/screenshots/*.webp

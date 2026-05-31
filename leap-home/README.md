@@ -10,13 +10,13 @@ Leap Home 是一个 Cursor / VS Code 插件，用编辑窗口里的 Webview 面�
 
 ## 效果预览
 
-![Leap Home 首页总览](resources/screenshots/home-overview.webp)
+![Leap Home 首页总览](resources/screenshots/home-overview.png)
 
-![快速记录](resources/screenshots/quick-capture.webp)
+![快速记录](resources/screenshots/quick-capture.png)
 
-![四象限、周历和月历联动](resources/screenshots/planning-calendar.webp)
+![四象限、周历和月历联动](resources/screenshots/planning-calendar.png)
 
-![知识图谱](resources/screenshots/knowledge-graph.webp)
+![知识图谱](resources/screenshots/knowledge-graph.png)
 
 ## MVP 功能
 
