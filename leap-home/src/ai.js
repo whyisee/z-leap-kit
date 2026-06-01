@@ -59,8 +59,19 @@ async function recommendNextActions(candidates, context) {
     throw new Error('未配置 DeepSeek API Key。请设置环境变量 DEEPSEEK_API_KEY，或配置 leapHome.ai.deepseekApiKey。');
   }
 
-  const response = await requestDeepSeekNextActions(config, items, context || {});
-  return parseNextActionRecommendation(response, items);
+  const sourceContext = context || {};
+  const response = await requestDeepSeekNextActions(config, items, sourceContext);
+  try {
+    return parseNextActionRecommendation(response, items);
+  } catch (error) {
+    if (!isJsonParseFailure(error)) {
+      throw error;
+    }
+    const retryResponse = await requestDeepSeekNextActions(config, items, Object.assign({}, sourceContext, {
+      jsonRetry: true
+    }));
+    return parseNextActionRecommendation(retryResponse, items);
+  }
 }
 
 async function organizeKnowledgeInsight(insight, context) {
@@ -190,6 +201,18 @@ function requestDeepSeekNextActions(config, candidates, context) {
     source: item.source,
     actions: (item.actions || []).map((action) => action.type)
   }));
+  const knowledgeSources = (Array.isArray(context.knowledgeSources) ? context.knowledgeSources : []).slice(0, 8).map((source) => ({
+    id: source.id,
+    name: source.name,
+    type: source.type
+  }));
+  const existingDocuments = (Array.isArray(context.existingDocuments) ? context.existingDocuments : []).slice(0, 40).map((item) => ({
+    sourceId: item.sourceId,
+    sourceName: item.sourceName,
+    relativePath: item.relativePath,
+    title: item.title,
+    category: item.category
+  }));
   const body = {
     model: config.model,
     messages: [
@@ -208,12 +231,19 @@ function requestDeepSeekNextActions(config, candidates, context) {
             : '如果用户没有输入问题，就主动判断现在最值得开始的事。',
           '新的 AI 建议必须来自上下文，不允许凭空编事实；要尽量小、具体、能立刻开始。',
           '尤其要做：总结最近笔记，建议新事项；把用户可能不愿意开始的大任务拆成 10-15 分钟小步骤；给一句具体鼓励；推荐一个创新探索方向。',
-          '允许的新建议 action 类型只有 createTask、search、dismiss。',
-          'createTask 必须包含 title 和 quadrantId；quadrantId 只能是 importantUrgent、importantNotUrgent、notImportantUrgent、notImportantNotUrgent。',
+          '允许的新建议 action 类型只有 createTask、startFocus、createNote、appendNote、search、openInbox、dismiss。',
+          'createTask/startFocus 必须包含 title 和 quadrantId；可选 dueDate 使用 YYYY-MM-DD；startFocus 可选 durationMs，例如 600000 表示 10 分钟。',
+          'quadrantId 只能是 importantUrgent、importantNotUrgent、notImportantUrgent、notImportantNotUrgent。',
+          'createNote/appendNote 用于直接写入知识库：必须包含 sourceId、relativePath、title、content。sourceId 必须从 knowledgeSources 中选择。',
+          'appendNote 应优先选择 existingDocuments 中已有的 relativePath；createNote 可以根据已有目录结构设计新的 Markdown 路径。',
+          'relativePath 必须是相对路径，不能以 / 开头，不能包含 ..；content 必须是可以直接写入的 Markdown 内容，控制在 500 字以内。',
+          '一次最多输出 1 个 createNote 或 appendNote 动作；如果需要更多笔记内容，先生成一个最小可用版本。',
+          'content 如果包含换行，必须作为 JSON 字符串中的 \\n 转义，不要输出裸换行。',
+          context.jsonRetry ? '这是 JSON 修复重试：必须输出更短、更简单、100% 可 JSON.parse 的对象；不要输出多余文本。' : '',
           'search 必须包含 query。',
           '如果是选择本地候选，可以省略 actions，系统会保留原动作。',
           '只返回严格 JSON 对象，不要 Markdown，不要解释性段落。',
-          'JSON 格式：{"summary":"最近上下文一句话总结","encouragement":"一句具体鼓励","reason":"整体推荐理由","items":[{"key":"候选 key 或 ai:xxx","type":"do-now|plan|review|break","sourceType":"candidate|microtask|insight|encouragement|idea","title":"行动标题","reason":"一句话解释","basedOnKey":"可选，来源候选 key","actions":[{"type":"createTask|search|dismiss","label":"按钮文案","title":"新待办标题","quadrantId":"importantNotUrgent","query":"搜索词"}]}]}'
+          'JSON 格式：{"summary":"最近上下文一句话总结","encouragement":"一句具体鼓励","reason":"整体推荐理由","items":[{"key":"候选 key 或 ai:xxx","type":"do-now|plan|review|break","sourceType":"candidate|microtask|insight|encouragement|idea","title":"行动标题","reason":"一句话解释","basedOnKey":"可选，来源候选 key","actions":[{"type":"createTask|startFocus|createNote|appendNote|search|openInbox|dismiss","label":"按钮文案","title":"标题","quadrantId":"importantNotUrgent","dueDate":"2026-06-01","durationMs":600000,"sourceId":"source-id","relativePath":"notes/topic.md","content":"Markdown 内容","query":"搜索词"}]}]}'
         ].join('\n')
       },
       {
@@ -226,13 +256,15 @@ function requestDeepSeekNextActions(config, candidates, context) {
           openTasks: context.openTasks || [],
           countdowns: context.countdowns || [],
           focus: context.focus || {},
-          recentSearches: context.recentSearches || []
+          recentSearches: context.recentSearches || [],
+          knowledgeSources,
+          existingDocuments
         })
       }
     ],
     response_format: { type: 'json_object' },
     thinking: { type: 'disabled' },
-    max_tokens: 700,
+    max_tokens: 2200,
     stream: false
   };
 
@@ -419,7 +451,7 @@ function normalizeNextActionAiItem(value, candidateKeys) {
     title: String(value.title || '').replace(/\s+/g, ' ').trim().slice(0, 80),
     reason: String(value.reason || '').replace(/\s+/g, ' ').trim().slice(0, 180),
     basedOnKey: String(value.basedOnKey || '').trim(),
-    actions: generated ? normalizeNextActionAiActions(value.actions) : []
+    actions: normalizeNextActionAiActions(value.actions)
   };
 }
 
@@ -438,7 +470,7 @@ function normalizeNextActionSourceType(value, generated) {
 
 function normalizeNextActionAiActions(value) {
   const actions = Array.isArray(value) ? value : [];
-  return actions.map(normalizeNextActionAiAction).filter(Boolean).slice(0, 3);
+  return actions.map(normalizeNextActionAiAction).filter(Boolean).slice(0, 4);
 }
 
 function normalizeNextActionAiAction(value) {
@@ -447,11 +479,13 @@ function normalizeNextActionAiAction(value) {
   }
   const type = String(value.type || '').trim();
   const label = String(value.label || '').replace(/\s+/g, ' ').trim().slice(0, 16);
-  if (type === 'createTask') {
+  if (type === 'createTask' || type === 'startFocus') {
     const title = String(value.title || '').replace(/\s+/g, ' ').trim().slice(0, 120);
     const quadrantId = normalizeOptionalQuadrantId(value.quadrantId);
     if (!title || !quadrantId) return undefined;
-    return { type, label: label || '加入待办', title, quadrantId };
+    const dueDate = normalizeOptionalDate(value.dueDate);
+    const durationMs = clampNumber(value.durationMs, 0, 4 * 60 * 60 * 1000);
+    return Object.assign({ type, label: label || (type === 'startFocus' ? '开始专注' : '加入待办'), title, quadrantId }, dueDate ? { dueDate } : {}, durationMs ? { durationMs } : {});
   }
   if (type === 'search') {
     const query = String(value.query || '').replace(/\s+/g, ' ').trim().slice(0, 180);
@@ -460,6 +494,26 @@ function normalizeNextActionAiAction(value) {
   }
   if (type === 'dismiss') {
     return { type, label: label || '忽略' };
+  }
+  if (type === 'openInbox') {
+    return { type, label: label || '打开收集箱' };
+  }
+  if (type === 'createNote' || type === 'appendNote') {
+    const content = String(value.content || '').replace(/\r\n/g, '\n').trim().slice(0, 4000);
+    const title = String(value.title || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    const sourceId = String(value.sourceId || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+    const sourceName = String(value.sourceName || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    const relativePath = normalizeNoteRelativePath(value.relativePath || value.targetPath || value.path).slice(0, 240);
+    if (!content || (!title && !relativePath)) return undefined;
+    return {
+      type,
+      label: label || (type === 'appendNote' ? '写入笔记' : '新建笔记'),
+      title,
+      sourceId,
+      sourceName,
+      relativePath,
+      content
+    };
   }
   return undefined;
 }
@@ -471,6 +525,15 @@ function normalizeOptionalQuadrantId(value) {
     : '';
 }
 
+function normalizeOptionalDate(value) {
+  const text = String(value || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+}
+
+function normalizeNoteRelativePath(value) {
+  return String(value || '').replace(/\\/g, '/').replace(/\s+/g, ' ').trim();
+}
+
 function getChoiceContent(response) {
   return response &&
     response.choices &&
@@ -480,15 +543,62 @@ function getChoiceContent(response) {
 }
 
 function parseJsonObject(content, errorMessage) {
-  try {
-    return JSON.parse(content);
-  } catch (error) {
-    const match = String(content).match(/\{[\s\S]*\}/);
-    if (!match) {
-      throw new Error(errorMessage);
-    }
-    return JSON.parse(match[0]);
+  const text = stripJsonFences(String(content || '').trim());
+  const candidates = [text];
+  const objectText = extractJsonObjectText(text);
+  if (objectText && objectText !== text) {
+    candidates.push(objectText);
   }
+  const repaired = repairCommonJsonIssues(objectText || text);
+  if (repaired && !candidates.includes(repaired)) {
+    candidates.push(repaired);
+  }
+
+  let lastError;
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      return JSON.parse(candidate);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  const detail = lastError && lastError.message ? lastError.message : '未知 JSON 解析错误';
+  throw new Error(`${errorMessage} DeepSeek 这次返回的 JSON 可能被截断或格式不完整，请重试。原始错误：${detail}`);
+}
+
+function isJsonParseFailure(error) {
+  const message = String(error && error.message || '');
+  return message.includes('不是 JSON') || message.includes('JSON 可能被截断') || message.includes('JSON.parse');
+}
+
+function stripJsonFences(value) {
+  return String(value || '')
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+}
+
+function extractJsonObjectText(value) {
+  const text = String(value || '');
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) {
+    return '';
+  }
+  return text.slice(start, end + 1).trim();
+}
+
+function repairCommonJsonIssues(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return '';
+  }
+  return text
+    .replace(/,\s*([}\]])/g, '$1')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'");
 }
 
 function normalizeSearchRewrite(value, fallbackQuery) {

@@ -735,6 +735,7 @@ function projectDocumentWeight(filePath) {
 function serializeItem(item) {
   return {
     id: item.id,
+    sourceId: item.sourceId,
     title: item.title,
     fileName: item.fileName,
     filePath: item.filePath,
@@ -749,6 +750,7 @@ function serializeItem(item) {
 function serializePrompt(prompt) {
   return {
     id: prompt.id,
+    sourceId: prompt.sourceId,
     title: prompt.title,
     fileName: prompt.fileName,
     filePath: prompt.filePath,

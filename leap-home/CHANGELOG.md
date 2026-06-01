@@ -2,6 +2,17 @@
 
 All notable changes to Leap Home will be documented in this file.
 
+## [0.2.0] - 2026-06-01
+
+### Added
+
+- Added more Next Action recommendation actions, including 10-minute focus starts, scheduling tasks, completing countdowns, converting captures into tasks, opening the inbox, and AI-generated direct focus actions.
+- Added AI-powered Next Action note writing actions for creating new Markdown notes or appending content to existing notes in the most relevant workspace/knowledge-source path.
+
+### Fixed
+
+- Fixed malformed DeepSeek JSON responses in Next Action recommendations by increasing output budget, tightening note-writing prompts, adding tolerant JSON extraction, and retrying once on parse failures.
+
 ## [0.1.3] - 2026-06-01
 
 ### Added

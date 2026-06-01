@@ -214,6 +214,18 @@ function buildTaskCandidates(quadrants, searchHistory) {
         score += 8;
         reasons.push('和最近搜索主题相关');
       }
+      const actions = [
+        { type: 'startFocus', label: timing.overdue || timing.today ? '开始番茄' : '25分钟推进', quadrantId: definition.id, taskId: task.id },
+        { type: 'startFocus', label: '10分钟启动', quadrantId: definition.id, taskId: task.id, durationMs: 10 * 60 * 1000 },
+        { type: 'completeTask', label: '完成', quadrantId: definition.id, taskId: task.id },
+        { type: 'search', label: '查上下文', query: task.text }
+      ];
+      if (!task.dueDate) {
+        const planToday = definition.id === 'importantUrgent' || definition.id === 'notImportantUrgent';
+        actions.splice(2, 0, { type: 'scheduleTask', label: planToday ? '安排今天' : '安排明天', quadrantId: definition.id, taskId: task.id, dueDate: formatDateKey(addDays(new Date(), planToday ? 0 : 1)) });
+      } else if (!timing.today && !timing.overdue) {
+        actions.splice(2, 0, { type: 'scheduleTask', label: '改到今天', quadrantId: definition.id, taskId: task.id, dueDate: formatDateKey(new Date()) });
+      }
       result.push({
         key: `task:${definition.id}:${task.id}`,
         type: timing.overdue || timing.today ? 'do-now' : 'plan',
@@ -227,11 +239,7 @@ function buildTaskCandidates(quadrants, searchHistory) {
           taskId: task.id,
           title: task.text
         },
-        actions: [
-          { type: 'startFocus', label: '开始番茄', quadrantId: definition.id, taskId: task.id },
-          { type: 'completeTask', label: '完成', quadrantId: definition.id, taskId: task.id },
-          { type: 'search', label: '查上下文', query: task.text }
-        ]
+        actions
       });
     }
   }
@@ -253,7 +261,10 @@ function buildCountdownCandidates(countdown) {
       score: 54 + timing.score,
       source: { type: 'countdown', itemId: item.id },
       actions: [
+        { type: 'createTask', label: '生成准备事项', title: `准备：${item.title}`, quadrantId: type === 'do-now' ? 'importantUrgent' : 'importantNotUrgent', dueDate: item.targetDate },
+        { type: 'startFocus', label: '10分钟推进', title: `推进：${item.title}`, quadrantId: type === 'do-now' ? 'importantUrgent' : 'importantNotUrgent', durationMs: 10 * 60 * 1000 },
         { type: 'search', label: '查上下文', query: item.title },
+        { type: 'completeCountdown', label: '已完成', itemId: item.id },
         { type: 'dismiss', label: '忽略' }
       ]
     };
@@ -273,6 +284,8 @@ function buildQuickCaptureCandidates(quickCaptures) {
       score: 42 - index * 4,
       source: { type: 'quickCapture', captureId: item.id },
       actions: [
+        { type: 'createTask', label: '转成待办', title: truncate(item.text, 80), quadrantId: 'importantNotUrgent', dueDate: item.dueDate || '' },
+        { type: 'openInbox', label: '打开收集箱' },
         { type: 'search', label: '查上下文', query: item.text },
         { type: 'dismiss', label: '忽略' }
       ]
@@ -333,6 +346,7 @@ function applyAiPlan(recommendations, aiPlan, pinnedKeys) {
         type: aiItem.type || base.type,
         title: aiItem.title || base.title,
         reason: aiItem.reason || base.reason,
+        actions: aiItem.actions && aiItem.actions.length ? aiItem.actions : base.actions,
         aiGeneratedAt: plan.generatedAt,
         aiReason: plan.reason,
         aiSummary: plan.summary,
@@ -380,6 +394,21 @@ function daysUntil(dateValue) {
   if (!date) return undefined;
   const today = startOfDay(new Date());
   return Math.round((date.getTime() - today.getTime()) / 86400000);
+}
+
+function addDays(date, days) {
+  const next = startOfDay(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function formatDateKey(date) {
+  const target = startOfDay(date);
+  return [
+    target.getFullYear(),
+    String(target.getMonth() + 1).padStart(2, '0'),
+    String(target.getDate()).padStart(2, '0')
+  ].join('-');
 }
 
 function parseDate(value) {
@@ -499,7 +528,7 @@ function normalizeAiPlanItem(value) {
 
 function normalizeAiPlanActions(value) {
   const actions = Array.isArray(value) ? value : [];
-  return actions.map(normalizeAiPlanAction).filter(Boolean).slice(0, 3);
+  return actions.map(normalizeAiPlanAction).filter(Boolean).slice(0, 4);
 }
 
 function normalizeAiPlanAction(value) {
@@ -508,13 +537,15 @@ function normalizeAiPlanAction(value) {
   }
   const type = cleanInline(value.type);
   const label = cleanInline(value.label).slice(0, 16);
-  if (type === 'createTask') {
+  if (type === 'createTask' || type === 'startFocus') {
     const title = cleanInline(value.title).slice(0, 120);
     const quadrantId = cleanInline(value.quadrantId);
     if (!title || !QUADRANT_DEFINITIONS.some((definition) => definition.id === quadrantId)) {
       return undefined;
     }
-    return { type, label: label || '加入待办', title, quadrantId };
+    const dueDate = normalizeDate(value.dueDate);
+    const durationMs = clampNumber(value.durationMs, 0, 4 * 60 * 60 * 1000);
+    return Object.assign({ type, label: label || (type === 'startFocus' ? '开始专注' : '加入待办'), title, quadrantId }, dueDate ? { dueDate } : {}, durationMs ? { durationMs } : {});
   }
   if (type === 'search') {
     const query = cleanInline(value.query).slice(0, 180);
@@ -523,6 +554,28 @@ function normalizeAiPlanAction(value) {
   }
   if (type === 'dismiss') {
     return { type, label: label || '忽略' };
+  }
+  if (type === 'openInbox') {
+    return { type, label: label || '打开收集箱' };
+  }
+  if (type === 'createNote' || type === 'appendNote') {
+    const content = cleanText(value.content).slice(0, 4000);
+    const title = cleanInline(value.title).slice(0, 120);
+    const sourceId = cleanInline(value.sourceId).slice(0, 160);
+    const sourceName = cleanInline(value.sourceName).slice(0, 80);
+    const relativePath = cleanNotePath(value.relativePath || value.targetPath || value.path).slice(0, 240);
+    if (!content || (!title && !relativePath)) {
+      return undefined;
+    }
+    return {
+      type,
+      label: label || (type === 'appendNote' ? '写入笔记' : '新建笔记'),
+      title,
+      sourceId,
+      sourceName,
+      relativePath,
+      content
+    };
   }
   return undefined;
 }
@@ -601,11 +654,24 @@ function buildNextActionMetrics(events) {
 
 function shouldHideAfterAdoption(item, actionType) {
   if (item.key && item.key.startsWith('ai:')) return true;
-  return ['createTask', 'startFocus', 'startBreak', 'completeTask'].includes(actionType);
+  return ['createTask', 'startFocus', 'startBreak', 'completeTask', 'scheduleTask', 'completeCountdown', 'openInbox'].includes(actionType);
 }
 
 function formatDatePart(value) {
   return cleanInline(value).slice(0, 10);
+}
+
+function normalizeDate(value) {
+  const text = cleanInline(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+}
+
+function cleanText(value) {
+  return String(value || '').replace(/\r\n/g, '\n').trim();
+}
+
+function cleanNotePath(value) {
+  return String(value || '').replace(/\\/g, '/').replace(/\s+/g, ' ').trim();
 }
 
 function cleanInline(value) {

@@ -395,10 +395,13 @@ function getNextActionScript() {
       if (action.type === 'startFocus') {
         post('focusTimerStart', {
           sessionType: 'focus',
+          durationMs: action.durationMs,
           nextAction,
           task: {
             quadrantId: action.quadrantId || item.source && item.source.quadrantId,
-            taskId: action.taskId || item.source && item.source.taskId
+            taskId: action.taskId || item.source && item.source.taskId,
+            newTaskText: action.title || '',
+            dueDate: action.dueDate || ''
           }
         });
         return;
@@ -416,6 +419,38 @@ function getNextActionScript() {
         });
         return;
       }
+      if (action.type === 'scheduleTask') {
+        post('updateQuadrantTask', {
+          quadrantId: action.quadrantId || item.source && item.source.quadrantId,
+          taskId: action.taskId || item.source && item.source.taskId,
+          dueDate: action.dueDate || '',
+          nextAction
+        });
+        return;
+      }
+      if (action.type === 'completeCountdown') {
+        post('toggleCountdownItem', {
+          itemId: action.itemId || item.source && item.source.itemId,
+          done: true,
+          nextAction
+        });
+        return;
+      }
+      if (action.type === 'openInbox') {
+        post('nextActionAdoption', nextAction);
+        post('openInbox');
+        state.nextActionNotice = '已打开收集箱';
+        delete state.nextActionPending[actionKey];
+        render();
+        return;
+      }
+      if (action.type === 'createNote' || action.type === 'appendNote') {
+        post('nextActionWriteNote', {
+          action,
+          nextAction
+        });
+        return;
+      }
       if (action.type === 'search') {
         post('nextActionAdoption', nextAction);
         runSearchFromCommand(action.query || item.title || '');
@@ -428,6 +463,7 @@ function getNextActionScript() {
         post('addQuadrantTask', {
           quadrantId: action.quadrantId || 'importantNotUrgent',
           text: action.title || item.title || 'AI 建议事项',
+          dueDate: action.dueDate || '',
           source: 'next-action-ai',
           reason: item.reason || 'AI 做什么推荐生成',
           nextAction
@@ -486,6 +522,11 @@ function getNextActionScript() {
         startFocus: '开始番茄',
         startBreak: '短休息',
         completeTask: '完成',
+        scheduleTask: '安排',
+        completeCountdown: '已完成',
+        openInbox: '打开收集箱',
+        createNote: '新建笔记',
+        appendNote: '写入笔记',
         createTask: '加入待办',
         search: '查上下文',
         dismiss: '忽略'

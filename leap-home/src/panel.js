@@ -248,7 +248,11 @@ class LeapHomePanelController {
 
     if (message.type === 'toggleCountdownItem') {
       await toggleCountdownItem(this.context, message.itemId, message.done);
+      await this.recordNextActionFromMessage(message);
       this.postModel();
+      if (message.nextAction) {
+        vscode.window.setStatusBarMessage('Leap Home: 已按推荐更新倒计日', 2500);
+      }
       return;
     }
 
@@ -281,6 +285,15 @@ class LeapHomePanelController {
       return;
     }
 
+    if (message.type === 'nextActionWriteNote') {
+      const result = await this.writeNextActionNote(message.action);
+      await this.recordNextActionFromMessage(message);
+      await this.index.refresh();
+      this.postModel();
+      await openFile(result.filePath, this.context, this);
+      return;
+    }
+
     if (message.type === 'nextActionAiRecommend') {
       await this.optimizeNextActionWithAi(message.question);
       return;
@@ -296,7 +309,11 @@ class LeapHomePanelController {
       if (Object.prototype.hasOwnProperty.call(message, 'text')) patch.text = message.text;
       if (Object.prototype.hasOwnProperty.call(message, 'dueDate')) patch.dueDate = message.dueDate;
       await updateQuadrantTask(this.context, message.quadrantId, message.taskId, patch);
+      await this.recordNextActionFromMessage(message);
       this.postModel();
+      if (message.nextAction) {
+        vscode.window.setStatusBarMessage('Leap Home: 已按推荐更新事项', 2500);
+      }
       return;
     }
 
@@ -450,6 +467,15 @@ class LeapHomePanelController {
       message.nextAction.item,
       message.nextAction.action
     );
+  }
+
+  async writeNextActionNote(action) {
+    const result = await writeNoteFromNextAction(this.context, this.index, action);
+    vscode.window.setStatusBarMessage(
+      `Leap Home: ${result.mode === 'appendNote' ? '已写入' : '已新建'}笔记「${path.basename(result.filePath)}」`,
+      3000
+    );
+    return result;
   }
 
   async organizeKnowledgeGraphInsight(insight) {
@@ -760,12 +786,189 @@ function getQuadrantName(quadrantId) {
   }[quadrantId] || quadrantId;
 }
 
+async function writeNoteFromNextAction(context, index, action) {
+  const source = action && typeof action === 'object' ? action : {};
+  const mode = source.type === 'appendNote' ? 'appendNote' : 'createNote';
+  const title = cleanNoteTitle(source.title) || 'AI 笔记';
+  const content = normalizeNoteContent(source.content, title, mode);
+  if (!content) {
+    throw new Error('AI 没有提供可写入的笔记内容。');
+  }
+  if (index && typeof index.ensureReady === 'function') {
+    await index.ensureReady();
+  }
+  const target = await resolveNextActionNoteTarget(context, index, source, title, mode);
+  await fs.mkdir(path.dirname(target.filePath), { recursive: true });
+  if (mode === 'appendNote') {
+    const prefix = await fileExists(target.filePath) ? '\n\n' : '';
+    await fs.appendFile(target.filePath, prefix + content + '\n', 'utf8');
+  } else {
+    const uniquePath = await ensureUniqueNotePath(target.filePath);
+    await fs.writeFile(uniquePath, content + '\n', 'utf8');
+    target.filePath = uniquePath;
+  }
+  return {
+    mode,
+    filePath: target.filePath
+  };
+}
+
+async function resolveNextActionNoteTarget(context, index, action, title, mode) {
+  const sources = getWritableKnowledgeSources(context, index);
+  if (!sources.length) {
+    throw new Error('没有可写入的工作区或知识源。');
+  }
+  const requestedPath = cleanNotePath(action.relativePath || action.targetPath || action.path);
+  const absolutePath = path.isAbsolute(requestedPath) ? requestedPath : '';
+  if (absolutePath) {
+    const source = sources.find((item) => isPathInside(absolutePath, item.path));
+    if (!source) {
+      throw new Error('AI 选择的笔记路径不在当前工作区或知识源内。');
+    }
+    return { source, filePath: ensureMarkdownFilePath(absolutePath) };
+  }
+
+  const source = pickNoteSource(sources, action) || sources[0];
+  const relativePath = ensureMarkdownRelativePath(requestedPath || deriveNoteRelativePath(title));
+  const filePath = path.resolve(source.path, relativePath);
+  if (!isPathInside(filePath, source.path)) {
+    throw new Error('AI 选择的笔记相对路径不安全。');
+  }
+  if (mode === 'appendNote' && !await fileExists(filePath)) {
+    return { source, filePath };
+  }
+  return { source, filePath };
+}
+
+function getWritableKnowledgeSources(context, index) {
+  const sourceSummaries = Array.isArray(index && index.sourceSummaries) ? index.sourceSummaries : [];
+  const sources = sourceSummaries
+    .filter((source) => source && source.path && ['workspace', 'markdown', 'obsidian'].includes(source.type) && !source.error)
+    .map((source) => ({
+      id: source.id,
+      name: source.name,
+      path: source.path,
+      type: source.type
+    }));
+  if (sources.length > 0) {
+    return sources;
+  }
+  return (vscode.workspace.workspaceFolders || [])
+    .filter((folder) => folder.uri.scheme === 'file')
+    .map((folder) => ({
+      id: `workspace:${folder.uri.fsPath}`,
+      name: folder.name,
+      path: folder.uri.fsPath,
+      type: 'workspace'
+    }));
+}
+
+function pickNoteSource(sources, action) {
+  const sourceId = String(action.sourceId || '').trim();
+  if (sourceId) {
+    const byId = sources.find((source) => source.id === sourceId);
+    if (byId) return byId;
+  }
+  const sourceName = String(action.sourceName || '').trim().toLowerCase();
+  if (sourceName) {
+    const byName = sources.find((source) => String(source.name || '').toLowerCase() === sourceName);
+    if (byName) return byName;
+  }
+  return sources.find((source) => source.type === 'markdown' || source.type === 'obsidian')
+    || sources.find((source) => source.type === 'workspace')
+    || sources[0];
+}
+
+function normalizeNoteContent(content, title, mode) {
+  const text = String(content || '').replace(/\r\n/g, '\n').trim();
+  if (!text) {
+    return '';
+  }
+  if (mode === 'appendNote') {
+    return /^#{1,6}\s/.test(text) ? text : `## ${title}\n\n${text}`;
+  }
+  return /^#\s/.test(text) ? text : `# ${title}\n\n${text}`;
+}
+
+function ensureMarkdownRelativePath(value) {
+  const safe = cleanNotePath(value)
+    .replace(/^\/+/, '')
+    .split('/')
+    .filter((part) => part && part !== '.' && part !== '..')
+    .map(sanitizeNotePathSegment)
+    .filter(Boolean)
+    .join('/');
+  return ensureMarkdownFilePath(safe || deriveNoteRelativePath('AI 笔记'));
+}
+
+function ensureMarkdownFilePath(filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  if (['.md', '.markdown', '.mdx', '.mdc'].includes(extension)) {
+    return filePath;
+  }
+  return extension ? filePath.slice(0, -extension.length) + '.md' : filePath + '.md';
+}
+
+function deriveNoteRelativePath(title) {
+  return path.join('notes', sanitizeNotePathSegment(title || 'AI 笔记') + '.md');
+}
+
+function sanitizeNotePathSegment(value) {
+  return String(value || '')
+    .replace(/[<>:"|?*\x00-\x1f]/g, '')
+    .replace(/[\\/]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80) || '未命名';
+}
+
+function cleanNoteTitle(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+}
+
+function cleanNotePath(value) {
+  return String(value || '').replace(/\\/g, '/').replace(/\s+/g, ' ').trim();
+}
+
+async function ensureUniqueNotePath(filePath) {
+  if (!await fileExists(filePath)) {
+    return filePath;
+  }
+  const dir = path.dirname(filePath);
+  const extension = path.extname(filePath);
+  const base = path.basename(filePath, extension);
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = path.join(dir, `${base}-${index}${extension}`);
+    if (!await fileExists(candidate)) {
+      return candidate;
+    }
+  }
+  throw new Error('无法为新笔记生成唯一文件名。');
+}
+
+async function fileExists(filePath) {
+  try {
+    await fs.stat(filePath);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function isPathInside(filePath, rootPath) {
+  const relative = path.relative(rootPath, filePath);
+  return relative === '' || Boolean(relative) && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
 async function resolveFocusTimerTask(context, request) {
   const source = request && typeof request === 'object' ? request : {};
   const quadrantId = normalizeQuadrantId(source.quadrantId) || 'importantNotUrgent';
   const newTaskText = String(source.newTaskText || '').replace(/\s+/g, ' ').trim();
   if (newTaskText) {
-    const task = await addQuadrantTask(context, quadrantId, newTaskText, { source: 'focusTimer' });
+    const task = await addQuadrantTask(context, quadrantId, newTaskText, {
+      source: 'focusTimer',
+      dueDate: normalizeDate(source.dueDate)
+    });
     return task ? toFocusTimerTaskRef(quadrantId, task) : undefined;
   }
 
@@ -823,7 +1026,25 @@ function buildNextActionAiContext(model) {
       effectiveQuery: item.effectiveQuery,
       resultCount: item.resultCount,
       mode: item.mode
-    }))
+    })),
+    knowledgeSources: (Array.isArray(data.sources) ? data.sources : [])
+      .filter((source) => source && ['workspace', 'markdown', 'obsidian'].includes(source.type) && !source.error)
+      .slice(0, 8)
+      .map((source) => ({
+        id: source.id,
+        name: source.name,
+        type: source.type
+      })),
+    existingDocuments: (Array.isArray(data.items) ? data.items : [])
+      .filter((item) => item && ['document', 'project', 'rule', 'text', 'code'].includes(item.category || 'document'))
+      .slice(0, 40)
+      .map((item) => ({
+        title: item.title,
+        sourceId: item.sourceId,
+        sourceName: item.sourceName,
+        relativePath: item.relativePath,
+        category: item.category
+      }))
   };
 }
 
