@@ -100,7 +100,7 @@ MVP 先实现基础专注，保留严格专注的数据结构和事件入口。
 - `paused`：用户手动暂停，倒计时和专注累计都暂停。
 - `completed`：本轮完成，写入历史。
 
-窗口焦点变化不改变 `running` 状态，只影响 `focusedMs` 和 `blurredMs` 的累计。
+窗口焦点变化不改变 `running` 状态，只影响有效专注、外部专注和离开时间的累计。
 
 ## 计时规则
 
@@ -109,12 +109,30 @@ MVP 先实现基础专注，保留严格专注的数据结构和事件入口。
 - 开始时创建 `activeSession`，记录 `startedAt` 和 `lastTickAt`。
 - 每次状态变化或 webview 请求模型时，根据 `Date.now()` 和 `lastTickAt` 补齐时间差。
 - 如果 `status=running`：
-  - `focused=true` 时把差值计入 `focusedMs`。
-  - `focused=false` 时把差值计入 `blurredMs`。
+  - Cursor 窗口聚焦时把差值计入 `focusedMs`。
+  - Cursor 失焦但前台应用属于可信专注应用时，也把差值计入 `focusedMs`，同时累计到 `trustedExternalMs`。
+  - Cursor 失焦且前台应用不可信时，把差值计入 `blurredMs`，同时累计到 `untrustedExternalMs`。
 - 当 `focusedMs + blurredMs >= durationMs` 时，本轮完成。
-- 窗口从 focused 变为 blurred 时，`interruptions += 1`。
+- 有效专注从 true 变为 false 时，`interruptions += 1`。
+- 前台应用变化时，累计 `appSwitches` 和 `appUsage`。
 
 倒计时展示用 `durationMs - focusedMs - blurredMs`。专注时长展示用 `focusedMs`。
+
+## 外部应用专注
+
+番茄时钟需要支持“离开 Cursor 但仍在其他应用专注”的场景，例如阅读 PDF、查资料、整理 Obsidian 笔记。
+
+- 标准 Cursor / VS Code API 只能知道当前窗口是否聚焦，不能直接知道外部焦点在哪个应用。
+- 桌面端通过系统能力补充前台应用名称：
+  - macOS：`System Events` / AppleScript。
+  - Windows：PowerShell + Win32 foreground window。
+  - Linux：`xdotool`，可用性取决于桌面环境。
+- 只记录应用名称，不记录窗口标题和页面标题。
+- 通过 Cursor 设置配置：
+  - `leapHome.focusTimer.trackForegroundApp`：是否启用前台应用检测。
+  - `leapHome.focusTimer.trustedApps`：可信专注应用列表。
+  - `leapHome.focusTimer.foregroundAppPollIntervalMs`：检测间隔。
+- 如果系统权限不可用，前台应用检测失败时只写一次调试日志，并退回到 Cursor 窗口焦点判断。
 
 ## 交互设计
 
@@ -135,7 +153,8 @@ MVP 先实现基础专注，保留严格专注的数据结构和事件入口。
 
 - `idle`：未开始。
 - `running + focused`：专注中。
-- `running + blurred`：窗口已离开。
+- `running + !cursorFocused + focused`：外部专注。
+- `running + !focused`：已离开。
 - `paused`：已暂停。
 - `completed`：已完成。
 
@@ -173,6 +192,9 @@ MVP 先实现基础专注，保留严格专注的数据结构和事件入口。
 - 已在完成时发送 Cursor 通知。
 - 已支持短休息、长休息和再次专注。
 - 已增加严格专注事件入口：编辑、选择和切换文件会更新活动时间。
+- 已支持前台应用检测，离开 Cursor 后如果当前应用在可信列表中，仍计入专注时间。
+- 已在 session 和历史记录中保存外部专注时间、非可信外部时间、应用切换次数和应用用时分布。
+- 已在组件 UI 中展示外部专注时长和当前前台应用。
 
 未完成/待增强：
 
@@ -205,4 +227,7 @@ MVP 先实现基础专注，保留严格专注的数据结构和事件入口。
 - [x] 完成时增加 Cursor 通知。
 - [x] 增加短休息/长休息循环。
 - [x] 增加严格 idle 检测：focused 且最近有编辑/选择/切换文件活动才计入严格专注。
+- [x] 增加前台应用检测，可信应用可计入外部专注。
+- [x] 增加可信应用配置和检测间隔配置。
+- [x] 历史记录保存外部专注、应用切换和应用用时分布。
 - [ ] 增加专注记录报表。

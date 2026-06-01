@@ -13,12 +13,15 @@ const { registerFocusTimerLifecycle } = require('./focusTimer');
 const { LeapHomeIndex } = require('./indexer');
 const logger = require('./logger');
 const { LeapHomePanelController } = require('./panel');
+const { LeapHomeStatusBarController } = require('./statusBar');
 const { migrateLeapStateStorage } = require('./storage');
 
 function activate(context) {
   logger.info('extension activated');
   const index = new LeapHomeIndex(context);
   const homePanel = new LeapHomePanelController(context, index);
+  const statusBar = new LeapHomeStatusBarController(context, index);
+  context.subscriptions.push(statusBar);
   context.subscriptions.push(registerFocusTimerLifecycle(context, homePanel));
   const indexWatcher = createIndexWatcher(index, homePanel);
   if (indexWatcher) {
@@ -28,6 +31,9 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('leapHome.openHome', async () => {
       await homePanel.open();
+    }),
+    vscode.commands.registerCommand('leapHome.chooseStatusBarComponent', async () => {
+      await statusBar.chooseComponent();
     }),
     vscode.commands.registerCommand('leapHome.searchKnowledge', async () => {
       await searchKnowledge(index, context, homePanel);
@@ -66,16 +72,21 @@ function activate(context) {
       logger.show();
     }),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
+      if (event.affectsConfiguration('leapHome.statusBar')) {
+        statusBar.refresh();
+      }
       if (event.affectsConfiguration('leapHome')) {
         logger.info('configuration changed, refreshing index');
         await index.refresh();
         homePanel.postModel();
+        statusBar.refresh();
       }
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(async () => {
       logger.info('workspace folders changed, refreshing index');
       await index.refresh();
       homePanel.postModel();
+      statusBar.refresh();
     })
   );
 
@@ -93,6 +104,7 @@ function activate(context) {
       () => {
         logger.info('initial index refresh finished');
         homePanel.postModel();
+        statusBar.refresh();
       },
       (error) => {
         logger.error('initial index refresh failed', error);

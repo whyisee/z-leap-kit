@@ -38,7 +38,9 @@
   ],
   "main": "./src/extension.js",
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:leapHome.openHome",
+    "onCommand:leapHome.chooseStatusBarComponent",
     "onCommand:leapHome.searchKnowledge",
     "onCommand:leapHome.captureNote",
     "onCommand:leapHome.refreshIndex",
@@ -60,6 +62,10 @@
       {
         "command": "leapHome.openHome",
         "title": "Leap Home: 打开知识首页"
+      },
+      {
+        "command": "leapHome.chooseStatusBarComponent",
+        "title": "Leap Home: 切换状态栏显示组件"
       },
       {
         "command": "leapHome.searchKnowledge",
@@ -205,6 +211,28 @@
             }
           }
         },
+        "leapHome.statusBar.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否在 Cursor / VS Code 状态栏展示 Leap Home 快捷入口。"
+        },
+        "leapHome.statusBar.component": {
+          "type": "string",
+          "default": "focusTimer",
+          "enum": [
+            "home",
+            "focusTimer",
+            "countdown",
+            "stats"
+          ],
+          "enumDescriptions": [
+            "只展示 Leap Home 首页入口。",
+            "展示番茄时钟剩余时间和状态。",
+            "展示最近一个未完成倒计日。",
+            "展示索引数量和今日专注时长。"
+          ],
+          "description": "状态栏快捷入口展示的组件摘要。点击状态栏始终打开 Leap Home 首页。"
+        },
         "leapHome.sources": {
           "type": "array",
           "default": [],
@@ -269,6 +297,46 @@
           "minimum": 0,
           "maximum": 100,
           "description": "搜索历史保留数量。设置为 0 时不保存搜索历史。"
+        },
+        "leapHome.focusTimer.trackForegroundApp": {
+          "type": "boolean",
+          "default": true,
+          "description": "番茄时钟是否通过系统能力识别当前前台应用。启用后只记录应用名称，不记录窗口标题。"
+        },
+        "leapHome.focusTimer.trustedApps": {
+          "type": "array",
+          "default": [
+            "Cursor",
+            "Visual Studio Code",
+            "Code",
+            "Obsidian",
+            "Notion",
+            "Google Chrome",
+            "Chrome",
+            "Safari",
+            "Microsoft Edge",
+            "Arc",
+            "Preview",
+            "PDF Expert",
+            "Skim",
+            "Typora",
+            "Xcode",
+            "Terminal",
+            "iTerm2",
+            "Warp",
+            "WezTerm"
+          ],
+          "description": "番茄时钟可信专注应用列表。专注中切到这些应用时仍计入专注时长。",
+          "items": {
+            "type": "string"
+          }
+        },
+        "leapHome.focusTimer.foregroundAppPollIntervalMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "番茄时钟前台应用检测间隔，单位毫秒。"
         },
         "leapHome.autoIndexWorkspace": {
           "type": "boolean",
