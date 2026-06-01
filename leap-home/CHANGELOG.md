@@ -8,6 +8,11 @@ All notable changes to Leap Home will be documented in this file.
 
 - Added more Next Action recommendation actions, including 10-minute focus starts, scheduling tasks, completing countdowns, converting captures into tasks, opening the inbox, and AI-generated direct focus actions.
 - Added AI-powered Next Action note writing actions for creating new Markdown notes or appending content to existing notes in the most relevant workspace/knowledge-source path.
+- Added an English README for international users and linked it from the Chinese README.
+
+### Changed
+
+- Improved Open VSX listing metadata, README positioning, installation guidance, and screenshot URLs for the monorepo release page.
 
 ### Fixed
 

@@ -1,8 +1,8 @@
 {
   "name": "leap-home",
   "displayName": "Leap Home",
-  "description": "Cursor / VS Code 编辑窗口里的个人知识库首页。",
-  "version": "0.2.0",
+  "description": "Personal knowledge dashboard for Cursor / VS Code with AI search, notes, Pomodoro, tasks, calendars, and knowledge graph.",
+  "version": "0.2.1",
   "publisher": "whyisee",
   "author": "whyisee",
   "license": "MIT",
@@ -16,15 +16,28 @@
     "url": "https://github.com/whyisee/z-leap-kit.git",
     "directory": "leap-home"
   },
+  "qna": "https://github.com/whyisee/z-leap-kit/issues",
   "keywords": [
     "cursor",
     "vscode",
+    "workspace-dashboard",
+    "personal-dashboard",
     "knowledge-base",
+    "knowledge-management",
+    "personal-knowledge-management",
+    "second-brain",
     "productivity",
     "dashboard",
     "notes",
+    "note-taking",
     "search",
-    "ai"
+    "ai",
+    "ai-search",
+    "deepseek",
+    "pomodoro",
+    "tasks",
+    "calendar",
+    "knowledge-graph"
   ],
   "galleryBanner": {
     "color": "#101214",
@@ -34,7 +47,8 @@
     "vscode": "^1.90.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization"
   ],
   "main": "./src/extension.js",
   "activationEvents": [
