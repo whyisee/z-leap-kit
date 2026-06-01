@@ -145,9 +145,7 @@ function getFocusTimerStyles() {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .focus-current-app[data-focus-tooltip],
     .focus-ring[data-focus-tooltip],
-    .focus-metric[data-focus-tooltip],
     .focus-history-item[data-focus-tooltip] {
       cursor: help;
     }
@@ -282,7 +280,6 @@ function getFocusTimerScript() {
       const timer = getFocusTimerSession();
       const wrap = div('focus-timer');
       const detailTitle = focusSessionTooltip(timer);
-      attachFocusTooltip(wrap, detailTitle);
       const head = div('focus-timer-head');
       const duration = focusDurationControl((focusTimer.settings || {}).defaultFocusDurationMs || timer.durationMs || 1500000);
       const taskBinding = focusTaskBindingControl();
@@ -296,10 +293,10 @@ function getFocusTimerScript() {
 
       const metrics = div('focus-metrics');
       metrics.append(
-        focusMetric('专注', formatCompactDuration(timer.focusedMs || 0), detailTitle),
-        focusMetric('外部', formatCompactDuration(timer.trustedExternalMs || 0), detailTitle),
-        focusMetric('离开', formatCompactDuration(timer.blurredMs || 0), detailTitle),
-        focusMetric('打断', String(timer.interruptions || 0), detailTitle)
+        focusMetric('专注', formatCompactDuration(timer.focusedMs || 0)),
+        focusMetric('外部', formatCompactDuration(timer.trustedExternalMs || 0)),
+        focusMetric('离开', formatCompactDuration(timer.blurredMs || 0)),
+        focusMetric('打断', String(timer.interruptions || 0))
       );
       wrap.appendChild(metrics);
 
@@ -324,7 +321,6 @@ function getFocusTimerScript() {
         const appLabel = focusCurrentAppLabel(timer);
         if (appLabel) {
           const app = div('focus-current-app', appLabel);
-          attachFocusTooltip(app, focusSessionTooltip(timer));
           timePanel.appendChild(app);
         }
         main.appendChild(timePanel);
@@ -561,9 +557,8 @@ function getFocusTimerScript() {
       }[quadrantId] || '四象限';
     }
 
-    function focusMetric(label, value, title) {
+    function focusMetric(label, value) {
       const item = div('focus-metric');
-      attachFocusTooltip(item, title);
       item.append(div('focus-metric-value', value), div('focus-metric-label', label));
       return item;
     }

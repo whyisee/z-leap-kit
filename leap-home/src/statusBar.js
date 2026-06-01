@@ -97,47 +97,9 @@ class LeapHomeStatusBarController {
 
 function buildFocusTimerSummary(context) {
   const timer = readFocusTimerSnapshot(context).activeSession || {};
-  const typeLabel = formatFocusType(timer.type);
-  const taskTitle = timer.task && timer.task.title ? cleanLabel(timer.task.title, 18) : '';
-  const baseLines = [
-    'Leap Home · 番茄时钟',
-    taskTitle ? `事项：${timer.task.title}` : '',
-    `目标：${formatDuration(timer.durationMs || 0)}`,
-    `专注：${formatDuration(timer.focusedMs || 0)}`,
-    `离开：${formatDuration(timer.blurredMs || 0)}`,
-    `打断：${timer.interruptions || 0} 次`
-  ].filter(Boolean);
-
-  if (timer.status === 'running') {
-    const status = timer.focused ? '专注中' : '已离开';
-    const text = `$(watch) ${formatClock(timer.remainingMs || 0)} ${status}`;
-    return {
-      text,
-      lines: baseLines.concat([
-        `状态：${status}`,
-        timer.foregroundAppName ? `当前应用：${timer.foregroundAppName}` : ''
-      ].filter(Boolean))
-    };
-  }
-
-  if (timer.status === 'paused') {
-    return {
-      text: `$(debug-pause) ${formatClock(timer.remainingMs || 0)} 已暂停`,
-      lines: baseLines.concat(['状态：已暂停'])
-    };
-  }
-
-  if (timer.status === 'completed') {
-    return {
-      text: `$(check) ${typeLabel}完成`,
-      lines: baseLines.concat(['状态：已完成'])
-    };
-  }
-
-  const minutes = Math.round((timer.durationMs || 25 * 60 * 1000) / 60000);
   return {
-    text: `$(watch) 番茄 ${minutes}m`,
-    lines: baseLines.concat(['状态：未开始'])
+    text: buildFocusTimerStatusText(timer),
+    lines: focusSessionTooltipLines(timer)
   };
 }
 
@@ -189,12 +151,134 @@ function createStatusBarTooltip(component, summary) {
   const markdown = new vscode.MarkdownString();
   markdown.isTrusted = true;
   markdown.supportHtml = false;
-  markdown.appendMarkdown((summary.lines || []).join('\n\n'));
+  markdown.appendMarkdown((summary.lines || []).map(escapeMarkdownLine).join('  \n'));
   markdown.appendMarkdown('\n\n---\n\n');
   markdown.appendMarkdown('点击打开 Leap Home。');
   markdown.appendMarkdown('\n\n');
   markdown.appendMarkdown(`[切换状态栏显示组件](command:leapHome.chooseStatusBarComponent) · 当前：${getStatusBarComponentLabel(component)}`);
   return markdown;
+}
+
+function buildFocusTimerStatusText(timer) {
+  const status = formatFocusStatus(timer);
+  if (timer.status === 'running') {
+    return `$(watch) ${formatClock(timer.remainingMs || 0)} ${status}`;
+  }
+  if (timer.status === 'paused') {
+    return `$(debug-pause) ${formatClock(timer.remainingMs || 0)} ${status}`;
+  }
+  if (timer.status === 'completed') {
+    return `$(check) ${status}`;
+  }
+  const minutes = Math.round((timer.durationMs || 25 * 60 * 1000) / 60000);
+  return `$(watch) 番茄 ${minutes}m`;
+}
+
+function focusSessionTooltipLines(item) {
+  if (!item) {
+    return ['番茄时钟'];
+  }
+  const title = item.result === 'aborted'
+    ? '番茄记录 · 已终止'
+    : item.status
+      ? `番茄时钟 · ${formatFocusStatus(item)}`
+      : `番茄记录 · ${formatFocusType(item.type)}`;
+  const lines = [title];
+  const taskTitle = focusTaskTitle(item.task);
+  if (taskTitle) {
+    lines.push(`事项：${taskTitle}`);
+  }
+  if (item.status === 'running') {
+    const currentApp = String(item.foregroundAppName || (item.foregroundApp && item.foregroundApp.name) || '').trim();
+    if (currentApp) {
+      lines.push(`当前应用：${currentApp}${item.foregroundAppTrusted ? '（计入专注）' : '（未计入专注）'}`);
+    }
+  }
+  if (item.startedAt) {
+    lines.push(`开始：${formatDateTime(item.startedAt)}`);
+  }
+  if (item.completedAt) {
+    lines.push(`结束：${formatDateTime(item.completedAt)}`);
+  }
+  lines.push(`目标：${formatDuration(item.durationMs || 0)}`);
+  lines.push(`已进行：${formatDuration(getFocusHistoryElapsed(item))}`);
+  lines.push(`专注合计：${formatDuration(item.focusedMs || 0)}`);
+  lines.push(`编辑器内：${formatDuration(getFocusEditorMs(item))}`);
+  lines.push(`外部专注：${formatDuration(item.trustedExternalMs || 0)}`);
+  lines.push(`离开：${formatDuration(item.blurredMs || 0)}`);
+  if (item.untrustedExternalMs) {
+    lines.push(`非可信应用：${formatDuration(item.untrustedExternalMs)}`);
+  }
+  if (item.idleMs) {
+    lines.push(`空闲：${formatDuration(item.idleMs)}`);
+  }
+  lines.push(`打断：${item.interruptions || 0} 次`);
+  if (item.appSwitches) {
+    lines.push(`应用切换：${item.appSwitches} 次`);
+  }
+  const appLines = focusAppUsageLines(item);
+  if (appLines.length) {
+    lines.push('');
+    lines.push('应用用时：');
+    lines.push(...appLines);
+  }
+  return lines.filter((line) => line !== undefined && line !== null);
+}
+
+function formatFocusStatus(session) {
+  if (session.status === 'running' && session.type === 'shortBreak') return '短休息中';
+  if (session.status === 'running' && session.type === 'longBreak') return '长休息中';
+  if (session.status === 'running' && session.focused && !session.cursorFocused) return '外部专注';
+  if (session.status === 'running' && session.focused) return '专注中';
+  if (session.status === 'running') return '已离开';
+  if (session.status === 'paused') return '已暂停';
+  if (session.status === 'completed') return `${formatFocusType(session.type)}完成`;
+  return '未开始';
+}
+
+function focusTaskTitle(task) {
+  return task && task.title ? String(task.title) : '';
+}
+
+function getFocusEditorMs(item) {
+  return Math.max(0, (Number(item && item.focusedMs) || 0) - (Number(item && item.trustedExternalMs) || 0));
+}
+
+function focusAppUsageLines(item) {
+  return getFocusAppUsage(item).map((app) => `- ${app.name}：${formatDuration(app.ms)}`);
+}
+
+function getFocusAppUsage(item) {
+  if (item && Array.isArray(item.topApps) && item.topApps.length) {
+    return item.topApps
+      .map((app) => ({
+        name: String(app.name || '').trim(),
+        ms: Number(app.ms) || 0
+      }))
+      .filter((app) => app.name && app.ms > 0);
+  }
+  const usage = item && item.appUsage && typeof item.appUsage === 'object' ? item.appUsage : {};
+  return Object.keys(usage)
+    .map((name) => ({ name, ms: Number(usage[name]) || 0 }))
+    .filter((app) => app.name && app.ms > 0)
+    .sort((left, right) => right.ms - left.ms || left.name.localeCompare(right.name))
+    .slice(0, 8);
+}
+
+function getFocusHistoryElapsed(item) {
+  return Math.min(Number(item && item.durationMs) || 0, (Number(item && item.focusedMs) || 0) + (Number(item && item.blurredMs) || 0));
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())} ${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
+}
+
+function escapeMarkdownLine(value) {
+  return String(value || '').replace(/[\\`*_{}[\]()#+\-.!|>]/g, '\\$&');
 }
 
 function normalizeStatusBarComponent(value) {
@@ -252,21 +336,19 @@ function formatClock(ms) {
   const totalSeconds = Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  return `${String(minutes).padStart(2, '0')}:${padDatePart(seconds)}`;
 }
 
 function formatDuration(ms) {
-  const totalSeconds = Math.max(0, Math.round((Number(ms) || 0) / 1000));
-  if (totalSeconds < 60) {
-    return `${totalSeconds}s`;
+  const seconds = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  if (minutes >= 60) {
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
   }
-  const minutes = Math.round(totalSeconds / 60);
-  if (minutes < 60) {
+  if (minutes > 0) {
     return `${minutes}m`;
   }
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `${hours}h${rest}m` : `${hours}h`;
+  return `${seconds}s`;
 }
 
 function formatFocusType(type) {
@@ -281,7 +363,11 @@ function formatDateKey(date) {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
     return '';
   }
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
+}
+
+function padDatePart(value) {
+  return String(value).padStart(2, '0');
 }
 
 function cleanLabel(value, maxLength) {

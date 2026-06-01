@@ -237,8 +237,14 @@ function registerFocusTimerLifecycle(context, provider) {
       if (result && result.completedSession) {
         notifySessionCompleted(result.completedSession);
       }
-      if (result && result.changed && provider && provider.panel && typeof provider.postModel === 'function') {
-        provider.postModel();
+      if (result && result.changed && provider && provider.panel) {
+        if (result.completedSession && typeof provider.postModel === 'function') {
+          provider.postModel();
+        } else if (typeof provider.postFocusTimer === 'function') {
+          provider.postFocusTimer();
+        } else if (typeof provider.postModel === 'function') {
+          provider.postModel();
+        }
       }
     } catch (error) {
       logger.warn('focus timer update failed', error);

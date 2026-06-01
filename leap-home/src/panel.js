@@ -27,6 +27,7 @@ const {
 } = require('./actions');
 const {
   pauseFocusTimer,
+  readFocusTimerSnapshot,
   resetFocusTimer,
   resumeFocusTimer,
   startFocusTimer
@@ -571,6 +572,23 @@ class LeapHomePanelController {
     this.panel.webview.postMessage(Object.assign({
       type: 'knowledgeGraphAiStatus'
     }, payload || {}));
+  }
+
+  postFocusTimer() {
+    if (!this.panel) {
+      return;
+    }
+
+    try {
+      this.panel.webview.postMessage({
+        type: 'focusTimer',
+        focusTimer: readFocusTimerSnapshot(this.context)
+      }).then(undefined, (error) => {
+        logger.warn('postFocusTimer delivery failed', error);
+      });
+    } catch (error) {
+      logger.error('postFocusTimer failed', error);
+    }
   }
 
   postModel() {

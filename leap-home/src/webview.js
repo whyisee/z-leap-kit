@@ -610,6 +610,9 @@ function getWebviewHtml(webview) {
         logToExtension('model received', summarizeModel(state.model));
         render();
       }
+      if (event.data && event.data.type === 'focusTimer') {
+        handleFocusTimerUpdate(event.data.focusTimer);
+      }
       if (event.data && event.data.type === 'error') {
         hasModel = true;
         logToExtension('extension error received', event.data.message || '');
@@ -798,6 +801,49 @@ function getWebviewHtml(webview) {
       for (const block of getActiveLayout()) {
         els.grid.appendChild(renderBlock(block));
       }
+    }
+
+    function handleFocusTimerUpdate(focusTimer) {
+      if (!state.model || !state.model.data) {
+        return;
+      }
+      state.model.data.focusTimer = focusTimer || {};
+      if (state.designMode) {
+        return;
+      }
+      refreshComponentBlocks('focusTimer');
+    }
+
+    function refreshComponentBlocks(component) {
+      const blocks = getActiveLayout().filter((block) => block.component === component);
+      if (!blocks.length) {
+        return;
+      }
+      for (const block of blocks) {
+        const wrapper = findRenderedBlock(block.id);
+        if (!wrapper) {
+          render();
+          return;
+        }
+        const body = wrapper.querySelector('.block-body');
+        if (body) {
+          body.textContent = '';
+          renderComponentBody(body, block);
+        }
+        const count = wrapper.querySelector('.count');
+        if (count) {
+          count.textContent = getComponentCount(block);
+        }
+      }
+    }
+
+    function findRenderedBlock(blockId) {
+      for (const element of els.grid.querySelectorAll('.block')) {
+        if (element.dataset.layoutId === blockId) {
+          return element;
+        }
+      }
+      return undefined;
     }
 
     function showRenderError(error) {
