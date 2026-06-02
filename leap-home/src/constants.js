@@ -3,7 +3,7 @@ const LEAP_DATA_DIR = '.leap';
 const LEAP_STATE_FILE = 'state.json';
 const FAVORITES_KEY = 'leapHome.favorites';
 const RECENT_KEY = 'leapHome.recent';
-const SCAN_LIMIT_PER_SOURCE = 2000;
+const SCAN_LIMIT_PER_SOURCE = 20000;
 const SEARCH_CONTENT_LIMIT = 65536;
 const MAX_INDEXED_FILE_BYTES = 1024 * 1024;
 

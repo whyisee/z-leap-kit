@@ -1,0 +1,29 @@
+{
+  "name": "whyisee-community",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "ASTRO_TELEMETRY_DISABLED=1 astro dev --host 0.0.0.0",
+    "build": "ASTRO_TELEMETRY_DISABLED=1 astro build",
+    "start": "node ./dist/server/entry.mjs",
+    "check": "ASTRO_TELEMETRY_DISABLED=1 astro check && tsc --noEmit",
+    "migrate": "node --experimental-strip-types scripts/migrate.ts",
+    "seed": "node --experimental-strip-types scripts/seed.ts",
+    "db:init": "npm run migrate && npm run seed",
+    "backup:db": "node --experimental-strip-types scripts/backup-db.ts"
+  },
+  "dependencies": {
+    "@astrojs/node": "latest",
+    "astro": "latest",
+    "better-sqlite3": "latest",
+    "hono": "latest",
+    "marked": "latest"
+  },
+  "devDependencies": {
+    "@astrojs/check": "latest",
+    "@types/better-sqlite3": "latest",
+    "@types/node": "latest",
+    "typescript": "latest"
+  }
+}

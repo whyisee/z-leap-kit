@@ -1,5 +1,7 @@
 # whyisee.xyz 技术方案规划
 
+> 当前方向已从“优先选择现成论坛系统”调整为“先自研轻量内容社区 MVP”。新的主开发文档见：[whyisee.xyz 自研社区开发设计文档](./indie-community-development-design.md)。本文保留为早期技术选型记录。
+
 ## 1. 目标
 
 为 `whyisee.xyz` 搭建一个类似 linux.do 的社区网站。优先选择成熟论坛系统，快速建立发帖、回复、分类、标签、搜索、通知、审核和 SEO 基础能力。

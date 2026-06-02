@@ -1,0 +1,67 @@
+---
+import { categoryPath, tagPath } from "@lib/routes";
+import { t, type Lang } from "@lib/i18n";
+import type { Category, Tag } from "@lib/types";
+
+interface Props {
+  categories: Category[];
+  tags: Tag[];
+  lang: Lang;
+  activeCategorySlug?: string;
+  activeTagSlug?: string;
+}
+
+const { categories, tags, lang } = Astro.props;
+const currentPath = Astro.url.pathname;
+const routeCategorySlug = currentPath.startsWith("/c/") ? decodeURIComponent(currentPath.split("/")[2] || "") : undefined;
+const routeTagSlug = currentPath.startsWith("/tag/") ? decodeURIComponent(currentPath.split("/")[2] || "") : undefined;
+const activeCategorySlug = Astro.props.activeCategorySlug || routeCategorySlug;
+const activeTagSlug = Astro.props.activeTagSlug || routeTagSlug;
+---
+
+<aside class="left-nav">
+  <details class="left-nav-section" open>
+    <summary>
+      <span>{t(lang, "sidebar.categories")}</span>
+      <span class="nav-section-chevron" aria-hidden="true">›</span>
+    </summary>
+    <div class="compact-list nav-list">
+      {categories.map((category) => (
+        <a
+          class:list={["nav-item", category.slug === activeCategorySlug && "is-active"]}
+          href={categoryPath(category.slug)}
+          style={`--pill-color: ${category.color}`}
+          aria-current={category.slug === activeCategorySlug ? "page" : undefined}
+        >
+          <span class="nav-item-main">
+            <span class="nav-item-marker category-marker" aria-hidden="true"></span>
+            <span class="nav-item-label">{category.name}</span>
+          </span>
+          <small>{category.topicCount ?? 0}</small>
+        </a>
+      ))}
+    </div>
+  </details>
+
+  <details class="left-nav-section" open>
+    <summary>
+      <span>{t(lang, "sidebar.tags")}</span>
+      <span class="nav-section-chevron" aria-hidden="true">›</span>
+    </summary>
+    <div class="compact-list nav-list">
+      {tags.slice(0, 18).map((tag) => (
+        <a
+          class:list={["nav-item", tag.slug === activeTagSlug && "is-active"]}
+          href={tagPath(tag.slug)}
+          aria-current={tag.slug === activeTagSlug ? "page" : undefined}
+        >
+          <span class="nav-item-main">
+            <span class="nav-item-marker tag-marker" aria-hidden="true">#</span>
+            <span class="nav-item-label">{tag.name}</span>
+          </span>
+          <small>{tag.topicCount ?? 0}</small>
+        </a>
+      ))}
+    </div>
+  </details>
+</aside>

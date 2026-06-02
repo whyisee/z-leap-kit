@@ -1,0 +1,33 @@
+---
+import { categoryPath, tagPath, topicPath } from "@lib/routes";
+import { formatRelative } from "@lib/format";
+import { t, type Lang } from "@lib/i18n";
+import type { Topic } from "@lib/types";
+
+interface Props {
+  topic: Topic;
+  lang: Lang;
+}
+
+const { topic, lang } = Astro.props;
+---
+
+<article class:list={["topic-card", topic.isPinned && "is-pinned"]}>
+  <div class="topic-main">
+    <h2><a href={topicPath(topic)}>{topic.title}</a></h2>
+    <div class="topic-meta">
+      <a class="category-pill" href={categoryPath(topic.category.slug)} style={`--pill-color: ${topic.category.color}`}>
+        {topic.category.name}
+      </a>
+      {topic.isPinned && <span class="meta-pill">{t(lang, "topic.pinned")}</span>}
+      {topic.type === "project" && <span class="meta-pill strong">{t(lang, "topic.project")}</span>}
+      <span class="topic-summary">{topic.summary}</span>
+    </div>
+    <div class="tag-row">
+      {topic.tags.map((tag) => <a href={tagPath(tag.slug)}>#{tag.name}</a>)}
+    </div>
+  </div>
+  <span class="topic-cell"><strong>{topic.replyCount}</strong></span>
+  <span class="topic-cell"><strong>{topic.viewCount}</strong></span>
+  <span class="topic-cell activity">{formatRelative(topic.publishedAt, lang)}</span>
+</article>

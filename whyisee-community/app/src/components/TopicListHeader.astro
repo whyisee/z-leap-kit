@@ -1,0 +1,16 @@
+---
+import { t, type Lang } from "@lib/i18n";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+---
+
+<div class="topic-table-head" aria-hidden="true">
+  <span>{t(lang, "topic.topic")}</span>
+  <span>{t(lang, "topic.replies")}</span>
+  <span>{t(lang, "topic.views")}</span>
+  <span>{t(lang, "topic.activity")}</span>
+</div>

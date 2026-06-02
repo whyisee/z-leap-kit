@@ -1,0 +1,162 @@
+---
+import { getSessionFromAstro } from "@lib/auth";
+import { t, type Lang } from "@lib/i18n";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const redirectParams = new URLSearchParams(Astro.url.searchParams);
+redirectParams.delete("lang");
+const redirectPath = `${Astro.url.pathname}${redirectParams.toString() ? `?${redirectParams.toString()}` : ""}`;
+const session = getSessionFromAstro(Astro);
+const loginHref = session ? "/admin" : `/login?redirect=${encodeURIComponent(redirectPath)}`;
+---
+
+<header class="site-header">
+  <div class="header-left">
+    <button
+      class="sidebar-toggle"
+      type="button"
+      aria-label={t(lang, "header.sidebarToggle")}
+      aria-expanded="true"
+      title={t(lang, "header.sidebarCollapse")}
+      data-expand-label={t(lang, "header.sidebarExpand")}
+      data-collapse-label={t(lang, "header.sidebarCollapse")}
+    >
+      <span class="sidebar-toggle-icon" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </span>
+    </button>
+
+    <a class="brand" href="/" aria-label="whyisee.xyz">
+      <span class="brand-mark">W</span>
+      <span>
+        <strong>whyisee</strong>
+        <small>{t(lang, "site.slogan")}</small>
+      </span>
+    </a>
+  </div>
+
+  <div class="header-actions">
+    <a class="login-button" href={loginHref}>
+      <span class="login-icon" aria-hidden="true"></span>
+      <span>{session ? t(lang, "header.admin") : t(lang, "header.login")}</span>
+    </a>
+
+    <form class="language-switch" method="post" action="/api/lang" data-language-switch>
+      <input type="hidden" name="redirect" value={redirectPath} />
+      <input type="hidden" name="lang" value={lang} data-language-input />
+      <button
+        class="language-button"
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-label={t(lang, "header.language")}
+        data-language-button
+      >
+        <span>{lang === "zh" ? "ZH" : "EN"}</span>
+        <span class="language-chevron" aria-hidden="true">⌄</span>
+      </button>
+      <div class="language-menu" role="menu" aria-label={t(lang, "header.language")} data-language-menu hidden>
+        <button class:list={["language-option", lang === "zh" && "is-active"]} type="submit" role="menuitem" data-lang-value="zh">
+          <span class="language-check" aria-hidden="true">{lang === "zh" ? "✓" : ""}</span>
+          <span>中文</span>
+          <small>ZH</small>
+        </button>
+        <button class:list={["language-option", lang === "en" && "is-active"]} type="submit" role="menuitem" data-lang-value="en">
+          <span class="language-check" aria-hidden="true">{lang === "en" ? "✓" : ""}</span>
+          <span>English</span>
+          <small>EN</small>
+        </button>
+      </div>
+    </form>
+  </div>
+</header>
+
+<script is:inline>
+  (() => {
+    const storageKey = "whyisee_sidebar_collapsed";
+    const button = document.querySelector(".sidebar-toggle");
+
+    if (!button) {
+      return;
+    }
+
+    const applyState = (collapsed) => {
+      document.documentElement.dataset.sidebar = collapsed ? "collapsed" : "";
+      if (!collapsed) {
+        document.documentElement.removeAttribute("data-sidebar");
+      }
+
+      const label = collapsed ? button.dataset.expandLabel : button.dataset.collapseLabel;
+      button.setAttribute("aria-expanded", String(!collapsed));
+      button.setAttribute("aria-label", label || "");
+      button.setAttribute("title", label || "");
+    };
+
+    let collapsed = false;
+
+    try {
+      collapsed = localStorage.getItem(storageKey) === "1";
+    } catch {
+      collapsed = false;
+    }
+
+    applyState(collapsed);
+
+    button.addEventListener("click", () => {
+      collapsed = document.documentElement.dataset.sidebar !== "collapsed";
+      applyState(collapsed);
+
+      try {
+        localStorage.setItem(storageKey, collapsed ? "1" : "0");
+      } catch {
+        // Ignore storage failures; the current page can still toggle normally.
+      }
+    });
+  })();
+
+  (() => {
+    const switcher = document.querySelector("[data-language-switch]");
+    const button = document.querySelector("[data-language-button]");
+    const menu = document.querySelector("[data-language-menu]");
+    const input = document.querySelector("[data-language-input]");
+
+    if (!switcher || !button || !menu || !input) {
+      return;
+    }
+
+    const setOpen = (open) => {
+      menu.hidden = !open;
+      button.setAttribute("aria-expanded", String(open));
+      switcher.dataset.open = open ? "true" : "false";
+    };
+
+    button.addEventListener("click", () => {
+      setOpen(menu.hidden);
+    });
+
+    menu.querySelectorAll("[data-lang-value]").forEach((option) => {
+      option.addEventListener("click", () => {
+        input.value = option.dataset.langValue || input.value;
+      });
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!switcher.contains(event.target)) {
+        setOpen(false);
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        button.focus();
+      }
+    });
+  })();
+</script>

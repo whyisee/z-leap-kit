@@ -1,0 +1,57 @@
+---
+import SiteHeader from "@components/SiteHeader.astro";
+import SiteFooter from "@components/SiteFooter.astro";
+import { getLangFromAstro, t } from "@lib/i18n";
+import "@styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title: providedTitle,
+  description: providedDescription,
+} = Astro.props;
+
+const lang = getLangFromAstro(Astro);
+const title = providedTitle || t(lang, "site.title");
+const description = providedDescription || t(lang, "site.description");
+const canonical = new URL(Astro.url.pathname, Astro.site || "https://whyisee.xyz").toString();
+---
+
+<!doctype html>
+<html lang={lang === "en" ? "en" : "zh-CN"}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#10151d" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <script is:inline>
+      try {
+        if (localStorage.getItem("whyisee_sidebar_collapsed") === "1") {
+          document.documentElement.dataset.sidebar = "collapsed";
+        }
+      } catch {
+        document.documentElement.removeAttribute("data-sidebar");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="site-shell">
+      <SiteHeader lang={lang} />
+      <main>
+        <slot />
+      </main>
+      <SiteFooter lang={lang} />
+    </div>
+  </body>
+</html>

@@ -1,0 +1,33 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import ForumFrame from "@components/ForumFrame.astro";
+import TopicCard from "@components/TopicCard.astro";
+import TopicListHeader from "@components/TopicListHeader.astro";
+import { getLangFromAstro, t } from "@lib/i18n";
+import { listCategories, listTags } from "@server/services/categories";
+import { listFeaturedTopics, listTopics } from "@server/services/topics";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const projects = listTopics({ type: "project", limit: 50, lang });
+const categories = listCategories(lang);
+const tags = listTags(lang);
+const featuredTopics = listFeaturedTopics(4, lang);
+---
+
+<BaseLayout title={`${t(lang, "page.projects")} - whyisee.xyz`} description={t(lang, "page.projectsDescription")}>
+  <ForumFrame categories={categories} tags={tags} featuredTopics={featuredTopics} lang={lang}>
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{t(lang, "page.projects")}</p>
+        <h1>{t(lang, "page.projects")}</h1>
+      </div>
+      <a class="button secondary" href="/admin/topics/new">{t(lang, "page.submitProjectDraft")}</a>
+    </div>
+    <div class="topic-list">
+      <TopicListHeader lang={lang} />
+      {projects.map((topic) => <TopicCard topic={topic} lang={lang} />)}
+    </div>
+  </ForumFrame>
+</BaseLayout>

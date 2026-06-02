@@ -1,0 +1,58 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { getAuthConfig, getSessionFromAstro, safeRedirectPath } from "@lib/auth";
+import { getLangFromAstro, t } from "@lib/i18n";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = getSessionFromAstro(Astro);
+const redirectTarget = safeRedirectPath(Astro.url.searchParams.get("redirect"), "/admin");
+const hasError = Astro.url.searchParams.get("error") === "1";
+const authConfig = getAuthConfig();
+
+if (session) {
+  return Astro.redirect(redirectTarget, 303);
+}
+---
+
+<BaseLayout title={`${t(lang, "auth.loginTitle")} - whyisee.xyz`} description={t(lang, "auth.loginDescription")}>
+  <section class="article-page auth-page">
+    <div class="auth-card">
+      <p class="eyebrow">{t(lang, "auth.loginAction")}</p>
+      <h1>{t(lang, "auth.loginTitle")}</h1>
+      <p>{t(lang, "auth.loginDescription")}</p>
+
+      {hasError && <p class="auth-message error">{t(lang, "auth.loginError")}</p>}
+      {!authConfig.isConfigured && <p class="auth-message error">{t(lang, "auth.loginDisabled")}</p>}
+      {authConfig.usesDevPassword && <p class="auth-message muted">{t(lang, "auth.devHint")}</p>}
+
+      <form class="auth-form" method="post" action="/api/login">
+        <input type="hidden" name="redirect" value={redirectTarget} />
+        <label>
+          {t(lang, "auth.username")}
+          <input
+            autocomplete="username"
+            name="username"
+            placeholder={t(lang, "auth.usernamePlaceholder")}
+            required
+            type="text"
+            value={authConfig.usesDevPassword ? authConfig.username : ""}
+          />
+        </label>
+        <label>
+          {t(lang, "auth.password")}
+          <input
+            autocomplete="current-password"
+            name="password"
+            placeholder={t(lang, "auth.passwordPlaceholder")}
+            required
+            type="password"
+            value={authConfig.usesDevPassword ? authConfig.password : ""}
+          />
+        </label>
+        <button class="button primary" disabled={!authConfig.isConfigured} type="submit">{t(lang, "auth.loginAction")}</button>
+      </form>
+    </div>
+  </section>
+</BaseLayout>

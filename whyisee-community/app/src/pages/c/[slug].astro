@@ -1,0 +1,56 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import ForumFrame from "@components/ForumFrame.astro";
+import TopicCard from "@components/TopicCard.astro";
+import TopicListHeader from "@components/TopicListHeader.astro";
+import { getLangFromAstro, t } from "@lib/i18n";
+import { getCategoryBySlug, listCategories, listTags } from "@server/services/categories";
+import { listFeaturedTopics, listTopics } from "@server/services/topics";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const slug = Astro.params.slug || "";
+const category = getCategoryBySlug(slug, lang);
+const categories = listCategories(lang);
+const tags = listTags(lang);
+const featuredTopics = listFeaturedTopics(4, lang);
+
+if (!category) {
+  Astro.response.status = 404;
+}
+
+const topics = category ? listTopics({ categorySlug: category.slug, limit: 50, lang }) : [];
+---
+
+<BaseLayout title={`${category?.name ?? t(lang, "category.notFound")} - whyisee.xyz`} description={category?.description ?? t(lang, "category.notFound")}>
+  {category ? (
+    <ForumFrame
+      categories={categories}
+      tags={tags}
+      featuredTopics={featuredTopics}
+      lang={lang}
+      activeCategorySlug={category.slug}
+    >
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">{t(lang, "category.category")}</p>
+          <h1>{category.name}</h1>
+          <p>{category.description}</p>
+        </div>
+        <span class="count-pill">{topics.length} {t(lang, "page.items")}</span>
+      </div>
+      <div class="topic-list">
+        <TopicListHeader lang={lang} />
+        {topics.map((topic) => <TopicCard topic={topic} lang={lang} />)}
+      </div>
+    </ForumFrame>
+  ) : (
+    <ForumFrame categories={categories} tags={tags} featuredTopics={featuredTopics} lang={lang}>
+      <section class="article-page">
+        <h1>{t(lang, "category.notFound")}</h1>
+        <p>{t(lang, "category.notFoundDescription")}</p>
+      </section>
+    </ForumFrame>
+  )}
+</BaseLayout>

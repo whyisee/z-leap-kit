@@ -2,7 +2,7 @@
   "name": "leap-home",
   "displayName": "Leap Home",
   "description": "Personal knowledge dashboard for Cursor / VS Code with AI search, notes, Pomodoro, tasks, calendars, and knowledge graph.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "whyisee",
   "author": "whyisee",
   "license": "MIT",

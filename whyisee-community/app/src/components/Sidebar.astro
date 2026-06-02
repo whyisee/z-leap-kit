@@ -1,0 +1,27 @@
+---
+import { t, type Lang } from "@lib/i18n";
+import type { Topic } from "@lib/types";
+
+interface Props {
+  featuredTopics?: Topic[];
+  lang: Lang;
+}
+
+const { featuredTopics = [], lang } = Astro.props;
+---
+
+<aside class="sidebar">
+  <section class="side-panel">
+    <h2>{t(lang, "sidebar.status")}</h2>
+    <p>{t(lang, "sidebar.statusText")}</p>
+  </section>
+
+  {featuredTopics.length > 0 && (
+    <section class="side-panel">
+      <h2>{t(lang, "sidebar.featured")}</h2>
+      <div class="compact-list">
+        {featuredTopics.map((topic) => <a href={`/t/${topic.id}/${topic.slug}`}>{topic.title}</a>)}
+      </div>
+    </section>
+  )}
+</aside>

@@ -1,0 +1,16 @@
+[Unit]
+Description=whyisee.xyz community app
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/whyisee-community/app
+Environment=NODE_ENV=production
+Environment=SITE_URL=https://whyisee.xyz
+Environment=WHYISEE_DB_PATH=/var/lib/whyisee/whyisee.sqlite
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

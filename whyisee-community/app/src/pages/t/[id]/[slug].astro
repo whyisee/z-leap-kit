@@ -1,0 +1,80 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import LeftNav from "@components/LeftNav.astro";
+import MarkdownContent from "@components/MarkdownContent.astro";
+import { categoryPath, tagPath } from "@lib/routes";
+import { formatDate } from "@lib/format";
+import { getLangFromAstro, t } from "@lib/i18n";
+import { listCategories, listTags } from "@server/services/categories";
+import { getTopicById, listRelatedTopics } from "@server/services/topics";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const id = Number(Astro.params.id || 0);
+const topic = getTopicById(id, lang);
+
+if (!topic) {
+  Astro.response.status = 404;
+} else if (Astro.params.slug !== topic.slug) {
+  return Astro.redirect(`/t/${topic.id}/${topic.slug}`, 301);
+}
+
+const related = topic ? listRelatedTopics(topic, 4, lang) : [];
+const categories = listCategories(lang);
+const tags = listTags(lang);
+---
+
+<BaseLayout title={`${topic?.title ?? t(lang, "topic.notFound")} - whyisee.xyz`} description={topic?.summary ?? t(lang, "topic.notFound")}>
+  {topic ? (
+    <section class="page-grid topic-layout">
+      <LeftNav categories={categories} tags={tags} lang={lang} activeCategorySlug={topic.category.slug} />
+
+      <div class="content-column">
+        <article class="topic-page">
+          <header class="topic-hero">
+            <div class="topic-meta">
+              <a class="category-pill" href={categoryPath(topic.category.slug)} style={`--pill-color: ${topic.category.color}`}>
+                {topic.category.name}
+              </a>
+              <span>{formatDate(topic.publishedAt, lang)}</span>
+              <span>{topic.viewCount} {t(lang, "topic.views")}</span>
+            </div>
+            <h1>{topic.title}</h1>
+            <p>{topic.summary}</p>
+            <div class="tag-row">
+              {topic.tags.map((tag) => <a href={tagPath(tag.slug)}>#{tag.name}</a>)}
+            </div>
+          </header>
+
+          <MarkdownContent html={topic.contentHtml} />
+        </article>
+      </div>
+
+      <aside class="sidebar">
+        <section class="side-panel">
+          <h2>{t(lang, "topic.info")}</h2>
+          <div class="topic-side-meta">
+            <span>{t(lang, "topic.replies")} <strong>{topic.replyCount}</strong></span>
+            <span>{t(lang, "topic.views")} <strong>{topic.viewCount}</strong></span>
+            <span>{t(lang, "topic.published")} <strong>{formatDate(topic.publishedAt, lang)}</strong></span>
+          </div>
+        </section>
+
+        {related.length > 0 && (
+          <section class="side-panel">
+            <h2>{t(lang, "topic.related")}</h2>
+            <div class="compact-list">
+              {related.map((item) => <a href={`/t/${item.id}/${item.slug}`}>{item.title}</a>)}
+            </div>
+          </section>
+        )}
+      </aside>
+    </section>
+  ) : (
+    <section class="article-page">
+      <h1>{t(lang, "topic.notFound")}</h1>
+      <p>{t(lang, "topic.notFoundDescription")}</p>
+    </section>
+  )}
+</BaseLayout>

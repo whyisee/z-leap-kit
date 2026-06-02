@@ -1,0 +1,9 @@
+---
+interface Props {
+  html: string;
+}
+
+const { html } = Astro.props;
+---
+
+<article class="markdown-content" set:html={html} />
