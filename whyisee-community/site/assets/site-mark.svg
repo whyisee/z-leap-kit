@@ -1,0 +1,6 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="whyisee.xyz">
+  <rect x="8" y="8" width="80" height="80" rx="20" fill="#10151D"/>
+  <path d="M26 34C32 25 42 22 50 26C59 30 64 40 61 50C59 59 51 66 41 65C33 64 27 59 24 52" stroke="#7FB3FF" stroke-width="7" stroke-linecap="round"/>
+  <path d="M45 33L66 23L58 45L79 42L51 74L57 52L36 55L45 33Z" fill="#F3C969"/>
+  <circle cx="44" cy="46" r="6" fill="#F7FAFC"/>
+</svg>

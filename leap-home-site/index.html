@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Leap Home - Cursor and VS Code Knowledge Homepage</title>
+    <meta name="description" content="Leap Home is a customizable knowledge homepage for Cursor and VS Code with AI search, tasks, Pomodoro, calendars, knowledge graph, and next-action recommendations.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://leap-home.example/">
+    <link rel="alternate" hreflang="en" href="https://leap-home.example/">
+    <link rel="alternate" hreflang="zh-CN" href="https://leap-home.example/">
+    <link rel="icon" href="./assets/icons/icon-128.png" type="image/png">
+    <link rel="preload" href="./assets/screenshots/home-overview.webp" as="image">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Leap Home - Cursor and VS Code Knowledge Homepage">
+    <meta property="og:description" content="A customizable editor homepage for knowledge search, tasks, focus, calendars, graph insights, and AI next actions.">
+    <meta property="og:image" content="https://leap-home.example/assets/screenshots/home-overview.webp">
+    <meta property="og:url" content="https://leap-home.example/">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Leap Home">
+    <meta name="twitter:description" content="A customizable knowledge homepage for Cursor and VS Code.">
+    <meta name="twitter:image" content="https://leap-home.example/assets/screenshots/home-overview.webp">
+    <link rel="stylesheet" href="./styles.css">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Leap Home",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Windows, macOS, Linux",
+        "description": "A customizable knowledge homepage for Cursor and VS Code with AI search, notes, Pomodoro, tasks, calendars, and knowledge graph.",
+        "url": "https://leap-home.example/",
+        "downloadUrl": "https://open-vsx.org/extension/whyisee/leap-home",
+        "codeRepository": "https://github.com/whyisee/z-leap-kit/tree/main/leap-home",
+        "softwareVersion": "0.3.0",
+        "license": "https://opensource.org/license/mit",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does Leap Home work in Cursor?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Leap Home is built as a Cursor and VS Code extension and opens as an editor-window homepage."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Where is Leap Home data stored?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Workspace data is stored locally under the .leap directory, with separate files for component data."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Leap Home support AI?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. DeepSeek can be configured for AI search understanding, task classification, knowledge organization, and next-action recommendations."
+            }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header class="site-header" aria-label="Site header">
+      <a class="brand" href="#top" aria-label="Leap Home">
+        <img src="./assets/icons/icon-128.png" alt="" width="32" height="32">
+        <span>Leap Home</span>
+      </a>
+      <nav class="nav" aria-label="Primary navigation">
+        <a href="#features">Features</a>
+        <a href="#screenshots">Screenshots</a>
+        <a href="#install">Install</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <a class="header-cta" href="https://open-vsx.org/extension/whyisee/leap-home">Install</a>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <img class="hero-image" src="./assets/screenshots/home-overview.webp" alt="Leap Home editor homepage overview" width="1440" height="757">
+        <div class="hero-shade" aria-hidden="true"></div>
+        <div class="hero-content">
+          <p class="eyebrow">Cursor / VS Code extension</p>
+          <h1 id="hero-title">Leap Home</h1>
+          <p class="hero-subtitle">A customizable knowledge homepage for Cursor and VS Code.</p>
+          <p class="hero-copy">
+            Search your workspace, capture ideas, plan tasks, track focus, explore knowledge graphs, and let AI suggest what to do next.
+          </p>
+          <p class="hero-copy zh">
+            给 Cursor / VS Code 的个人知识库首页，把搜索、任务、日历、番茄时钟、知识图谱和 AI 推荐放进一个可自由布局的工作台。
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="https://open-vsx.org/extension/whyisee/leap-home">Install from Open VSX</a>
+            <a class="button" href="https://github.com/whyisee/z-leap-kit/tree/main/leap-home">View on GitHub</a>
+          </div>
+          <dl class="hero-stats" aria-label="Product highlights">
+            <div>
+              <dt>10+</dt>
+              <dd>workspace components</dd>
+            </div>
+            <div>
+              <dt>AI</dt>
+              <dd>DeepSeek-ready workflows</dd>
+            </div>
+            <div>
+              <dt>.leap</dt>
+              <dd>local workspace storage</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="intro band" aria-labelledby="intro-title">
+        <div class="section-inner intro-grid">
+          <div>
+            <p class="section-kicker">Why it exists</p>
+            <h2 id="intro-title">Your editor already knows the work. Leap Home makes it visible.</h2>
+          </div>
+          <div class="intro-copy">
+            <p>
+              Leap Home turns scattered project files, notes, prompts, tasks, calendar items, and focus records into a single editor-native homepage. It is not a side panel. It is a real workspace surface you can customize.
+            </p>
+            <p>
+              It is designed for developers who want a practical second-brain dashboard without leaving Cursor or VS Code.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="features" aria-labelledby="features-title">
+        <div class="section-inner">
+          <div class="section-head">
+            <p class="section-kicker">Core workflow</p>
+            <h2 id="features-title">Built around how developers actually start work.</h2>
+          </div>
+          <div class="feature-grid">
+            <article class="feature-card accent-blue">
+              <span class="feature-code">01</span>
+              <h3>Editor-native Home</h3>
+              <p>Open a knowledge homepage in the editor window instead of squeezing another panel into the sidebar.</p>
+            </article>
+            <article class="feature-card accent-green">
+              <span class="feature-code">02</span>
+              <h3>Modular Workspace</h3>
+              <p>Arrange search, tasks, calendars, focus timer, stats, and graph components on a responsive grid.</p>
+            </article>
+            <article class="feature-card accent-amber">
+              <span class="feature-code">03</span>
+              <h3>Deep Search</h3>
+              <p>Search Markdown, code, prompts, tasks, calendar events, captures, and workspace metadata with commands or AI.</p>
+            </article>
+            <article class="feature-card accent-pink">
+              <span class="feature-code">04</span>
+              <h3>AI Next Action</h3>
+              <p>Ask AI to summarize recent context, split stuck tasks, suggest tiny next steps, or write directly into notes.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="components band" aria-labelledby="components-title">
+        <div class="section-inner">
+          <div class="section-head compact">
+            <p class="section-kicker">Components</p>
+            <h2 id="components-title">A homepage made of tools, not decoration.</h2>
+          </div>
+          <div class="component-grid">
+            <article><b>Search</b><span>AI search, command filters, previews, favorites, task actions.</span></article>
+            <article><b>Quick Capture</b><span>Capture notes, links, tasks, code snippets, and inbox entries.</span></article>
+            <article><b>Four Quadrants</b><span>Add, classify, schedule, complete, and calendar-link tasks.</span></article>
+            <article><b>Focus Timer</b><span>Pomodoro sessions with linked tasks, app usage, and history.</span></article>
+            <article><b>Countdown</b><span>Track important dates, deadlines, milestones, and overdue items.</span></article>
+            <article><b>Calendars</b><span>Week and month views linked to tasks and events.</span></article>
+            <article><b>Stats</b><span>Compact health metrics across tasks, search, focus, and knowledge.</span></article>
+            <article><b>Knowledge Graph</b><span>Explore document relationships, tags, topics, islands, and insights.</span></article>
+            <article><b>Next Action</b><span>System and AI recommendations for what to do next.</span></article>
+          </div>
+        </div>
+      </section>
+
+      <section id="screenshots" class="screenshots" aria-labelledby="screenshots-title">
+        <div class="section-inner">
+          <div class="section-head">
+            <p class="section-kicker">Product screenshots</p>
+            <h2 id="screenshots-title">Real workspace views, ready to inspect.</h2>
+          </div>
+          <div class="shot-grid">
+            <figure class="shot large">
+              <img src="./assets/screenshots/home-overview.webp" alt="Leap Home overview with search, AI recommendations, and focus timer" width="1440" height="757" loading="lazy">
+              <figcaption>Homepage overview</figcaption>
+            </figure>
+            <figure class="shot">
+              <img src="./assets/screenshots/quick-capture.webp" alt="Leap Home quick capture component" width="1440" height="531" loading="lazy">
+              <figcaption>Quick capture</figcaption>
+            </figure>
+            <figure class="shot">
+              <img src="./assets/screenshots/planning-calendar.webp" alt="Leap Home quadrants and calendar planning components" width="1440" height="706" loading="lazy">
+              <figcaption>Planning and calendars</figcaption>
+            </figure>
+            <figure class="shot">
+              <img src="./assets/screenshots/knowledge-graph.webp" alt="Leap Home knowledge graph component" width="1440" height="689" loading="lazy">
+              <figcaption>Knowledge graph</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="ai band" aria-labelledby="ai-title">
+        <div class="section-inner ai-grid">
+          <div>
+            <p class="section-kicker">AI, but practical</p>
+            <h2 id="ai-title">DeepSeek helps when you ask it to.</h2>
+            <p>
+              Leap Home uses AI for search understanding, task classification, knowledge organization, and next-action suggestions. It keeps normal workflows local and only sends AI requests when you trigger AI features.
+            </p>
+          </div>
+          <ul class="check-list">
+            <li>Configure your own DeepSeek API key in Cursor settings.</li>
+            <li>Store workspace data locally under <code>.leap</code>.</li>
+            <li>Ask AI to split tasks, summarize recent notes, or write useful Markdown.</li>
+            <li>Switch the interface between Chinese and English.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="install" class="install" aria-labelledby="install-title">
+        <div class="section-inner install-grid">
+          <div class="section-head compact">
+            <p class="section-kicker">Get started</p>
+            <h2 id="install-title">Install it, open it, make the homepage yours.</h2>
+          </div>
+          <ol class="steps">
+            <li>
+              <span>1</span>
+              <div>
+                <h3>Install Leap Home</h3>
+                <p>Install from Open VSX in Cursor or VS Code-compatible environments.</p>
+              </div>
+            </li>
+            <li>
+              <span>2</span>
+              <div>
+                <h3>Open the homepage</h3>
+                <p>Run <code>Leap Home: Open Knowledge Home</code> from the command palette.</p>
+              </div>
+            </li>
+            <li>
+              <span>3</span>
+              <div>
+                <h3>Customize the grid</h3>
+                <p>Create a custom homepage, drag components, resize them, and save your workspace layout.</p>
+              </div>
+            </li>
+            <li>
+              <span>4</span>
+              <div>
+                <h3>Configure AI when needed</h3>
+                <p>Set your DeepSeek API key and use AI search, task classification, graph organization, and next actions.</p>
+              </div>
+            </li>
+          </ol>
+          <div class="install-actions">
+            <a class="button primary" href="https://open-vsx.org/extension/whyisee/leap-home">Open VSX</a>
+            <a class="button" href="https://github.com/whyisee/z-leap-kit/tree/main/leap-home">GitHub</a>
+            <a class="button" href="https://github.com/whyisee/z-leap-kit/blob/main/leap-home/README.en.md">English README</a>
+            <a class="button" href="https://github.com/whyisee/z-leap-kit/blob/main/leap-home/README.md">中文 README</a>
+          </div>
+        </div>
+      </section>
+
+      <section id="faq" class="faq band" aria-labelledby="faq-title">
+        <div class="section-inner">
+          <div class="section-head compact">
+            <p class="section-kicker">FAQ</p>
+            <h2 id="faq-title">The short version before you install.</h2>
+          </div>
+          <div class="faq-grid">
+            <details open>
+              <summary>Does Leap Home work in Cursor?</summary>
+              <p>Yes. It opens as an editor-window homepage, which is especially useful in Cursor workflows.</p>
+            </details>
+            <details>
+              <summary>Does it work in VS Code?</summary>
+              <p>It is built on the VS Code extension API and targets VS Code-compatible environments.</p>
+            </details>
+            <details>
+              <summary>Where is my data stored?</summary>
+              <p>Workspace data is stored locally under <code>.leap</code>, separated by component data files.</p>
+            </details>
+            <details>
+              <summary>Does AI send my notes to DeepSeek?</summary>
+              <p>Only AI-triggered features send relevant context to DeepSeek. Normal search, layout, and storage remain local.</p>
+            </details>
+            <details>
+              <summary>Can I customize the layout?</summary>
+              <p>Yes. You can create custom homepages, drag components, resize them, and save multiple layouts.</p>
+            </details>
+            <details>
+              <summary>How is it different from normal editor search?</summary>
+              <p>Leap Home searches workspace files plus Leap data such as tasks, captures, calendar events, prompts, favorites, and AI-interpreted queries.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="closing" aria-labelledby="closing-title">
+        <div class="section-inner closing-inner">
+          <h2 id="closing-title">Give your editor a home base.</h2>
+          <p>Leap Home turns daily context into an inspectable, editable, AI-assisted workspace surface.</p>
+          <a class="button primary" href="https://open-vsx.org/extension/whyisee/leap-home">Install Leap Home</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="section-inner footer-inner">
+        <p>Leap Home by whyisee. MIT licensed.</p>
+        <nav aria-label="Footer navigation">
+          <a href="https://github.com/whyisee/z-leap-kit">GitHub</a>
+          <a href="https://github.com/whyisee/z-leap-kit/issues">Issues</a>
+          <a href="https://open-vsx.org/extension/whyisee/leap-home">Open VSX</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>
