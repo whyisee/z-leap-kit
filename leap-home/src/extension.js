@@ -15,6 +15,7 @@ const logger = require('./logger');
 const { LeapHomePanelController } = require('./panel');
 const { LeapHomeStatusBarController } = require('./statusBar');
 const { migrateLeapStateStorage } = require('./storage');
+const { LANGUAGE_OPTIONS, getConfiguredLanguage, getLanguage, t } = require('./i18n');
 
 function activate(context) {
   logger.info('extension activated');
@@ -34,6 +35,9 @@ function activate(context) {
     }),
     vscode.commands.registerCommand('leapHome.chooseStatusBarComponent', async () => {
       await statusBar.chooseComponent();
+    }),
+    vscode.commands.registerCommand('leapHome.switchLanguage', async () => {
+      await switchLanguage(homePanel, statusBar);
     }),
     vscode.commands.registerCommand('leapHome.searchKnowledge', async () => {
       await searchKnowledge(index, context, homePanel);
@@ -94,7 +98,7 @@ function activate(context) {
     .then(() => logger.info('storage migration checked'))
     .catch((error) => {
       logger.error('storage migration failed', error);
-      vscode.window.showWarningMessage(`Leap Home 数据迁移失败：${error.message}`);
+      vscode.window.showWarningMessage(`Leap Home ${t('数据迁移失败：')}${error.message}`);
     })
     .then(() => {
       logger.info('initial index refresh started');
@@ -108,7 +112,7 @@ function activate(context) {
       },
       (error) => {
         logger.error('initial index refresh failed', error);
-        vscode.window.showWarningMessage(`Leap Home 索引失败：${error.message}`);
+        vscode.window.showWarningMessage(`Leap Home ${t('索引失败：')}${error.message}`);
       }
     );
 }
@@ -120,7 +124,7 @@ async function refreshIndex(index, homePanel) {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Window,
-      title: 'Leap Home: 正在刷新索引'
+      title: `Leap Home: ${t('正在刷新索引')}`
     },
     async () => {
       await index.refresh();
@@ -128,7 +132,31 @@ async function refreshIndex(index, homePanel) {
     }
   );
   logger.info('refreshIndex command finished');
-  vscode.window.showInformationMessage('Leap Home 索引已刷新。');
+  vscode.window.showInformationMessage(`Leap Home ${t('索引已刷新。')}`);
+}
+
+async function switchLanguage(homePanel, statusBar) {
+  const current = getConfiguredLanguage();
+  const picked = await vscode.window.showQuickPick(
+    LANGUAGE_OPTIONS.map((language) => ({
+      label: language.id === current ? `$(check) ${language.label}` : language.label,
+      description: language.id,
+      detail: language.description,
+      languageId: language.id
+    })),
+    {
+      title: 'Leap Home Language / 语言',
+      placeHolder: 'Choose UI language / 选择界面语言',
+      ignoreFocusOut: true
+    }
+  );
+  if (!picked) {
+    return;
+  }
+  await vscode.workspace.getConfiguration('leapHome').update('language', picked.languageId, vscode.ConfigurationTarget.Global);
+  homePanel.postModel();
+  statusBar.refresh();
+  vscode.window.setStatusBarMessage(`Leap Home: ${getLanguage() === 'en' ? 'Language switched' : '语言已切换'}`, 2500);
 }
 
 function createIndexWatcher(index, homePanel) {

@@ -224,8 +224,8 @@ function getNextActionScript() {
       );
       const ai = options.ai || {};
       const meta = options.activeTab === 'ai'
-        ? (ai.generatedAt ? 'DeepSeek · ' + formatTimeOfDay(ai.generatedAt) : '可输入问题')
-        : '本地规则 · ' + String(options.systemCount);
+        ? (ai.generatedAt ? 'DeepSeek · ' + formatTimeOfDay(ai.generatedAt) : tr('可输入问题'))
+        : tr('本地规则') + ' · ' + String(options.systemCount);
       tabs.append(list, div('next-action-tab-meta', meta));
       return tabs;
     }
@@ -297,7 +297,7 @@ function getNextActionScript() {
       const input = document.createElement('input');
       input.type = 'text';
       input.value = state.nextActionQuestion || ai.question || '';
-      input.placeholder = '问 AI：现在先做什么 / 帮我拆小任务';
+      input.placeholder = tr('问 AI：现在先做什么 / 帮我拆小任务');
       input.addEventListener('input', () => {
         state.nextActionQuestion = input.value;
       });
@@ -305,7 +305,7 @@ function getNextActionScript() {
       const trigger = button(label, () => requestNextActionAi(input.value), true);
       trigger.className = 'next-action-ai-button';
       trigger.disabled = state.nextActionAiLoading;
-      trigger.title = ai.reason ? '上次 AI 理由：' + ai.reason : '让 DeepSeek 根据当前知识库和任务回答';
+      trigger.title = ai.reason ? tr('上次 AI 理由：') + ai.reason : tr('让 DeepSeek 根据当前知识库和任务回答');
       form.addEventListener('submit', (event) => {
         event.preventDefault();
         requestNextActionAi(input.value);
@@ -326,8 +326,8 @@ function getNextActionScript() {
     function nextActionEmpty(title, reason) {
       const emptyState = div('next-action-empty');
       emptyState.append(
-        div('next-action-title', title),
-        div('next-action-reason', reason)
+        div('next-action-title', tr(title)),
+        div('next-action-reason', tr(reason))
       );
       const actions = div('next-action-actions');
       actions.append(
@@ -340,7 +340,7 @@ function getNextActionScript() {
 
     function nextActionCoachNote(data) {
       const ai = data && data.ai ? data.ai : {};
-      const question = ai.question ? '问：' + ai.question : '';
+      const question = ai.question ? tr('问：') + ai.question : '';
       const text = [question, ai.summary, ai.encouragement].filter(Boolean).join(' · ');
       return text ? div('next-action-coach-note', text) : undefined;
     }
@@ -348,12 +348,12 @@ function getNextActionScript() {
     function nextActionCard(item, primary) {
       const card = div(['next-action-card', primary ? 'primary' : '', item.type || 'plan', item.sourceType || '', item.ai ? 'ai' : ''].filter(Boolean).join(' '));
       const head = div('next-action-head');
-      const title = div('next-action-title', item.title || '下一步行动');
+      const title = div('next-action-title', item.title || tr('下一步行动'));
       title.title = item.title || '';
       const badgeText = (item.ai ? 'AI · ' : '') + formatNextActionType(item.type, item.sourceType) + ' · ' + String(Math.max(0, Math.round(item.score || 0)));
       head.append(title, div('next-action-badge', badgeText));
-      const reason = div('next-action-reason', item.reason || '根据当前上下文推荐。');
-      if (item.aiReason) reason.title = 'AI 整体理由：' + item.aiReason;
+      const reason = div('next-action-reason', item.reason || tr('根据当前上下文推荐。'));
+      if (item.aiReason) reason.title = tr('AI 整体理由：') + item.aiReason;
       card.append(head, reason, nextActionButtons(item));
       return card;
     }
@@ -366,7 +366,7 @@ function getNextActionScript() {
       const pin = button(item.pinned ? '取消置顶' : '置顶', () => {
         post('pinNextAction', { key: item.key, pinned: !item.pinned, item: nextActionEventItem(item) });
       }, true);
-      pin.title = item.pinned ? '取消置顶这条推荐' : '置顶这条推荐';
+      pin.title = item.pinned ? tr('取消置顶这条推荐') : tr('置顶这条推荐');
       actions.appendChild(pin);
       if (!(item.actions || []).some((action) => action.type === 'dismiss')) {
         actions.appendChild(nextActionButton(item, { type: 'dismiss', label: '忽略' }));
@@ -378,7 +378,7 @@ function getNextActionScript() {
       const pending = Boolean(state.nextActionPending[nextActionActionKey(item, action)]);
       const control = button(pending ? '处理中...' : (action.label || formatNextActionButton(action.type)), () => handleNextAction(item, action), action.type !== 'startFocus');
       control.disabled = pending;
-      control.title = action.query ? '搜索：' + action.query : '';
+      control.title = action.query ? tr('搜索：') + action.query : '';
       return control;
     }
 
@@ -386,7 +386,7 @@ function getNextActionScript() {
       const actionKey = nextActionActionKey(item, action);
       if (state.nextActionPending[actionKey]) return;
       state.nextActionPending[actionKey] = true;
-      state.nextActionNotice = '正在执行：' + (action.label || formatNextActionButton(action.type));
+      state.nextActionNotice = tr('正在执行：') + (action.label || formatNextActionButton(action.type));
       render();
       const nextAction = {
         item: nextActionEventItem(item),
@@ -439,7 +439,7 @@ function getNextActionScript() {
       if (action.type === 'openInbox') {
         post('nextActionAdoption', nextAction);
         post('openInbox');
-        state.nextActionNotice = '已打开收集箱';
+        state.nextActionNotice = tr('已打开收集箱');
         delete state.nextActionPending[actionKey];
         render();
         return;
@@ -454,7 +454,7 @@ function getNextActionScript() {
       if (action.type === 'search') {
         post('nextActionAdoption', nextAction);
         runSearchFromCommand(action.query || item.title || '');
-        state.nextActionNotice = '已搜索：' + (action.query || item.title || '');
+        state.nextActionNotice = tr('已搜索：') + (action.query || item.title || '');
         delete state.nextActionPending[actionKey];
         render();
         return;
@@ -462,10 +462,10 @@ function getNextActionScript() {
       if (action.type === 'createTask') {
         post('addQuadrantTask', {
           quadrantId: action.quadrantId || 'importantNotUrgent',
-          text: action.title || item.title || 'AI 建议事项',
+          text: action.title || item.title || tr('AI 建议事项'),
           dueDate: action.dueDate || '',
           source: 'next-action-ai',
-          reason: item.reason || 'AI 做什么推荐生成',
+          reason: item.reason || tr('AI 做什么推荐生成'),
           nextAction
         });
         return;
@@ -475,7 +475,7 @@ function getNextActionScript() {
         return;
       }
       post('nextActionAdoption', nextAction);
-      state.nextActionNotice = '暂不支持这个动作：' + (action.type || '未知');
+      state.nextActionNotice = tr('暂不支持这个动作：') + (action.type || tr('未知'));
       delete state.nextActionPending[actionKey];
       render();
     }
@@ -505,32 +505,32 @@ function getNextActionScript() {
     }
 
     function formatNextActionType(type, sourceType) {
-      if (sourceType === 'microtask') return '小任务';
-      if (sourceType === 'insight') return '洞察';
-      if (sourceType === 'encouragement') return '鼓励';
-      if (sourceType === 'idea') return '想法';
+      if (sourceType === 'microtask') return tr('小任务');
+      if (sourceType === 'insight') return tr('洞察');
+      if (sourceType === 'encouragement') return tr('鼓励');
+      if (sourceType === 'idea') return tr('想法');
       return {
-        'do-now': '现在做',
-        plan: '安排',
-        review: '整理',
-        break: '休息'
-      }[type] || '推荐';
+        'do-now': tr('现在做'),
+        plan: tr('安排'),
+        review: tr('整理'),
+        break: tr('休息')
+      }[type] || tr('推荐');
     }
 
     function formatNextActionButton(type) {
       return {
-        startFocus: '开始番茄',
-        startBreak: '短休息',
-        completeTask: '完成',
-        scheduleTask: '安排',
-        completeCountdown: '已完成',
-        openInbox: '打开收集箱',
-        createNote: '新建笔记',
-        appendNote: '写入笔记',
-        createTask: '加入待办',
-        search: '查上下文',
-        dismiss: '忽略'
-      }[type] || '执行';
+        startFocus: tr('开始番茄'),
+        startBreak: tr('短休息'),
+        completeTask: tr('完成'),
+        scheduleTask: tr('安排'),
+        completeCountdown: tr('已完成'),
+        openInbox: tr('打开收集箱'),
+        createNote: tr('新建笔记'),
+        appendNote: tr('写入笔记'),
+        createTask: tr('加入待办'),
+        search: tr('查上下文'),
+        dismiss: tr('忽略')
+      }[type] || tr('执行');
     }
 
 `;

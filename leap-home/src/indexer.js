@@ -25,6 +25,7 @@ const { readQuickCaptures } = require('./quickCapture');
 const { readSearchHistory } = require('./searchHistory');
 const { getMaxRecentItems, getStoredPaths } = require('./state');
 const { QUADRANT_DEFINITIONS, getLeapDataPaths, readLeapState } = require('./storage');
+const { getLanguage, localizeObject, translateText } = require('./i18n');
 const { getWorkspaceName, hashText, normalizePath, resolveConfiguredPath } = require('./utils');
 
 class LeapHomeIndex {
@@ -115,6 +116,7 @@ class LeapHomeIndex {
   }
 
   getModel() {
+    const locale = getLanguage();
     const leapState = readLeapState(this.context);
     const focusTimer = readFocusTimerSnapshot(this.context);
     const countdown = readCountdowns(this.context);
@@ -162,15 +164,16 @@ class LeapHomeIndex {
 
     return {
       ready: this.ready,
+      locale,
       workspaceName: getWorkspaceName(),
       inboxPath: resolveInboxPath(this.context),
       activeTemplate: homeConfiguration.activeTemplate,
       activeHomeId: homeConfiguration.activeHomeId,
       activeHomeType: homeConfiguration.activeHomeType,
-      activeTemplateTitle: homeConfiguration.activeTemplateTitle,
-      templates: getTemplateSummaries(),
-      components: getComponentDefinitions(),
-      layout: homeConfiguration.layout,
+      activeTemplateTitle: translateText(homeConfiguration.activeTemplateTitle, locale),
+      templates: localizeObject(getTemplateSummaries(), locale),
+      components: localizeObject(getComponentDefinitions(), locale),
+      layout: localizeObject(homeConfiguration.layout, locale),
       data: {
         items: this.items.map(serializeItem),
         prompts: this.prompts.map(serializePrompt),

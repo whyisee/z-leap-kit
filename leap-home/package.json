@@ -2,7 +2,7 @@
   "name": "leap-home",
   "displayName": "Leap Home",
   "description": "Personal knowledge dashboard for Cursor / VS Code with AI search, notes, Pomodoro, tasks, calendars, and knowledge graph.",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "publisher": "whyisee",
   "author": "whyisee",
   "license": "MIT",
@@ -55,6 +55,7 @@
     "onStartupFinished",
     "onCommand:leapHome.openHome",
     "onCommand:leapHome.chooseStatusBarComponent",
+    "onCommand:leapHome.switchLanguage",
     "onCommand:leapHome.searchKnowledge",
     "onCommand:leapHome.captureNote",
     "onCommand:leapHome.refreshIndex",
@@ -75,60 +76,64 @@
     "commands": [
       {
         "command": "leapHome.openHome",
-        "title": "Leap Home: 打开知识首页"
+        "title": "Leap Home: 打开知识首页 / Open Knowledge Home"
       },
       {
         "command": "leapHome.chooseStatusBarComponent",
-        "title": "Leap Home: 切换状态栏显示组件"
+        "title": "Leap Home: 切换状态栏显示组件 / Switch Status Bar Component"
+      },
+      {
+        "command": "leapHome.switchLanguage",
+        "title": "Leap Home: 切换语言 / Switch Language"
       },
       {
         "command": "leapHome.searchKnowledge",
-        "title": "Leap Home: 搜索知识库"
+        "title": "Leap Home: 搜索知识库 / Search Knowledge Base"
       },
       {
         "command": "leapHome.captureNote",
-        "title": "Leap Home: 记录到收集箱"
+        "title": "Leap Home: 记录到收集箱 / Capture to Inbox"
       },
       {
         "command": "leapHome.refreshIndex",
-        "title": "Leap Home: 刷新索引",
+        "title": "Leap Home: 刷新索引 / Refresh Index",
         "icon": "$(refresh)"
       },
       {
         "command": "leapHome.addCurrentFileToFavorites",
-        "title": "Leap Home: 收藏当前文件"
+        "title": "Leap Home: 收藏当前文件 / Favorite Current File"
       },
       {
         "command": "leapHome.copyPrompt",
-        "title": "Leap Home: 复制 Prompt"
+        "title": "Leap Home: 复制 Prompt / Copy Prompt"
       },
       {
         "command": "leapHome.switchTemplate",
-        "title": "Leap Home: 切换主页"
+        "title": "Leap Home: 切换主页 / Switch Homepage"
       },
       {
         "command": "leapHome.openTemplateDesigner",
-        "title": "Leap Home: 新建自定义主页"
+        "title": "Leap Home: 新建自定义主页 / New Custom Homepage"
       },
       {
         "command": "leapHome.editCustomHome",
-        "title": "Leap Home: 修改自定义主页"
+        "title": "Leap Home: 修改自定义主页 / Edit Custom Homepage"
       },
       {
         "command": "leapHome.editCurrentHome",
-        "title": "Leap Home: 编辑当前主页"
+        "title": "Leap Home: 编辑当前主页 / Edit Current Homepage"
       },
       {
         "command": "leapHome.closeTemplateDesigner",
-        "title": "Leap Home: 退出主页编辑"
+        "title": "Leap Home: 退出主页编辑 / Exit Homepage Editing"
       },
       {
         "command": "leapHome.configureAi",
-        "title": "Leap Home: 配置 AI"
+        "title": "Leap Home: 配置 AI / Configure AI"
       },
       {
         "command": "leapHome.showLogs",
-        "title": "Leap Home: 打开调试日志"
+        "title": "Leap Home: 打开调试日志 / Open Logs"
       }
     ],
     "configuration": {
@@ -246,6 +251,21 @@
             "展示索引数量和今日专注时长。"
           ],
           "description": "状态栏快捷入口展示的组件摘要。点击状态栏始终打开 Leap Home 首页。"
+        },
+        "leapHome.language": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "zh-CN",
+            "en"
+          ],
+          "enumDescriptions": [
+            "跟随 Cursor / VS Code 显示语言。",
+            "使用中文界面。",
+            "Use the English interface."
+          ],
+          "description": "Leap Home 界面语言。执行“Leap Home: 切换语言 / Switch Language”可以快速切换。"
         },
         "leapHome.sources": {
           "type": "array",

@@ -269,7 +269,7 @@ function getSearchScript() {
       const stack = div('stack');
       const input = document.createElement('input');
       input.type = 'search';
-      input.placeholder = '搜索代码、正文、标题、路径、Prompt';
+      input.placeholder = tr('搜索代码、正文、标题、路径、Prompt');
       input.value = state.query;
       const results = div('list search-results');
       results.dataset.searchResults = 'true';
@@ -284,8 +284,8 @@ function getSearchScript() {
         renderSearchResults(results, block);
       }, true);
       ai.className = 'search-ai-button';
-      ai.title = '用 DeepSeek 理解这次查询';
-      ai.setAttribute('aria-label', '用 AI 搜索');
+      ai.title = tr('用 DeepSeek 理解这次查询');
+      ai.setAttribute('aria-label', tr('用 AI 搜索'));
       input.addEventListener('input', (event) => {
         state.query = event.target.value.trim();
         state.searchSuggestionIndex = -1;
@@ -342,23 +342,23 @@ function getSearchScript() {
       container.textContent = '';
       container.dataset.limit = String(getLimit(block, 30));
       container.dataset.floating = state.query ? 'true' : 'false';
-      if (!state.query) return container.appendChild(empty('输入关键词开始搜索代码、正文、标题、路径和 Prompt。'));
+      if (!state.query) return container.appendChild(empty(tr('输入关键词开始搜索代码、正文、标题、路径和 Prompt。')));
       if (state.search.error) {
-        container.append(empty('搜索失败：' + state.search.error), actionsWrap([actionButton('刷新索引', 'refresh', true)]));
+        container.append(empty(tr('搜索失败：') + state.search.error), actionsWrap([actionButton('刷新索引', 'refresh', true)]));
         return;
       }
       if (state.search.loading || state.search.responseQuery !== state.query) {
-        container.appendChild(empty(state.search.aiAttempted ? '正在使用 AI 理解查询并搜索...' : '正在搜索 Leap Home 索引...'));
+        container.appendChild(empty(state.search.aiAttempted ? tr('正在使用 AI 理解查询并搜索...') : tr('正在搜索 Leap Home 索引...')));
         return;
       }
       const groups = state.search.groups || [];
       const searchNote = renderSearchNote();
       if (groups.length === 0) {
-        const text = '没有匹配结果。当前索引 ' + String(state.search.indexedItems || 0) + ' 个文件、'
-          + String(state.search.indexedEntities || 0) + ' 条 Leap 数据'
-          + (state.search.sourceErrors ? '，' + String(state.search.sourceErrors) + ' 个知识源报错' : '')
-          + (state.search.truncatedSources ? '，' + String(state.search.truncatedSources) + ' 个知识源已截断' : '')
-          + '。';
+        const text = tr('没有匹配结果。当前索引 ') + String(state.search.indexedItems || 0) + tr(' 个文件、')
+          + String(state.search.indexedEntities || 0) + tr(' 条 Leap 数据')
+          + (state.search.sourceErrors ? tr('，') + String(state.search.sourceErrors) + tr(' 个知识源报错') : '')
+          + (state.search.truncatedSources ? tr('，') + String(state.search.truncatedSources) + tr(' 个知识源已截断') : '')
+          + tr('。');
         if (searchNote) {
           container.appendChild(searchNote);
         }
@@ -372,7 +372,7 @@ function getSearchScript() {
         container.appendChild(searchGroup(group));
       }
       if (state.search.total > getLimit(block, 30)) {
-        container.appendChild(div('muted', '还有 ' + String(state.search.total - getLimit(block, 30)) + ' 条结果未展示，可在属性里调高显示数量。'));
+        container.appendChild(div('muted', tr('还有 ') + String(state.search.total - getLimit(block, 30)) + tr(' 条结果未展示，可在属性里调高显示数量。')));
       }
     }
 
@@ -381,7 +381,7 @@ function getSearchScript() {
       if (!effectiveQuery || effectiveQuery === state.query.trim()) {
         if (state.search.aiAttempted && state.search.aiReason) {
           const note = div('search-ai-note');
-          note.title = 'AI 没有生成新的搜索指令\\n原始查询：' + state.query.trim() + '\\n说明：' + state.search.aiReason;
+          note.title = tr('AI 没有生成新的搜索指令\\n原始查询：') + state.query.trim() + '\\n' + tr('说明：') + state.search.aiReason;
           note.append(strongText('AI'), div('search-ai-command', state.search.aiReason));
           return note;
         }
@@ -389,9 +389,9 @@ function getSearchScript() {
       }
       const note = div('search-ai-note');
       note.title = [
-        'AI 使用的搜索指令：' + effectiveQuery,
-        '原始查询：' + state.query.trim(),
-        state.search.aiReason ? '分析理由：' + state.search.aiReason : ''
+        tr('AI 使用的搜索指令：') + effectiveQuery,
+        tr('原始查询：') + state.query.trim(),
+        state.search.aiReason ? tr('分析理由：') + state.search.aiReason : ''
       ].filter(Boolean).join('\\n');
       note.append(strongText('AI 指令'), div('search-ai-command', effectiveQuery));
       return note;
@@ -404,7 +404,7 @@ function getSearchScript() {
           applySearchCommand(command.value, input, results, block);
         }, true);
         chip.className = isSearchCommandActive(command.value) ? 'search-command active' : 'search-command';
-        chip.title = command.title;
+        chip.title = tr(command.title);
         bar.appendChild(chip);
       }
       return bar;
@@ -442,7 +442,7 @@ function getSearchScript() {
         }, true);
         item.className = index === state.searchSuggestionIndex ? 'search-suggest-item selected' : 'search-suggest-item';
         item.addEventListener('mousedown', (event) => event.preventDefault());
-        item.append(div('search-suggest-label', command.label), div('search-suggest-desc', command.title));
+        item.append(div('search-suggest-label', command.label), div('search-suggest-desc', tr(command.title)));
         container.appendChild(item);
       }
       container.hidden = false;
@@ -561,18 +561,18 @@ function getSearchScript() {
     }
 
     function formatSearchHistoryDescription(entry) {
-      const mode = entry.mode === 'ai' ? 'AI' : '本地';
-      const count = entry.count > 1 ? ' · ' + String(entry.count) + ' 次' : '';
-      const resultCount = Number.isFinite(Number(entry.resultCount)) ? ' · ' + String(entry.resultCount) + ' 条' : '';
+      const mode = entry.mode === 'ai' ? 'AI' : tr('本地');
+      const count = entry.count > 1 ? ' · ' + String(entry.count) + ' ' + tr('次') : '';
+      const resultCount = Number.isFinite(Number(entry.resultCount)) ? ' · ' + String(entry.resultCount) + ' ' + tr('条') : '';
       return mode + resultCount + count;
     }
 
     function formatSearchHistoryTitle(entry) {
       const lines = [
-        '搜索历史',
-        '原始查询：' + String(entry.query || ''),
-        entry.mode === 'ai' && entry.effectiveQuery ? 'AI 指令：' + entry.effectiveQuery : '',
-        entry.reason ? '说明：' + entry.reason : ''
+        tr('搜索历史'),
+        tr('原始查询：') + String(entry.query || ''),
+        entry.mode === 'ai' && entry.effectiveQuery ? tr('AI 指令：') + entry.effectiveQuery : '',
+        entry.reason ? tr('说明：') + entry.reason : ''
       ].filter(Boolean);
       return lines.join('\\n');
     }
@@ -716,7 +716,7 @@ function getSearchScript() {
       state.search.requestedQuery = query;
       state.search.error = '';
       state.search.aiAttempted = Boolean(useAi);
-      state.search.aiReason = useAi ? '正在使用 DeepSeek 理解查询...' : '';
+      state.search.aiReason = useAi ? tr('正在使用 DeepSeek 理解查询...') : '';
       if (!query) {
         state.search.loading = false;
         state.search.responseQuery = '';
@@ -776,7 +776,7 @@ function getSearchScript() {
     function searchGroup(group) {
       const section = div('search-group');
       const head = div('search-group-title');
-      head.append(div('search-group-name', group.title), div('count', String((group.items || []).length)));
+      head.append(div('search-group-name', tr(group.title)), div('count', String((group.items || []).length)));
       section.appendChild(head);
       for (const item of group.items || []) {
         section.appendChild(searchResultRow(item));
@@ -791,7 +791,7 @@ function getSearchScript() {
       row.dataset.resultKey = resultKey;
       if (item.filePath) {
         row.classList.add('openable');
-        row.title = '打开 ' + (item.relativePath || item.fileName || item.title);
+        row.title = tr('打开 ') + (item.relativePath || item.fileName || item.title);
         row.addEventListener('click', (event) => {
           if (event.target.closest('button, input, select, textarea')) return;
           post('openItem', Object.assign({ filePath: item.filePath }, item.line ? { line: item.line } : {}));
@@ -801,26 +801,26 @@ function getSearchScript() {
       const title = div('item-title');
       appendHighlightedText(title, item.title || item.fileName, highlightTerms);
       title.title = item.filePath;
-      const metaParts = [item.sourceName, item.relativePath || item.fileName];
+      const metaParts = searchResultMetaParts(item);
       if (item.heading) metaParts.push(item.heading);
-      if (item.filePath && item.line) metaParts.push('第 ' + String(item.line) + ' 行');
+      if (item.filePath && item.line) metaParts.push(tr('第 ') + String(item.line) + tr(' 行'));
       const meta = div('item-meta');
       appendHighlightedText(meta, metaParts.filter(Boolean).join(' · '), highlightTerms);
       main.append(title, meta);
       if (item.snippet) {
         const snippet = div('search-snippet');
-        appendHighlightedText(snippet, item.snippet, highlightTerms);
+        appendHighlightedText(snippet, localizeSearchResultSystemText(item.snippet), highlightTerms);
         main.appendChild(snippet);
       }
       if (item.preview) {
         const preview = div('search-preview');
-        appendHighlightedText(preview, item.preview, highlightTerms);
+        appendHighlightedText(preview, localizeSearchResultSystemText(item.preview), highlightTerms);
         main.appendChild(preview);
       }
       if (Array.isArray(item.reasons) && item.reasons.length > 0) {
         const reasons = div('reason-list');
         for (const reason of item.reasons.slice(0, 4)) {
-          reasons.appendChild(div('reason-chip', reason));
+          reasons.appendChild(div('reason-chip', tr(reason)));
         }
         main.appendChild(reasons);
       }
@@ -844,7 +844,7 @@ function getSearchScript() {
       }
       if (item.category !== 'task') {
         const task = searchActionButton('+', '加入待办', 'addTask');
-        task.title = '加入四象限的重要不紧急';
+        task.title = tr('加入四象限的重要不紧急');
         task.dataset.filePath = item.filePath || '';
         task.dataset.taskText = buildSearchTaskText(item);
         actions.appendChild(task);
@@ -861,9 +861,43 @@ function getSearchScript() {
       return row;
     }
 
+    function searchResultMetaParts(item) {
+      if (item.category === 'task') {
+        const relative = String(item.relativePath || '');
+        const parts = relative.split(' · ').map((part) => part.trim()).filter(Boolean);
+        const date = parts.find((part) => /^\\d{4}-\\d{2}-\\d{2}$/.test(part));
+        const quadrant = item.quadrantTitle || parts.find((part) => !/^\\d{4}-\\d{2}-\\d{2}$/.test(part)) || '';
+        return [tr(item.sourceName || '四象限'), tr(quadrant), date];
+      }
+      return [tr(item.sourceName || ''), item.relativePath || item.fileName];
+    }
+
+    function localizeSearchResultSystemText(text) {
+      let result = String(text || '');
+      const replacements = [
+        ['事项描述不完整，无法判断重要性和紧急性', tr('事项描述不完整，无法判断重要性和紧急性')],
+        ['不重要不紧急', tr('不重要不紧急')],
+        ['不重要紧急', tr('不重要紧急')],
+        ['重要不紧急', tr('重要不紧急')],
+        ['重要且紧急', tr('重要且紧急')],
+        ['重要紧急', tr('重要紧急')],
+        ['四象限', tr('四象限')],
+        ['日历', tr('日历')],
+        ['收集箱', tr('收集箱')],
+        ['已完成', tr('已完成')],
+        ['未完成', tr('未完成')]
+      ];
+      for (const [source, target] of replacements) {
+        if (source && target && source !== target) {
+          result = result.split(source).join(target);
+        }
+      }
+      return result;
+    }
+
     function buildSearchTaskText(item) {
       const target = item.heading ? item.title + ' / ' + item.heading : item.title;
-      return '处理：' + target;
+      return tr('处理：') + target;
     }
 
     function getSearchResultKey(item) {

@@ -2,6 +2,27 @@
 
 All notable changes to Leap Home will be documented in this file.
 
+## [0.3.0] - 2026-06-02
+
+### Added
+
+- Added full Chinese/English internationalization support for the homepage webview, status bar, commands, component metadata, and extension messages.
+- Added `leapHome.language` support with Auto, Chinese, and English modes, plus the `Leap Home: 切换语言 / Switch Language` command.
+- Added language-aware DeepSeek prompts for Next Action AI recommendations so summaries, suggestions, action labels, and generated note content follow the selected UI language.
+
+### Changed
+
+- Localized Search, Next Action, Focus Timer, Countdown, Week Calendar, Month Calendar, and Stats component details, including placeholders, empty states, tooltips, labels, date text, and dynamic status messages.
+- Improved Search result rendering so plugin-generated metadata such as quadrants, task status, search groups, match reasons, and action tooltips follow the selected language while preserving user-authored note/task content.
+- Improved Focus Timer language coverage for task binding, completed focus actions, history details, app usage tooltips, and follow-up focus controls.
+- Improved date and countdown formatting for English mode, including month titles, week/month summaries, due-date labels, countdown units, overdue text, and color names.
+
+### Fixed
+
+- Fixed mixed-language Search result items where task metadata such as `四象限`, quadrant names, and `已完成/未完成` still appeared in English mode.
+- Fixed untranslated Focus Timer controls such as `+ 新建事项` and `再专注`.
+- Fixed untranslated Stats health summaries and dynamic tooltip text.
+
 ## [0.2.0] - 2026-06-01
 
 ### Added

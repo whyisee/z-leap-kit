@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const { readCountdowns } = require('./countdown');
 const { readFocusTimerSnapshot } = require('./focusTimer');
+const { t } = require('./i18n');
 
 const STATUS_BAR_COMPONENTS = [
   {
@@ -59,14 +60,14 @@ class LeapHomeStatusBarController {
     const current = normalizeStatusBarComponent(vscode.workspace.getConfiguration('leapHome').get('statusBar.component', 'focusTimer'));
     const picked = await vscode.window.showQuickPick(
       STATUS_BAR_COMPONENTS.map((component) => ({
-        label: component.id === current ? `$(check) ${component.label}` : component.label,
+        label: component.id === current ? `$(check) ${t(component.label)}` : t(component.label),
         description: component.id,
-        detail: component.description,
+        detail: t(component.description),
         componentId: component.id
       })),
       {
-        title: 'Leap Home 状态栏显示组件',
-        placeHolder: '选择状态栏要展示的组件摘要'
+        title: t('Leap Home 状态栏显示组件'),
+        placeHolder: t('选择状态栏要展示的组件摘要')
       }
     );
     if (!picked) {
@@ -75,7 +76,7 @@ class LeapHomeStatusBarController {
 
     await vscode.workspace.getConfiguration('leapHome').update('statusBar.component', picked.componentId, vscode.ConfigurationTarget.Global);
     this.refresh();
-    vscode.window.setStatusBarMessage(`Leap Home: 状态栏已切换为${getStatusBarComponentLabel(picked.componentId)}`, 2500);
+    vscode.window.setStatusBarMessage(`Leap Home: ${t('状态栏已切换为')}${t(getStatusBarComponentLabel(picked.componentId))}`, 2500);
   }
 
   buildSummary(component) {
@@ -90,7 +91,7 @@ class LeapHomeStatusBarController {
     }
     return {
       text: '$(home) Leap Home',
-      lines: ['Leap Home', '点击打开知识首页。']
+      lines: ['Leap Home', t('点击打开知识首页。')]
     };
   }
 }
@@ -114,7 +115,7 @@ function buildCountdownSummary(context) {
   if (!items.length) {
     return {
       text: '$(calendar) 无倒计日',
-      lines: ['Leap Home · 倒计日', '暂无未完成倒计日。']
+      lines: [`Leap Home · ${t('倒计日')}`, t('暂无未完成倒计日。')]
     };
   }
 
@@ -123,10 +124,10 @@ function buildCountdownSummary(context) {
   return {
     text: `$(calendar) ${cleanLabel(item.title, 10)} ${distance}`,
     lines: [
-      'Leap Home · 倒计日',
-      `最近：${item.title}`,
-      `时间：${item.targetDate}${item.targetTime ? ` ${item.targetTime}` : ''}`,
-      `状态：${distance}`
+      `Leap Home · ${t('倒计日')}`,
+      `${t('最近：')}${item.title}`,
+      `${t('时间：')}${item.targetDate}${item.targetTime ? ` ${item.targetTime}` : ''}`,
+      `${t('状态：')}${distance}`
     ]
   };
 }
@@ -135,14 +136,14 @@ function buildStatsSummary(context, index) {
   const focusTimer = readFocusTimerSnapshot(context);
   const todayFocusMs = getTodayFocusMs(focusTimer.history || []);
   const itemCount = index && Array.isArray(index.items) ? index.items.length : 0;
-  const readyText = index && index.ready ? `${itemCount} 文件` : '索引中';
+  const readyText = index && index.ready ? `${itemCount} ${t('文件')}` : t('索引中');
   return {
     text: `$(graph) ${readyText} · ${formatDuration(todayFocusMs)}`,
     lines: [
-      'Leap Home · 今日统计',
-      `索引：${readyText}`,
-      `今日专注：${formatDuration(todayFocusMs)}`,
-      `番茄记录：${(focusTimer.history || []).length} 条`
+      `Leap Home · ${t('今日统计')}`,
+      `${t('索引：')}${readyText}`,
+      `${t('今日专注：')}${formatDuration(todayFocusMs)}`,
+      `${t('番茄记录：')}${(focusTimer.history || []).length} ${t('条')}`
     ]
   };
 }
@@ -153,9 +154,9 @@ function createStatusBarTooltip(component, summary) {
   markdown.supportHtml = false;
   markdown.appendMarkdown((summary.lines || []).map(escapeMarkdownLine).join('  \n'));
   markdown.appendMarkdown('\n\n---\n\n');
-  markdown.appendMarkdown('点击打开 Leap Home。');
+  markdown.appendMarkdown(t('点击打开 Leap Home。'));
   markdown.appendMarkdown('\n\n');
-  markdown.appendMarkdown(`[切换状态栏显示组件](command:leapHome.chooseStatusBarComponent) · 当前：${getStatusBarComponentLabel(component)}`);
+  markdown.appendMarkdown(`[${t('切换状态栏显示组件')}](command:leapHome.chooseStatusBarComponent) · ${t('当前：')}${t(getStatusBarComponentLabel(component))}`);
   return markdown;
 }
 
@@ -171,7 +172,7 @@ function buildFocusTimerStatusText(timer) {
     return `$(check) ${status}`;
   }
   const minutes = Math.round((timer.durationMs || 25 * 60 * 1000) / 60000);
-  return `$(watch) 番茄 ${minutes}m`;
+  return `$(watch) ${t('番茄')} ${minutes}m`;
 }
 
 function focusSessionTooltipLines(item) {
@@ -179,61 +180,61 @@ function focusSessionTooltipLines(item) {
     return ['番茄时钟'];
   }
   const title = item.result === 'aborted'
-    ? '番茄记录 · 已终止'
+    ? `${t('番茄记录')} · ${t('已终止')}`
     : item.status
-      ? `番茄时钟 · ${formatFocusStatus(item)}`
-      : `番茄记录 · ${formatFocusType(item.type)}`;
+      ? `${t('番茄时钟')} · ${formatFocusStatus(item)}`
+      : `${t('番茄记录')} · ${formatFocusType(item.type)}`;
   const lines = [title];
   const taskTitle = focusTaskTitle(item.task);
   if (taskTitle) {
-    lines.push(`事项：${taskTitle}`);
+    lines.push(`${t('事项：')}${taskTitle}`);
   }
   if (item.status === 'running') {
     const currentApp = String(item.foregroundAppName || (item.foregroundApp && item.foregroundApp.name) || '').trim();
     if (currentApp) {
-      lines.push(`当前应用：${currentApp}${item.foregroundAppTrusted ? '（计入专注）' : '（未计入专注）'}`);
+      lines.push(`${t('当前应用：')}${currentApp}${item.foregroundAppTrusted ? t('（计入专注）') : t('（未计入专注）')}`);
     }
   }
   if (item.startedAt) {
-    lines.push(`开始：${formatDateTime(item.startedAt)}`);
+    lines.push(`${t('开始：')}${formatDateTime(item.startedAt)}`);
   }
   if (item.completedAt) {
-    lines.push(`结束：${formatDateTime(item.completedAt)}`);
+    lines.push(`${t('结束：')}${formatDateTime(item.completedAt)}`);
   }
-  lines.push(`目标：${formatDuration(item.durationMs || 0)}`);
-  lines.push(`已进行：${formatDuration(getFocusHistoryElapsed(item))}`);
-  lines.push(`专注合计：${formatDuration(item.focusedMs || 0)}`);
-  lines.push(`编辑器内：${formatDuration(getFocusEditorMs(item))}`);
-  lines.push(`外部专注：${formatDuration(item.trustedExternalMs || 0)}`);
-  lines.push(`离开：${formatDuration(item.blurredMs || 0)}`);
+  lines.push(`${t('目标：')}${formatDuration(item.durationMs || 0)}`);
+  lines.push(`${t('已进行：')}${formatDuration(getFocusHistoryElapsed(item))}`);
+  lines.push(`${t('专注合计：')}${formatDuration(item.focusedMs || 0)}`);
+  lines.push(`${t('编辑器内：')}${formatDuration(getFocusEditorMs(item))}`);
+  lines.push(`${t('外部专注：')}${formatDuration(item.trustedExternalMs || 0)}`);
+  lines.push(`${t('离开：')}${formatDuration(item.blurredMs || 0)}`);
   if (item.untrustedExternalMs) {
-    lines.push(`非可信应用：${formatDuration(item.untrustedExternalMs)}`);
+    lines.push(`${t('非可信应用：')}${formatDuration(item.untrustedExternalMs)}`);
   }
   if (item.idleMs) {
-    lines.push(`空闲：${formatDuration(item.idleMs)}`);
+    lines.push(`${t('空闲：')}${formatDuration(item.idleMs)}`);
   }
-  lines.push(`打断：${item.interruptions || 0} 次`);
+  lines.push(`${t('打断：')}${item.interruptions || 0} ${t('次')}`);
   if (item.appSwitches) {
-    lines.push(`应用切换：${item.appSwitches} 次`);
+    lines.push(`${t('应用切换：')}${item.appSwitches} ${t('次')}`);
   }
   const appLines = focusAppUsageLines(item);
   if (appLines.length) {
     lines.push('');
-    lines.push('应用用时：');
+    lines.push(`${t('应用用时：')}`);
     lines.push(...appLines);
   }
   return lines.filter((line) => line !== undefined && line !== null);
 }
 
 function formatFocusStatus(session) {
-  if (session.status === 'running' && session.type === 'shortBreak') return '短休息中';
-  if (session.status === 'running' && session.type === 'longBreak') return '长休息中';
-  if (session.status === 'running' && session.focused && !session.cursorFocused) return '外部专注';
-  if (session.status === 'running' && session.focused) return '专注中';
-  if (session.status === 'running') return '已离开';
-  if (session.status === 'paused') return '已暂停';
-  if (session.status === 'completed') return `${formatFocusType(session.type)}完成`;
-  return '未开始';
+  if (session.status === 'running' && session.type === 'shortBreak') return t('短休息中');
+  if (session.status === 'running' && session.type === 'longBreak') return t('长休息中');
+  if (session.status === 'running' && session.focused && !session.cursorFocused) return t('外部专注');
+  if (session.status === 'running' && session.focused) return t('专注中');
+  if (session.status === 'running') return t('已离开');
+  if (session.status === 'paused') return t('已暂停');
+  if (session.status === 'completed') return `${formatFocusType(session.type)}${t('完成')}`;
+  return t('未开始');
 }
 
 function focusTaskTitle(task) {
@@ -245,7 +246,7 @@ function getFocusEditorMs(item) {
 }
 
 function focusAppUsageLines(item) {
-  return getFocusAppUsage(item).map((app) => `- ${app.name}：${formatDuration(app.ms)}`);
+  return getFocusAppUsage(item).map((app) => `- ${app.name}: ${formatDuration(app.ms)}`);
 }
 
 function getFocusAppUsage(item) {
@@ -309,25 +310,25 @@ function formatCountdownDistance(item, now) {
   if (!item.targetTime) {
     const todayKey = formatDateKey(new Date(now));
     if (item.targetDate === todayKey) {
-      return '今天';
+      return t('今天');
     }
     const targetDay = new Date(`${item.targetDate}T00:00:00`).getTime();
     const todayDay = new Date(`${todayKey}T00:00:00`).getTime();
     const dayDiff = Math.round((targetDay - todayDay) / (24 * 60 * 60 * 1000));
-    return dayDiff > 0 ? `D-${dayDiff}` : `逾期${Math.abs(dayDiff)}天`;
+    return dayDiff > 0 ? `D-${dayDiff}` : `${t('逾期')}${Math.abs(dayDiff)}${t('天')}`;
   }
 
   const absMs = Math.abs(diffMs);
   if (absMs < 24 * 60 * 60 * 1000) {
     const hours = Math.max(0, Math.ceil(absMs / (60 * 60 * 1000)));
-    return diffMs >= 0 ? `${hours}h` : `逾期${hours}h`;
+    return diffMs >= 0 ? `${hours}h` : `${t('逾期')}${hours}h`;
   }
   const days = Math.ceil(absMs / (24 * 60 * 60 * 1000));
   if (diffMs < 0) {
-    return `逾期${days}天`;
+    return `${t('逾期')}${days}${t('天')}`;
   }
   if (days === 0 || diffMs < 24 * 60 * 60 * 1000) {
-    return '今天';
+    return t('今天');
   }
   return `D-${days}`;
 }
@@ -352,11 +353,11 @@ function formatDuration(ms) {
 }
 
 function formatFocusType(type) {
-  return {
+  return t({
     focus: '专注',
     shortBreak: '短休息',
     longBreak: '长休息'
-  }[type] || '专注';
+  }[type] || '专注');
 }
 
 function formatDateKey(date) {

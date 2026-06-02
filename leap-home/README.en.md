@@ -12,6 +12,7 @@ Leap Home is a personal knowledge dashboard for Cursor / VS Code. It opens in th
 - Or install it from [Open VSX](https://open-vsx.org/extension/whyisee/leap-home).
 - Run `Leap Home: Open Knowledge Home` or `Leap Home: 打开知识首页`.
 - Click the Leap Home status bar entry to reopen the dashboard quickly.
+- Run `Leap Home: 切换语言 / Switch Language` to switch between English, Chinese, or automatic language detection.
 
 ## Repository
 
@@ -47,6 +48,7 @@ Leap Home is a personal knowledge dashboard for Cursor / VS Code. It opens in th
 | --- | --- |
 | `Leap Home: 打开知识首页` | Open Leap Home in the editor area |
 | `Leap Home: 切换状态栏显示组件` | Choose what the status bar entry displays |
+| `Leap Home: 切换语言 / Switch Language` | Switch between English, Chinese, or automatic language detection |
 | `Leap Home: 搜索知识库` | Search indexed knowledge files |
 | `Leap Home: 记录到收集箱` | Append a note to the inbox |
 | `Leap Home: 刷新索引` | Rebuild the knowledge index |
@@ -80,6 +82,7 @@ Leap Home is a personal knowledge dashboard for Cursor / VS Code. It opens in th
   "leapHome.maxRecentItems": 12,
   "leapHome.statusBar.enabled": true,
   "leapHome.statusBar.component": "focusTimer",
+  "leapHome.language": "auto",
   "leapHome.autoIndexWorkspace": true,
   "leapHome.focusTimer.trackForegroundApp": true,
   "leapHome.focusTimer.trustedApps": [

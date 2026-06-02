@@ -78,7 +78,7 @@ function getStatsScript() {
           statItem('本月天数', stats.monthScheduledDays || 0, '@month', '', '本月有安排的天数')
         ]),
         statsSection('专注', [
-          statItem('今日番茄', stats.todayFocusSessions || 0, '', '', '今日完成的专注轮数；今日记录 ' + String(stats.todayFocusRecords || 0) + ' 条'),
+          statItem('今日番茄', stats.todayFocusSessions || 0, '', '', tr('今日完成的专注轮数；今日记录') + ' ' + String(stats.todayFocusRecords || 0) + ' ' + tr('条记录')),
           statItem('今日专注', formatCompactDuration(stats.todayFocusMs || 0), '', '', '今日所有番茄记录累计专注时间，包含手动终止记录'),
           statItem('本周专注', formatCompactDuration(stats.weekFocusMs || 0), '', '', '本周番茄记录累计专注时间，共 ' + String(stats.weekFocusRecords || 0) + ' 条记录'),
           statItem('记录', stats.focusRecords || 0, '', '', '番茄专注记录总数，累计 ' + formatCompactDuration(stats.totalFocusMs || 0)),
@@ -110,7 +110,7 @@ function getStatsScript() {
 
     function statsSection(title, items) {
       const section = div('stats-section');
-      section.appendChild(div('stats-section-title', title));
+      section.appendChild(div('stats-section-title', tr(title)));
       const grid = div('stats-grid');
       for (const item of items) {
         grid.appendChild(item);
@@ -125,8 +125,8 @@ function getStatsScript() {
       if (query) {
         card.dataset.query = query;
       }
-      card.title = [title || '', query ? '搜索：' + query : ''].filter(Boolean).join('\\n');
-      card.append(div('stat-value', String(value)), div('stat-label', label));
+      card.title = [tr(title || ''), query ? tr('搜索：') + query : ''].filter(Boolean).join('\\n');
+      card.append(div('stat-value', String(value)), div('stat-label', tr(label)));
       return card;
     }
 
@@ -142,18 +142,18 @@ function getStatsScript() {
 
     function getStatsHealthText(stats) {
       const notes = [];
-      if (stats.sourceErrors) notes.push(String(stats.sourceErrors) + ' 个知识源报错');
-      if (stats.truncatedSources) notes.push(String(stats.truncatedSources) + ' 个知识源被截断');
-      if (stats.overdueTasks) notes.push(String(stats.overdueTasks) + ' 个事项已过期');
-      if (stats.undatedTasks) notes.push(String(stats.undatedTasks) + ' 个待办没有日期');
-      return notes.length ? notes.join(' · ') : '状态正常';
+      if (stats.sourceErrors) notes.push(String(stats.sourceErrors) + ' ' + tr('个知识源报错'));
+      if (stats.truncatedSources) notes.push(String(stats.truncatedSources) + ' ' + tr('个知识源被截断'));
+      if (stats.overdueTasks) notes.push(String(stats.overdueTasks) + ' ' + tr('个事项已过期'));
+      if (stats.undatedTasks) notes.push(String(stats.undatedTasks) + ' ' + tr('个待办没有日期'));
+      return notes.length ? notes.join(' · ') : tr('状态正常');
     }
 
     function appendEvents(container, events, limit) {
       const list = div('event-list');
       const visible = events.slice(0, limit);
       if (visible.length === 0) {
-        list.appendChild(div('muted', '暂无安排'));
+        list.appendChild(div('muted', tr('暂无安排')));
       }
       for (const event of visible) {
         const time = event.start ? event.start + ' ' : '';
@@ -162,7 +162,7 @@ function getStatsScript() {
         list.appendChild(pill);
       }
       if (events.length > visible.length) {
-        list.appendChild(div('muted', '+' + String(events.length - visible.length) + ' 项'));
+        list.appendChild(div('muted', '+' + String(events.length - visible.length) + ' ' + tr('项')));
       }
       container.appendChild(list);
     }

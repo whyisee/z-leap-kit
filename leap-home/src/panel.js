@@ -48,6 +48,7 @@ const {
 } = require('./quickCapture');
 const { recordSearchHistory } = require('./searchHistory');
 const { getWebviewHtml } = require('./webview');
+const { getLanguage, t } = require('./i18n');
 
 class LeapHomePanelController {
   constructor(context, index) {
@@ -87,7 +88,7 @@ class LeapHomePanelController {
           messageType: message && message.type,
           error: error && (error.stack || error.message || String(error))
         });
-        vscode.window.showWarningMessage(`Leap Home 操作失败：${error.message}`);
+        vscode.window.showWarningMessage(`Leap Home ${t('操作失败：')}${error.message}`);
       }
     });
     this.panel.onDidDispose(() => {
@@ -177,7 +178,7 @@ class LeapHomePanelController {
       await this.recordNextActionFromMessage(message);
       this.postModel();
       if (message.nextAction) {
-        vscode.window.setStatusBarMessage('Leap Home: 已按推荐加入待办', 2500);
+        vscode.window.setStatusBarMessage(`Leap Home: ${t('已按推荐加入待办')}`, 2500);
       }
       return;
     }
@@ -211,7 +212,7 @@ class LeapHomePanelController {
       await this.recordNextActionFromMessage(message);
       this.postModel();
       if (message.nextAction) {
-        vscode.window.setStatusBarMessage(sessionType === 'focus' ? 'Leap Home: 已按推荐开始番茄' : 'Leap Home: 已开始休息', 2500);
+        vscode.window.setStatusBarMessage(sessionType === 'focus' ? `Leap Home: ${t('已按推荐开始番茄')}` : `Leap Home: ${t('已开始休息')}`, 2500);
       }
       return;
     }
@@ -251,7 +252,7 @@ class LeapHomePanelController {
       await this.recordNextActionFromMessage(message);
       this.postModel();
       if (message.nextAction) {
-        vscode.window.setStatusBarMessage('Leap Home: 已按推荐更新倒计日', 2500);
+        vscode.window.setStatusBarMessage(`Leap Home: ${t('已按推荐更新倒计日')}`, 2500);
       }
       return;
     }
@@ -312,7 +313,7 @@ class LeapHomePanelController {
       await this.recordNextActionFromMessage(message);
       this.postModel();
       if (message.nextAction) {
-        vscode.window.setStatusBarMessage('Leap Home: 已按推荐更新事项', 2500);
+        vscode.window.setStatusBarMessage(`Leap Home: ${t('已按推荐更新事项')}`, 2500);
       }
       return;
     }
@@ -322,7 +323,7 @@ class LeapHomePanelController {
       await this.recordNextActionFromMessage(message);
       this.postModel();
       if (message.nextAction) {
-        vscode.window.setStatusBarMessage('Leap Home: 已按推荐完成事项', 2500);
+        vscode.window.setStatusBarMessage(`Leap Home: ${t('已按推荐完成事项')}`, 2500);
       }
       return;
     }
@@ -357,7 +358,7 @@ class LeapHomePanelController {
       const useAi = Boolean(message.useAi);
       const historyEffectiveQuery = String(message.effectiveQuery || '').trim();
       const aiQuery = historyEffectiveQuery
-        ? { query: historyEffectiveQuery, reason: '来自搜索历史' }
+        ? { query: historyEffectiveQuery, reason: t('来自搜索历史') }
         : await this.getAiSearchQuery(message.query, useAi);
       const effectiveQuery = aiQuery && aiQuery.query ? aiQuery.query : message.query;
       const results = this.index.search(effectiveQuery, { limit: message.limit });
@@ -416,7 +417,7 @@ class LeapHomePanelController {
       if (force) {
         return {
           query,
-          reason: `AI 查询失败：${error.message || String(error)}`
+          reason: `${t('AI 查询失败：')}${error.message || String(error)}`
         };
       }
       return undefined;
@@ -440,7 +441,7 @@ class LeapHomePanelController {
       }));
       this.postModel();
       vscode.window.setStatusBarMessage(
-        normalizedQuestion ? 'Leap Home: AI 已回答做什么问题' : 'Leap Home: AI 已生成行动建议',
+        normalizedQuestion ? `Leap Home: ${t('AI 已回答做什么问题')}` : `Leap Home: ${t('AI 已生成行动建议')}`,
         3500
       );
     } catch (error) {
@@ -448,11 +449,12 @@ class LeapHomePanelController {
         error: error && (error.message || String(error))
       });
       this.postModel();
+      const configureAiLabel = t('配置 AI');
       const action = await vscode.window.showWarningMessage(
-        `Leap Home AI 推荐失败：${error.message || String(error)}`,
-        '配置 AI'
+        `${t('Leap Home AI 推荐失败：')}${error.message || String(error)}`,
+        configureAiLabel
       );
-      if (action === '配置 AI') {
+      if (action === configureAiLabel) {
         await vscode.commands.executeCommand('leapHome.configureAi');
       }
     }
@@ -472,7 +474,7 @@ class LeapHomePanelController {
   async writeNextActionNote(action) {
     const result = await writeNoteFromNextAction(this.context, this.index, action);
     vscode.window.setStatusBarMessage(
-      `Leap Home: ${result.mode === 'appendNote' ? '已写入' : '已新建'}笔记「${path.basename(result.filePath)}」`,
+      `Leap Home: ${result.mode === 'appendNote' ? t('已写入') : t('已新建')}${t('笔记「')}${path.basename(result.filePath)}${t('」')}`,
       3000
     );
     return result;
@@ -486,8 +488,8 @@ class LeapHomePanelController {
       this.postKnowledgeGraphAiStatus({
         insightId,
         phase: 'busy',
-        message: 'AI 整理正在进行',
-        detail: '上一条整理还没有结束，先等它完成，避免同时写入文档。',
+        message: t('AI 整理正在进行'),
+        detail: t('上一条整理还没有结束，先等它完成，避免同时写入文档。'),
         targetFile
       });
       return;
@@ -496,22 +498,22 @@ class LeapHomePanelController {
       this.postKnowledgeGraphAiStatus({
         insightId,
         phase: 'error',
-        message: '无法开始 AI 整理',
-        detail: '这条图谱洞察没有目标文档，无法读取和写回。',
+        message: t('无法开始 AI 整理'),
+        detail: t('这条图谱洞察没有目标文档，无法读取和写回。'),
         targetFile
       });
-      vscode.window.showWarningMessage('Leap Home: 图谱洞察缺少目标文档。');
+      vscode.window.showWarningMessage(`Leap Home: ${t('图谱洞察缺少目标文档。')}`);
       return;
     }
     if (!isMarkdownFile(targetFile)) {
       this.postKnowledgeGraphAiStatus({
         insightId,
         phase: 'error',
-        message: '无法整理非 Markdown 文档',
-        detail: 'AI 整理目前只支持 Markdown、MDX、MDC 文档，避免误写代码或二进制文件。',
+        message: t('无法整理非 Markdown 文档'),
+        detail: t('AI 整理目前只支持 Markdown、MDX、MDC 文档，避免误写代码或二进制文件。'),
         targetFile
       });
-      vscode.window.showWarningMessage('Leap Home: AI 整理目前只支持 Markdown/MDX/MDC 文档。');
+      vscode.window.showWarningMessage(`Leap Home: ${t('AI 整理目前只支持 Markdown/MDX/MDC 文档。')}`);
       return;
     }
 
@@ -520,8 +522,8 @@ class LeapHomePanelController {
       this.postKnowledgeGraphAiStatus({
         insightId,
         phase: 'reading',
-        message: '正在读取文档',
-        detail: '读取目标文档元数据，并收集最多 4 个相关文档片段作为整理上下文。',
+        message: t('正在读取文档'),
+        detail: t('读取目标文档元数据，并收集最多 4 个相关文档片段作为整理上下文。'),
         targetFile
       });
       const targetContent = await fs.readFile(targetFile, 'utf8');
@@ -529,8 +531,8 @@ class LeapHomePanelController {
       this.postKnowledgeGraphAiStatus({
         insightId,
         phase: 'thinking',
-        message: '正在让 AI 生成文档元数据',
-        detail: `已读取 ${relatedDocuments.length + 1} 个文档片段，DeepSeek 会输出 tags、topics、summary、related。`,
+        message: t('正在让 AI 生成文档元数据'),
+        detail: `${t('已读取 ')}${relatedDocuments.length + 1}${t(' 个文档片段，DeepSeek 会输出 tags、topics、summary、related。')}`,
         targetFile
       });
       const result = await organizeKnowledgeInsight(source, {
@@ -544,8 +546,8 @@ class LeapHomePanelController {
       this.postKnowledgeGraphAiStatus({
         insightId,
         phase: 'writing',
-        message: '正在写回元数据',
-        detail: '只更新 Markdown frontmatter 中的 Leap Home 元数据字段，不改正文。',
+        message: t('正在写回元数据'),
+        detail: t('只更新 Markdown frontmatter 中的 Leap Home 元数据字段，不改正文。'),
         targetFile
       });
       const nextContent = upsertKnowledgeDocumentMetadata(targetContent, source, result, relatedDocuments);
@@ -555,11 +557,11 @@ class LeapHomePanelController {
       this.postKnowledgeGraphAiStatus({
         insightId,
         phase: 'done',
-        message: 'AI 整理完成',
-        detail: `已更新 ${path.basename(targetFile)} 的文档元数据，并刷新知识图谱。`,
+        message: t('AI 整理完成'),
+        detail: `${t('已更新 ')}${path.basename(targetFile)}${t(' 的文档元数据，并刷新知识图谱。')}`,
         targetFile
       });
-      vscode.window.setStatusBarMessage(`Leap Home: AI 已更新「${path.basename(targetFile)}」元数据`, 3500);
+      vscode.window.setStatusBarMessage(`Leap Home: ${t('AI 已更新「')}${path.basename(targetFile)}${t('」元数据')}`, 3500);
     } catch (error) {
       const errorMessage = error && (error.message || String(error)) || '未知错误';
       logger.warn('knowledge graph AI organize failed', {
@@ -570,15 +572,16 @@ class LeapHomePanelController {
       this.postKnowledgeGraphAiStatus({
         insightId,
         phase: 'error',
-        message: 'AI 整理失败',
+        message: t('AI 整理失败'),
         detail: errorMessage,
         targetFile
       });
+      const configureAiLabel = t('配置 AI');
       const action = await vscode.window.showWarningMessage(
-        `Leap Home AI 整理失败：${errorMessage}`,
-        '配置 AI'
+        `${t('Leap Home AI 整理失败：')}${errorMessage}`,
+        configureAiLabel
       );
-      if (action === '配置 AI') {
+      if (action === configureAiLabel) {
         await vscode.commands.executeCommand('leapHome.configureAi');
       }
     } finally {
@@ -664,7 +667,7 @@ class LeapHomePanelController {
       })
       .catch((error) => {
         logger.error('index refresh failed', error);
-        vscode.window.showWarningMessage(`Leap Home 索引失败：${error.message}`);
+        vscode.window.showWarningMessage(`Leap Home ${t('索引失败：')}${error.message}`);
       })
       .finally(() => {
         this.readyPromise = undefined;
@@ -683,13 +686,14 @@ class LeapHomePanelController {
       });
       this.postModel();
       const quadrantName = getQuadrantName(result.quadrantId);
-      vscode.window.setStatusBarMessage(`Leap Home: AI 已归类到「${quadrantName}」`, 3500);
+      vscode.window.setStatusBarMessage(`Leap Home: ${t('AI 已归类到「')}${t(quadrantName)}${t('」')}`, 3500);
     } catch (error) {
+      const configureAiLabel = t('配置 AI');
       const action = await vscode.window.showWarningMessage(
-        `Leap Home AI 归类失败：${error.message}`,
-        '配置 AI'
+        `${t('Leap Home AI 归类失败：')}${error.message}`,
+        configureAiLabel
       );
-      if (action === '配置 AI') {
+      if (action === configureAiLabel) {
         await vscode.commands.executeCommand('leapHome.configureAi');
       }
     }
@@ -698,7 +702,7 @@ class LeapHomePanelController {
   async saveQuickCapture(message) {
     const text = cleanQuickCaptureText(message && message.text);
     if (!text) {
-      vscode.window.setStatusBarMessage('Leap Home: 快速记录内容为空', 2500);
+      vscode.window.setStatusBarMessage(`Leap Home: ${t('快速记录内容为空')}`, 2500);
       return;
     }
 
@@ -709,7 +713,7 @@ class LeapHomePanelController {
       await addQuadrantTask(this.context, quadrantId, text, {
         dueDate,
         source: 'quick-capture',
-        reason: '快速记录手动添加'
+        reason: t('快速记录手动添加')
       });
       await recordQuickCapture(this.context, {
         text,
@@ -719,20 +723,20 @@ class LeapHomePanelController {
         dueDate
       });
       this.postModel();
-      vscode.window.setStatusBarMessage('Leap Home: 已添加到「重要不紧急」', 3000);
+      vscode.window.setStatusBarMessage(`Leap Home: ${t('已添加到「')}${t('重要不紧急')}${t('」')}`, 3000);
       return;
     }
 
     await saveQuickCaptureToInbox(this.context, { text, kind });
     await this.index.refresh();
     this.postModel();
-    vscode.window.setStatusBarMessage(`Leap Home: 已记录到${getQuickCaptureKindLabel(kind)}`, 3000);
+    vscode.window.setStatusBarMessage(`Leap Home: ${t('已记录到')}${t(getQuickCaptureKindLabel(kind))}`, 3000);
   }
 
   async saveQuickCaptureWithAi(message) {
     const text = cleanQuickCaptureText(message && message.text);
     if (!text) {
-      vscode.window.setStatusBarMessage('Leap Home: 快速记录内容为空', 2500);
+      vscode.window.setStatusBarMessage(`Leap Home: ${t('快速记录内容为空')}`, 2500);
       return;
     }
 
@@ -755,13 +759,14 @@ class LeapHomePanelController {
         reason: result.reason
       });
       this.postModel();
-      vscode.window.setStatusBarMessage(`Leap Home: AI 已归类到「${getQuadrantName(result.quadrantId)}」`, 3500);
+      vscode.window.setStatusBarMessage(`Leap Home: ${t('AI 已归类到「')}${t(getQuadrantName(result.quadrantId))}${t('」')}`, 3500);
     } catch (error) {
+      const configureAiLabel = t('配置 AI');
       const action = await vscode.window.showWarningMessage(
-        `Leap Home AI 归类失败：${error.message}`,
-        '配置 AI'
+        `${t('Leap Home AI 归类失败：')}${error.message}`,
+        configureAiLabel
       );
-      if (action === '配置 AI') {
+      if (action === configureAiLabel) {
         await vscode.commands.executeCommand('leapHome.configureAi');
       }
     }
@@ -1002,6 +1007,7 @@ function normalizeQuadrantId(value) {
 function buildNextActionAiContext(model) {
   const data = model && model.data ? model.data : {};
   return {
+    locale: model && model.locale ? model.locale : getLanguage(),
     workspaceName: model && model.workspaceName ? model.workspaceName : '',
     recentNotes: (Array.isArray(data.quickCaptures) ? data.quickCaptures : []).slice(0, 8).map((item) => ({
       text: item.text,

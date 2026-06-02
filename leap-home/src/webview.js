@@ -9,13 +9,19 @@ const { getQuadrantsScript, getQuadrantsStyles } = require('./webview/quadrantsC
 const { getQuickCaptureScript, getQuickCaptureStyles } = require('./webview/quickCaptureComponent');
 const { getSearchScript, getSearchStyles } = require('./webview/searchComponent');
 const { getStatsScript, getStatsStyles } = require('./webview/statsComponent');
+const { getLanguage, translateText, webviewI18n } = require('./i18n');
 
 function getWebviewHtml(webview) {
   const nonce = getNonce();
   const cspSource = webview.cspSource;
+  const locale = getLanguage();
+  const i18n = webviewI18n(locale);
+  const editLabel = escapeHtml(translateText('编辑', locale));
+  const editTitle = escapeHtml(translateText('编辑当前主页', locale));
+  const loadingText = escapeHtml(translateText('正在加载 Leap Home...', locale));
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${locale}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -502,13 +508,13 @@ function getWebviewHtml(webview) {
     <header class="top">
       <div class="title-area">
         <h1 class="title">Leap Home</h1>
-        <button type="button" class="title-edit-button" id="editHomeButton" title="编辑当前主页">编辑</button>
+        <button type="button" class="title-edit-button" id="editHomeButton" title="${editTitle}">${editLabel}</button>
       </div>
       <div class="design-toolbar" id="designToolbar"></div>
     </header>
     <section class="designer-shell">
       <section class="grid" id="grid">
-        <div class="empty">正在加载 Leap Home...</div>
+        <div class="empty">${loadingText}</div>
       </section>
       <aside class="design-panel" id="designerPanel"></aside>
     </section>
@@ -516,6 +522,7 @@ function getWebviewHtml(webview) {
 
   <script nonce="${nonce}">
     const vscodeApi = acquireVsCodeApi();
+    const leapHomeI18n = ${JSON.stringify(i18n)};
     const state = {
       model: {
         data: { items: [], prompts: [], projectItems: [], favorites: [], recent: [], sources: [], focusTimer: {}, countdown: { items: [] }, nextAction: { recommendations: [], systemRecommendations: [], aiRecommendations: [] }, knowledgeGraph: { nodes: [], edges: [] }, quickCaptures: [], searchHistory: [] },
@@ -585,6 +592,84 @@ function getWebviewHtml(webview) {
     let hasModel = false;
     let readyAttempts = 0;
 
+    function tr(value) {
+      const text = String(value ?? '');
+      if (!text || !leapHomeI18n || leapHomeI18n.locale !== 'en') {
+        return text;
+      }
+      const messages = leapHomeI18n.messages || {};
+      if (Object.prototype.hasOwnProperty.call(messages, text)) {
+        return messages[text];
+      }
+      let translated = text;
+      const keys = Object.keys(messages)
+        .filter((key) => key && key.length >= 4 && translated.includes(key))
+        .sort((left, right) => right.length - left.length);
+      for (const key of keys) {
+        translated = translated.split(key).join(messages[key]);
+      }
+      return translated;
+    }
+
+    function isEnglishUI() {
+      return Boolean(leapHomeI18n && leapHomeI18n.locale === 'en');
+    }
+
+    function localizeNode(root) {
+      if (!root || !leapHomeI18n || leapHomeI18n.locale !== 'en') {
+        return;
+      }
+      const skipSelector = [
+        '.item-title',
+        '.item-meta',
+        '.search-result-title',
+        '.search-result-meta',
+        '.search-snippet',
+        '.search-ai-command',
+        '.quick-capture-recent-text',
+        '.next-action-title',
+        '.next-action-reason',
+        '.knowledge-graph-node-title',
+        '.knowledge-graph-title',
+        '.quadrant-task-text',
+        '.countdown-title'
+      ].join(',');
+      const elements = [root].concat(Array.from(root.querySelectorAll ? root.querySelectorAll('*') : []));
+      for (const element of elements) {
+        if (!element || !element.getAttribute || element.closest && element.closest(skipSelector)) {
+          continue;
+        }
+        for (const attr of ['title', 'placeholder', 'aria-label']) {
+          if (element.hasAttribute(attr)) {
+            const value = element.getAttribute(attr);
+            const translated = tr(value);
+            if (translated !== value) {
+              element.setAttribute(attr, translated);
+            }
+          }
+        }
+      }
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          const parent = node.parentElement;
+          if (!parent) return NodeFilter.FILTER_REJECT;
+          if (parent.closest(skipSelector)) return NodeFilter.FILTER_REJECT;
+          if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+      const nodes = [];
+      while (walker.nextNode()) {
+        nodes.push(walker.currentNode);
+      }
+      for (const node of nodes) {
+        const translated = tr(node.nodeValue);
+        if (translated !== node.nodeValue) {
+          node.nodeValue = translated;
+        }
+      }
+    }
+
     window.addEventListener('error', (event) => {
       logToExtension('runtime error', {
         message: event.message,
@@ -601,6 +686,8 @@ function getWebviewHtml(webview) {
       if (event.data && event.data.type === 'model') {
         hasModel = true;
         state.model = event.data.model;
+        leapHomeI18n.locale = state.model.locale || leapHomeI18n.locale || 'zh-CN';
+        document.documentElement.lang = leapHomeI18n.locale;
         state.nextActionAiLoading = false;
         state.nextActionPending = {};
         state.nextActionNotice = '';
@@ -714,6 +801,7 @@ function getWebviewHtml(webview) {
         state.model.data.searchHistory = results.history;
       }
       renderSearchResultContainers();
+      localizeNode(els.grid);
     }
 
     function handleKnowledgeGraphAiStatus(message) {
@@ -786,6 +874,7 @@ function getWebviewHtml(webview) {
     function render() {
       try {
         renderContent();
+        localizeNode(document.body);
         logToExtension('render completed', { blocks: getActiveLayout().length, designMode: state.designMode });
       } catch (error) {
         logToExtension('render failed', formatWebviewError(error));
@@ -829,6 +918,7 @@ function getWebviewHtml(webview) {
         if (body) {
           body.textContent = '';
           renderComponentBody(body, block);
+          localizeNode(body);
         }
         const count = wrapper.querySelector('.count');
         if (count) {
@@ -851,6 +941,7 @@ function getWebviewHtml(webview) {
       els.grid.textContent = '';
       const message = error && error.message ? error.message : String(error || '未知错误');
       els.grid.appendChild(empty('Leap Home 渲染失败：' + message));
+      localizeNode(els.grid);
     }
 
     function renderBlock(block) {
@@ -873,10 +964,10 @@ function getWebviewHtml(webview) {
       header.className = 'block-header';
       const title = document.createElement('h2');
       title.className = 'block-title';
-      title.textContent = block.title;
+      title.textContent = tr(block.title);
       const count = document.createElement('span');
       count.className = 'count';
-      count.textContent = state.designMode ? formatBlockPosition(block) : getComponentCount(block);
+      count.textContent = tr(state.designMode ? formatBlockPosition(block) : getComponentCount(block));
       const headerActions = div('block-header-actions');
       headerActions.appendChild(count);
       if (!state.designMode && block.component === 'focusTimer') {
@@ -885,7 +976,7 @@ function getWebviewHtml(webview) {
           render();
         }, true);
         historyButton.className = 'block-header-button' + (state.focusTimerHistoryVisible ? ' active' : '');
-        historyButton.title = state.focusTimerHistoryVisible ? '切换到番茄时钟' : '切换到历史记录';
+        historyButton.title = tr(state.focusTimerHistoryVisible ? '切换到番茄时钟' : '切换到历史记录');
         headerActions.appendChild(historyButton);
       }
       header.append(title, headerActions);
@@ -939,7 +1030,7 @@ function getWebviewHtml(webview) {
       const input = document.createElement('input');
       input.type = 'date';
       input.value = normalizeDateValue(initialValue);
-      input.title = '截止日期';
+      input.title = tr('截止日期');
       const actions = div('inline-date-actions');
       const options = [
         ['今', 0],
@@ -951,13 +1042,13 @@ function getWebviewHtml(webview) {
         const item = button(option[0], () => {
           input.value = toDateKey(addDays(startOfDay(new Date()), option[1]));
         }, true);
-        item.title = option[0] === '今' ? '今天' : option[0] === '明' ? '明天' : option[1] + ' 天后';
+        item.title = option[0] === '今' ? tr('今天') : option[0] === '明' ? tr('明天') : option[1] + tr(' 天后');
         actions.appendChild(item);
       }
       const clear = button('清', () => {
         input.value = '';
       }, true);
-      clear.title = '清空截止日期';
+      clear.title = tr('清空截止日期');
       actions.appendChild(clear);
       wrap.append(input, actions);
       wrap.getValue = () => normalizeDateValue(input.value);
@@ -972,7 +1063,7 @@ function getWebviewHtml(webview) {
         wrap.classList.toggle('open');
       }, true);
       trigger.className = 'date-pill';
-      trigger.title = '选择截止日期';
+      trigger.title = tr('选择截止日期');
 
       const popover = div('date-popover');
       const quick = div('date-quick');
@@ -1006,7 +1097,7 @@ function getWebviewHtml(webview) {
         value = normalizeDateValue(nextValue);
         custom.value = value;
         trigger.textContent = formatDueDate(value, placeholder);
-        trigger.title = value ? '截止日期：' + value : '选择截止日期';
+        trigger.title = value ? tr('截止日期：') + value : tr('选择截止日期');
         wrap.classList.toggle('empty-date', !value);
         wrap.classList.remove('open');
         if (shouldNotify && onChange) onChange(value);
@@ -1680,21 +1771,33 @@ function getWebviewHtml(webview) {
     function startOfWeek(date) { return addDays(startOfDay(date), -((date.getDay() + 6) % 7)); }
     function toDateKey(date) { return [date.getFullYear(), padDatePart(date.getMonth() + 1), padDatePart(date.getDate())].join('-'); }
     function isSameDate(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
-    function weekdayName(date) { return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()]; }
+    function weekdayName(date) {
+      return isEnglishUI()
+        ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()]
+        : ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()];
+    }
     function formatDueDate(value, placeholder) {
-      if (!value) return placeholder || '截止日';
+      if (!value) return tr(placeholder || '截止日');
       const date = parseDateKey(value);
-      if (!date) return placeholder || '截止日';
+      if (!date) return tr(placeholder || '截止日');
       const days = Math.round((date.getTime() - startOfDay(new Date()).getTime()) / 86400000);
-      if (days === 0) return '今天';
-      if (days === 1) return '明天';
-      if (days === -1) return '昨天';
+      if (days === 0) return tr('今天');
+      if (days === 1) return tr('明天');
+      if (days === -1) return tr('昨天');
+      return formatShortDate(date);
+    }
+    function formatShortDate(date) {
+      if (isEnglishUI()) {
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
       return String(date.getMonth() + 1) + '/' + String(date.getDate());
     }
-    function formatShortDate(date) { return String(date.getMonth() + 1) + '/' + String(date.getDate()); }
     function formatFullDate(value) {
       const date = parseDateKey(value);
       if (!date) return value;
+      if (isEnglishUI()) {
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      }
       return String(date.getFullYear()) + ' 年 ' + String(date.getMonth() + 1) + ' 月 ' + String(date.getDate()) + ' 日';
     }
     function formatCaptureTime(value) {
@@ -1781,17 +1884,17 @@ function getWebviewHtml(webview) {
     function searchActionButton(icon, label, action, options) {
       const result = actionButton(icon, action, true);
       result.className = ['search-action', options && options.primary ? 'primary' : '', options && options.active ? 'active' : ''].filter(Boolean).join(' ');
-      result.title = label;
-      result.setAttribute('aria-label', label);
+      result.title = tr(label);
+      result.setAttribute('aria-label', tr(label));
       return result;
     }
     function actionsWrap(buttons) { const wrap = div('designer-actions'); for (const item of buttons) wrap.appendChild(item); return wrap; }
-    function button(text, onClick, secondary) { const result = document.createElement('button'); result.type = 'button'; result.textContent = text; if (secondary) result.className = 'secondary'; if (onClick) result.addEventListener('click', onClick); return result; }
-    function div(className, text) { const result = document.createElement('div'); result.className = className; if (text !== undefined) result.textContent = text; return result; }
-    function strongText(text) { const result = document.createElement('strong'); result.textContent = text; return result; }
+    function button(text, onClick, secondary) { const result = document.createElement('button'); result.type = 'button'; result.textContent = tr(text); if (secondary) result.className = 'secondary'; if (onClick) result.addEventListener('click', onClick); return result; }
+    function div(className, text) { const result = document.createElement('div'); result.className = className; if (text !== undefined) result.textContent = tr(text); return result; }
+    function strongText(text) { const result = document.createElement('strong'); result.textContent = tr(text); return result; }
     function spanText(text) { const result = document.createElement('span'); result.textContent = text; return result; }
     function empty(text) { return div('empty', text); }
-    function fieldWrap(labelText, control) { const wrap = div('designer-field'); const label = document.createElement('label'); label.textContent = labelText; wrap.append(label, control); return wrap; }
+    function fieldWrap(labelText, control) { const wrap = div('designer-field'); const label = document.createElement('label'); label.textContent = tr(labelText); wrap.append(label, control); return wrap; }
     function inputField(labelText, value, type, onChange, min, max) { const input = document.createElement('input'); input.type = type; input.value = String(value ?? ''); if (min !== undefined) input.min = String(min); if (max !== undefined) input.max = String(max); input.addEventListener('change', () => onChange(input.value)); return fieldWrap(labelText, input); }
     function readonlyField(labelText, value) { return fieldWrap(labelText, div('template-name', value)); }
 
@@ -1814,3 +1917,11 @@ function getWebviewHtml(webview) {
 module.exports = {
   getWebviewHtml
 };
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}

@@ -14,6 +14,7 @@ Personal knowledge dashboard for Cursor / VS Code: AI search, notes, Pomodoro, t
 - 或打开 [Open VSX 页面](https://open-vsx.org/extension/whyisee/leap-home) 安装。
 - 安装后执行命令 `Leap Home: 打开知识首页`。
 - 左侧状态栏会出现 Leap Home 快捷入口，点击即可重新打开首页。
+- 执行 `Leap Home: 切换语言 / Switch Language` 可以在中文、英文和自动跟随 Cursor 之间切换。
 
 ## 项目信息
 
@@ -83,6 +84,7 @@ src/
 | --- | --- |
 | `Leap Home: 打开知识首页` | 在编辑窗口打开 Leap Home 首页 |
 | `Leap Home: 切换状态栏显示组件` | 选择状态栏展示首页入口、番茄时钟、倒计日或今日统计 |
+| `Leap Home: 切换语言 / Switch Language` | 切换中文、英文或自动跟随 Cursor 显示语言 |
 | `Leap Home: 搜索知识库` | 搜索已索引的知识文件 |
 | `Leap Home: 记录到收集箱` | 将一条内容追加到收集箱文件 |
 | `Leap Home: 刷新索引` | 重新扫描知识源 |
@@ -116,6 +118,7 @@ src/
   "leapHome.maxRecentItems": 12,
   "leapHome.statusBar.enabled": true,
   "leapHome.statusBar.component": "focusTimer",
+  "leapHome.language": "auto",
   "leapHome.autoIndexWorkspace": true,
   "leapHome.focusTimer.trackForegroundApp": true,
   "leapHome.focusTimer.trustedApps": [

@@ -320,18 +320,18 @@ function getCalendarComponentsScript() {
           state.calendarWeekOffset -= 1;
           render();
         }, true);
-        prev.title = '上周';
+        prev.title = tr('上周');
         const current = button('今', () => {
           state.calendarWeekOffset = 0;
           state.selectedCalendarDate = toDateKey(startOfDay(new Date()));
           render();
         }, true);
-        current.title = '回到本周';
+        current.title = tr('回到本周');
         const next = button('›', () => {
           state.calendarWeekOffset += 1;
           render();
         }, true);
-        next.title = '下周';
+        next.title = tr('下周');
         nav.append(prev, current, next);
         toolbar.appendChild(nav);
       }
@@ -344,9 +344,9 @@ function getCalendarComponentsScript() {
       const events = items.filter((item) => item.type === 'event');
       const summary = div('week-summary');
       summary.append(
-        spanText('本周事项 ' + String(activeTasks.length)),
-        spanText('过期 ' + String(overdue.length)),
-        spanText('事件 ' + String(events.length))
+        spanText(tr('本周事项') + ' ' + String(activeTasks.length)),
+        spanText(tr('过期') + ' ' + String(overdue.length)),
+        spanText(tr('事件') + ' ' + String(events.length))
       );
       return summary;
     }
@@ -355,7 +355,7 @@ function getCalendarComponentsScript() {
       const list = div('week-items');
       const visible = items.slice(0, limit);
       if (visible.length === 0) {
-        list.appendChild(div('muted', '暂无安排'));
+        list.appendChild(div('muted', tr('暂无安排')));
       }
       for (const item of visible) {
         const pill = div(item.className, item.title);
@@ -363,7 +363,7 @@ function getCalendarComponentsScript() {
         list.appendChild(pill);
       }
       if (items.length > visible.length) {
-        list.appendChild(div('muted', '+' + String(items.length - visible.length) + ' 项'));
+        list.appendChild(div('muted', '+' + String(items.length - visible.length) + ' ' + tr('项')));
       }
       container.appendChild(list);
     }
@@ -378,7 +378,8 @@ function getCalendarComponentsScript() {
       const wrap = div('stack');
       wrap.append(monthToolbar(visibleMonth), monthSummary(monthItems));
       const grid = div('month-calendar');
-      for (const name of ['一', '二', '三', '四', '五', '六', '日']) {
+      const weekdays = isEnglishUI() ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] : ['一', '二', '三', '四', '五', '六', '日'];
+      for (const name of weekdays) {
         grid.appendChild(div('month-weekday', name));
       }
       for (let index = 0; index < 42; index += 1) {
@@ -416,25 +417,25 @@ function getCalendarComponentsScript() {
 
     function monthToolbar(visibleMonth) {
       const toolbar = div('month-toolbar');
-      toolbar.appendChild(div('month-title', String(visibleMonth.getFullYear()) + ' 年 ' + String(visibleMonth.getMonth() + 1) + ' 月'));
+      toolbar.appendChild(div('month-title', formatMonthTitle(visibleMonth)));
       if (!state.designMode) {
         const nav = div('month-nav');
         const prev = button('‹', () => {
           state.calendarMonthOffset -= 1;
           render();
         }, true);
-        prev.title = '上月';
+        prev.title = tr('上月');
         const today = button('今', () => {
           state.calendarMonthOffset = 0;
           state.selectedCalendarDate = toDateKey(startOfDay(new Date()));
           render();
         }, true);
-        today.title = '回到今天';
+        today.title = tr('回到今天');
         const next = button('›', () => {
           state.calendarMonthOffset += 1;
           render();
         }, true);
-        next.title = '下月';
+        next.title = tr('下月');
         nav.append(prev, today, next);
         toolbar.appendChild(nav);
       }
@@ -447,9 +448,9 @@ function getCalendarComponentsScript() {
       const events = items.filter((item) => item.type === 'event');
       const summary = div('month-summary');
       summary.append(
-        spanText('事项 ' + String(activeTasks.length)),
-        spanText('过期 ' + String(overdue.length)),
-        spanText('事件 ' + String(events.length))
+        spanText(tr('事项') + ' ' + String(activeTasks.length)),
+        spanText(tr('过期') + ' ' + String(overdue.length)),
+        spanText(tr('事件') + ' ' + String(events.length))
       );
       return summary;
     }
@@ -476,13 +477,13 @@ function getCalendarComponentsScript() {
         state.selectedCalendarDate = '';
         render();
       }, true);
-      close.title = '收起日期详情';
+      close.title = tr('收起日期详情');
       head.appendChild(close);
       panel.appendChild(head);
       panel.appendChild(monthDetailList(items));
       const form = div('month-add-form');
       const input = document.createElement('input');
-      input.placeholder = '事项内容';
+      input.placeholder = tr('事项内容');
       const quadrantSelect = document.createElement('select');
       const defaultQuadrant = getDefaultQuadrantForDate(dateKey);
       for (const quadrant of state.model.data.quadrants || []) {
@@ -494,7 +495,7 @@ function getCalendarComponentsScript() {
       }
       const add = button('添加', commit, false);
       const aiAdd = button('AI', commitWithAi, true);
-      aiAdd.title = 'AI 自动归类并添加到当天';
+      aiAdd.title = tr('AI 自动归类并添加到当天');
       const clear = button('清空', () => {
         input.value = '';
         input.focus();
@@ -531,7 +532,7 @@ function getCalendarComponentsScript() {
     function monthDetailList(items) {
       const list = div('month-detail-list');
       if (!items || items.length === 0) {
-        list.appendChild(div('muted', '当天暂无事项或事件'));
+        list.appendChild(div('muted', tr('当天暂无事项或事件')));
         return list;
       }
       for (const item of items) {
@@ -547,7 +548,7 @@ function getCalendarComponentsScript() {
           post('toggleQuadrantTask', { quadrantId: item.quadrantId, taskId: item.taskId, done: !item.done });
         }, true);
         check.className = 'month-detail-check';
-        check.title = item.done ? '标记为未完成' : '标记为完成';
+        check.title = item.done ? tr('标记为未完成') : tr('标记为完成');
         row.append(check, monthDetailMain(item));
         return row;
       }
@@ -559,6 +560,13 @@ function getCalendarComponentsScript() {
       const main = div('month-detail-main');
       main.append(div('month-detail-title', item.title), div('month-detail-meta', item.meta || ''));
       return main;
+    }
+
+    function formatMonthTitle(date) {
+      if (isEnglishUI()) {
+        return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      }
+      return String(date.getFullYear()) + ' 年 ' + String(date.getMonth() + 1) + ' 月';
     }
 
 `;

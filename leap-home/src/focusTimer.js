@@ -5,6 +5,7 @@ const { execFile } = require('child_process');
 const vscode = require('vscode');
 const logger = require('./logger');
 const { getLeapComponentDataPath } = require('./storage');
+const { getLanguage, t } = require('./i18n');
 
 const DEFAULT_FOCUS_DURATION_MS = 25 * 60 * 1000;
 const DEFAULT_SHORT_BREAK_MS = 5 * 60 * 1000;
@@ -916,6 +917,15 @@ function normalizeAppName(value) {
 
 function notifySessionCompleted(session) {
   const label = formatSessionType(session.type);
+  if (getLanguage() === 'en') {
+    if (session.type === 'focus') {
+      const taskTitle = session.task && session.task.title ? `"${session.task.title}" ` : '';
+      vscode.window.showInformationMessage(`Leap Home: ${taskTitle}${label} completed. Focus ${formatMinutes(session.focusedMs)}, interruptions ${session.interruptions}.`);
+      return;
+    }
+    vscode.window.showInformationMessage(`Leap Home: ${label} completed.`);
+    return;
+  }
   if (session.type === 'focus') {
     const taskTitle = session.task && session.task.title ? `「${session.task.title}」` : '';
     vscode.window.showInformationMessage(`Leap Home: ${taskTitle}${label}完成，专注 ${formatMinutes(session.focusedMs)}，打断 ${session.interruptions} 次。`);
@@ -925,16 +935,16 @@ function notifySessionCompleted(session) {
 }
 
 function formatSessionType(sessionType) {
-  return {
+  return t({
     focus: '专注',
     shortBreak: '短休息',
     longBreak: '长休息'
-  }[normalizeSessionType(sessionType)];
+  }[normalizeSessionType(sessionType)]);
 }
 
 function formatMinutes(ms) {
   const minutes = Math.max(0, Math.round((Number(ms) || 0) / 60000));
-  return `${minutes} 分钟`;
+  return `${minutes} ${t('分钟')}`;
 }
 
 module.exports = {

@@ -1,5 +1,6 @@
 const https = require('https');
 const vscode = require('vscode');
+const { LANGUAGE_EN, getLanguage, t } = require('./i18n');
 const { QUADRANT_DEFINITIONS } = require('./storage');
 
 async function classifyQuadrantTask(text, options) {
@@ -59,7 +60,7 @@ async function recommendNextActions(candidates, context) {
     throw new Error('未配置 DeepSeek API Key。请设置环境变量 DEEPSEEK_API_KEY，或配置 leapHome.ai.deepseekApiKey。');
   }
 
-  const sourceContext = context || {};
+  const sourceContext = Object.assign({ locale: getLanguage() }, context || {});
   const response = await requestDeepSeekNextActions(config, items, sourceContext);
   try {
     return parseNextActionRecommendation(response, items);
@@ -191,6 +192,7 @@ function requestDeepSeekSearchQuery(config, queryText) {
 function requestDeepSeekNextActions(config, candidates, context) {
   const endpoint = `${String(config.baseUrl).replace(/\/+$/, '')}/chat/completions`;
   const today = formatDate(new Date());
+  const outputLanguage = normalizeAiOutputLanguage(context.locale || getLanguage());
   const question = String(context.question || '').replace(/\s+/g, ' ').trim().slice(0, 240);
   const compactCandidates = candidates.map((item) => ({
     key: item.key,
@@ -231,6 +233,9 @@ function requestDeepSeekNextActions(config, candidates, context) {
             : '如果用户没有输入问题，就主动判断现在最值得开始的事。',
           '新的 AI 建议必须来自上下文，不允许凭空编事实；要尽量小、具体、能立刻开始。',
           '尤其要做：总结最近笔记，建议新事项；把用户可能不愿意开始的大任务拆成 10-15 分钟小步骤；给一句具体鼓励；推荐一个创新探索方向。',
+          outputLanguage === LANGUAGE_EN
+            ? 'Output language: English. summary, encouragement, reason, item title, item reason, action label, note title, and note content must be written in English. Keep JSON keys, action type, key, sourceType, quadrantId, sourceId, relativePath, and search query syntax unchanged.'
+            : '输出语言：中文。summary、encouragement、reason、行动标题、行动理由、按钮文案、笔记标题和笔记内容都使用中文。JSON key、action type、key、sourceType、quadrantId、sourceId、relativePath 和搜索查询语法保持不变。',
           '允许的新建议 action 类型只有 createTask、startFocus、createNote、appendNote、search、openInbox、dismiss。',
           'createTask/startFocus 必须包含 title 和 quadrantId；可选 dueDate 使用 YYYY-MM-DD；startFocus 可选 durationMs，例如 600000 表示 10 分钟。',
           'quadrantId 只能是 importantUrgent、importantNotUrgent、notImportantUrgent、notImportantNotUrgent。',
@@ -250,6 +255,7 @@ function requestDeepSeekNextActions(config, candidates, context) {
         role: 'user',
         content: JSON.stringify({
           workspaceName: context.workspaceName || '',
+          locale: outputLanguage,
           question,
           candidates: compactCandidates,
           recentNotes: context.recentNotes || [],
@@ -473,6 +479,10 @@ function normalizeNextActionAiActions(value) {
   return actions.map(normalizeNextActionAiAction).filter(Boolean).slice(0, 4);
 }
 
+function normalizeAiOutputLanguage(value) {
+  return String(value || '').toLowerCase().startsWith('en') ? LANGUAGE_EN : 'zh-CN';
+}
+
 function normalizeNextActionAiAction(value) {
   if (!value || typeof value !== 'object') {
     return undefined;
@@ -485,18 +495,18 @@ function normalizeNextActionAiAction(value) {
     if (!title || !quadrantId) return undefined;
     const dueDate = normalizeOptionalDate(value.dueDate);
     const durationMs = clampNumber(value.durationMs, 0, 4 * 60 * 60 * 1000);
-    return Object.assign({ type, label: label || (type === 'startFocus' ? '开始专注' : '加入待办'), title, quadrantId }, dueDate ? { dueDate } : {}, durationMs ? { durationMs } : {});
+    return Object.assign({ type, label: label || (type === 'startFocus' ? t('开始专注') : t('加入待办')), title, quadrantId }, dueDate ? { dueDate } : {}, durationMs ? { durationMs } : {});
   }
   if (type === 'search') {
     const query = String(value.query || '').replace(/\s+/g, ' ').trim().slice(0, 180);
     if (!query) return undefined;
-    return { type, label: label || '查上下文', query };
+    return { type, label: label || t('查上下文'), query };
   }
   if (type === 'dismiss') {
-    return { type, label: label || '忽略' };
+    return { type, label: label || t('忽略') };
   }
   if (type === 'openInbox') {
-    return { type, label: label || '打开收集箱' };
+    return { type, label: label || t('打开收集箱') };
   }
   if (type === 'createNote' || type === 'appendNote') {
     const content = String(value.content || '').replace(/\r\n/g, '\n').trim().slice(0, 4000);
@@ -507,7 +517,7 @@ function normalizeNextActionAiAction(value) {
     if (!content || (!title && !relativePath)) return undefined;
     return {
       type,
-      label: label || (type === 'appendNote' ? '写入笔记' : '新建笔记'),
+      label: label || (type === 'appendNote' ? t('写入笔记') : t('新建笔记')),
       title,
       sourceId,
       sourceName,

@@ -316,7 +316,7 @@ function getFocusTimerScript() {
         timePanel.appendChild(div('focus-time', formatClock(timer.remainingMs)));
         const taskLabel = focusTaskTitle(timer.task);
         if (taskLabel) {
-          timePanel.appendChild(div('focus-linked-task', '事项 · ' + taskLabel));
+          timePanel.appendChild(div('focus-linked-task', tr('事项') + ' · ' + taskLabel));
         }
         const appLabel = focusCurrentAppLabel(timer);
         if (appLabel) {
@@ -385,7 +385,7 @@ function getFocusTimerScript() {
       input.step = '5';
       const minutes = Math.max(5, Math.round((Number(durationMs) || 1500000) / 60000));
       input.value = String(minutes);
-      const unit = spanText('分钟');
+      const unit = spanText(tr('分钟'));
       unit.className = 'focus-duration-unit';
       display.append(input, unit);
       const presets = div('focus-duration-presets');
@@ -395,7 +395,7 @@ function getFocusTimerScript() {
           syncPresetState();
         }, true);
         item.className = 'focus-duration-preset' + (value === minutes ? ' active' : '');
-        item.title = String(value) + ' 分钟';
+        item.title = String(value) + ' ' + tr('分钟');
         presets.appendChild(item);
       }
       input.addEventListener('input', syncPresetState);
@@ -423,7 +423,7 @@ function getFocusTimerScript() {
       select.className = 'focus-task-select';
       const none = document.createElement('option');
       none.value = '';
-      none.textContent = '不关联事项';
+      none.textContent = tr('不关联事项');
       select.appendChild(none);
       for (const task of tasks.slice(0, 40)) {
         const option = document.createElement('option');
@@ -434,13 +434,13 @@ function getFocusTimerScript() {
       }
       const create = document.createElement('option');
       create.value = '__new__';
-      create.textContent = '+ 新建事项';
+      create.textContent = '+ ' + tr('新建事项');
       select.appendChild(create);
 
       const newRow = div('focus-task-new');
       const input = document.createElement('input');
       input.className = 'focus-task-new-input';
-      input.placeholder = '新事项内容';
+      input.placeholder = tr('新事项内容');
       const quadrantSelect = document.createElement('select');
       quadrantSelect.className = 'focus-task-quadrant';
       for (const quadrant of state.model.data.quadrants || []) {
@@ -494,9 +494,9 @@ function getFocusTimerScript() {
     function focusTimerHistoryList(history, limit) {
       const items = Array.isArray(history) ? history.slice(0, limit || 3) : [];
       const list = div('focus-history');
-      list.appendChild(div('focus-history-title', '最近记录'));
+      list.appendChild(div('focus-history-title', tr('最近记录')));
       if (items.length === 0) {
-        list.appendChild(div('focus-history-empty', '暂无记录'));
+        list.appendChild(div('focus-history-empty', tr('暂无记录')));
         return list;
       }
       for (const item of items) {
@@ -540,21 +540,21 @@ function getFocusTimerScript() {
       if (!timer || timer.status !== 'running') return '';
       const app = String(timer.foregroundAppName || (timer.foregroundApp && timer.foregroundApp.name) || '').trim();
       if (timer.cursorFocused) {
-        return app ? '当前 · ' + app : '';
+        return app ? tr('当前') + ' · ' + app : '';
       }
       if (timer.focused) {
-        return app ? '外部专注 · ' + app : '外部专注';
+        return app ? tr('外部专注') + ' · ' + app : tr('外部专注');
       }
-      return app ? '离开 · ' + app : '离开 Cursor';
+      return app ? tr('离开') + ' · ' + app : tr('离开 Cursor');
     }
 
     function quadrantShortTitle(quadrantId) {
       return {
-        importantUrgent: '重要紧急',
-        importantNotUrgent: '重要不急',
-        notImportantUrgent: '不重要紧急',
-        notImportantNotUrgent: '不重要不急'
-      }[quadrantId] || '四象限';
+        importantUrgent: tr('重要紧急'),
+        importantNotUrgent: tr('重要不急'),
+        notImportantUrgent: tr('不重要紧急'),
+        notImportantNotUrgent: tr('不重要不急')
+      }[quadrantId] || tr('四象限');
     }
 
     function focusMetric(label, value) {
@@ -641,68 +641,70 @@ function getFocusTimerScript() {
     }
 
     function formatFocusStatus(session) {
-      if (session.status === 'running' && session.type === 'shortBreak') return '短休息中';
-      if (session.status === 'running' && session.type === 'longBreak') return '长休息中';
-      if (session.status === 'running' && session.focused && !session.cursorFocused) return '外部专注';
-      if (session.status === 'running' && session.focused) return '专注中';
-      if (session.status === 'running') return '已离开';
-      if (session.status === 'paused') return '已暂停';
-      if (session.status === 'completed') return formatFocusSessionType(session.type) + '完成';
-      return '未开始';
+      if (session.status === 'running' && session.type === 'shortBreak') return tr('短休息中');
+      if (session.status === 'running' && session.type === 'longBreak') return tr('长休息中');
+      if (session.status === 'running' && session.focused && !session.cursorFocused) return tr('外部专注');
+      if (session.status === 'running' && session.focused) return tr('专注中');
+      if (session.status === 'running') return tr('已离开');
+      if (session.status === 'paused') return tr('已暂停');
+      if (session.status === 'completed') return isEnglishUI()
+        ? formatFocusSessionType(session.type) + ' ' + tr('完成')
+        : formatFocusSessionType(session.type) + tr('完成');
+      return tr('未开始');
     }
     function formatFocusSessionType(type) {
       return {
-        focus: '专注',
-        shortBreak: '短休息',
-        longBreak: '长休息'
-      }[type] || '专注';
+        focus: tr('专注'),
+        shortBreak: tr('短休息'),
+        longBreak: tr('长休息')
+      }[type] || tr('专注');
     }
     function formatFocusHistoryBadge(item) {
-      if (item && item.result === 'aborted') return '终止';
+      if (item && item.result === 'aborted') return tr('终止');
       return formatFocusSessionType(item && item.type);
     }
     function focusHistoryMain(item) {
       const taskPrefix = focusTaskTitle(item && item.task) ? truncateText(focusTaskTitle(item.task), 18) + ' · ' : '';
-      const external = item && item.trustedExternalMs ? ' · 外部 ' + formatCompactDuration(item.trustedExternalMs) : '';
+      const external = item && item.trustedExternalMs ? ' · ' + tr('外部') + ' ' + formatCompactDuration(item.trustedExternalMs) : '';
       if (item.result === 'aborted') {
-        return taskPrefix + '已进行 ' + formatCompactDuration(getFocusHistoryElapsed(item)) + external;
+        return taskPrefix + tr('已进行') + ' ' + formatCompactDuration(getFocusHistoryElapsed(item)) + external;
       }
       if (item.type === 'focus') {
-        return taskPrefix + '专注 ' + formatCompactDuration(item.focusedMs || 0) + external + ' · 打断 ' + String(item.interruptions || 0);
+        return taskPrefix + tr('专注') + ' ' + formatCompactDuration(item.focusedMs || 0) + external + ' · ' + tr('打断') + ' ' + String(item.interruptions || 0);
       }
-      return '完成 ' + formatCompactDuration(item.durationMs || 0);
+      return tr('完成') + ' ' + formatCompactDuration(item.durationMs || 0);
     }
     function focusSessionTooltip(item) {
       if (!item) return '';
       const lines = [];
       const title = item.result === 'aborted'
-        ? '番茄记录 · 已终止'
+        ? tr('番茄记录') + ' · ' + tr('已终止')
         : item.status
-          ? '番茄时钟 · ' + formatFocusStatus(item)
-          : '番茄记录 · ' + formatFocusSessionType(item.type);
+          ? tr('番茄时钟') + ' · ' + formatFocusStatus(item)
+          : tr('番茄记录') + ' · ' + formatFocusSessionType(item.type);
       lines.push(title);
       const taskTitle = focusTaskTitle(item.task);
-      if (taskTitle) lines.push('事项：' + taskTitle);
+      if (taskTitle) lines.push(tr('事项：') + taskTitle);
       if (item.status === 'running') {
         const currentApp = String(item.foregroundAppName || (item.foregroundApp && item.foregroundApp.name) || '').trim();
-        if (currentApp) lines.push('当前应用：' + currentApp + (item.foregroundAppTrusted ? '（计入专注）' : '（未计入专注）'));
+        if (currentApp) lines.push(tr('当前应用：') + currentApp + (item.foregroundAppTrusted ? tr('（计入专注）') : tr('（未计入专注）')));
       }
-      if (item.startedAt) lines.push('开始：' + formatDateTime(item.startedAt));
-      if (item.completedAt) lines.push('结束：' + formatDateTime(item.completedAt));
-      lines.push('目标：' + formatCompactDuration(item.durationMs || 0));
-      lines.push('已进行：' + formatCompactDuration(getFocusHistoryElapsed(item)));
-      lines.push('专注合计：' + formatCompactDuration(item.focusedMs || 0));
-      lines.push('编辑器内：' + formatCompactDuration(getFocusEditorMs(item)));
-      lines.push('外部专注：' + formatCompactDuration(item.trustedExternalMs || 0));
-      lines.push('离开：' + formatCompactDuration(item.blurredMs || 0));
-      if (item.untrustedExternalMs) lines.push('非可信应用：' + formatCompactDuration(item.untrustedExternalMs));
-      if (item.idleMs) lines.push('空闲：' + formatCompactDuration(item.idleMs));
-      lines.push('打断：' + String(item.interruptions || 0) + ' 次');
-      if (item.appSwitches) lines.push('应用切换：' + String(item.appSwitches) + ' 次');
+      if (item.startedAt) lines.push(tr('开始：') + formatDateTime(item.startedAt));
+      if (item.completedAt) lines.push(tr('结束：') + formatDateTime(item.completedAt));
+      lines.push(tr('目标：') + formatCompactDuration(item.durationMs || 0));
+      lines.push(tr('已进行：') + formatCompactDuration(getFocusHistoryElapsed(item)));
+      lines.push(tr('专注合计：') + formatCompactDuration(item.focusedMs || 0));
+      lines.push(tr('编辑器内：') + formatCompactDuration(getFocusEditorMs(item)));
+      lines.push(tr('外部专注：') + formatCompactDuration(item.trustedExternalMs || 0));
+      lines.push(tr('离开：') + formatCompactDuration(item.blurredMs || 0));
+      if (item.untrustedExternalMs) lines.push(tr('非可信应用：') + formatCompactDuration(item.untrustedExternalMs));
+      if (item.idleMs) lines.push(tr('空闲：') + formatCompactDuration(item.idleMs));
+      lines.push(tr('打断：') + String(item.interruptions || 0) + ' ' + tr('次'));
+      if (item.appSwitches) lines.push(tr('应用切换：') + String(item.appSwitches) + ' ' + tr('次'));
       const appLines = focusAppUsageLines(item);
       if (appLines.length) {
         lines.push('');
-        lines.push('应用用时：');
+        lines.push(tr('应用用时：'));
         lines.push(...appLines);
       }
       return lines.filter(Boolean).join('\n');
