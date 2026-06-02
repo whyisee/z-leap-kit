@@ -1,0 +1,8 @@
+node_modules/*
+*.vsix
+.vscode-test/
+.leap/
+resources/image*.png
+resources/screenshots/*.jpg
+resources/screenshots/*.webp
+whyisee-community/app/node_modules/
