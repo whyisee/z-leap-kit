@@ -1,0 +1,120 @@
+---
+import type { Lang } from "@lib/i18n";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const copy = lang === "en"
+  ? {
+      upload: "Upload image",
+      uploading: "Uploading...",
+      done: "Image inserted.",
+      failed: "Upload failed.",
+      noEditor: "Editor not found.",
+    }
+  : {
+      upload: "上传图片",
+      uploading: "上传中...",
+      done: "图片链接已插入。",
+      failed: "上传失败。",
+      noEditor: "没有找到正文编辑框。",
+    };
+---
+
+<div class="markdown-upload" data-markdown-upload>
+  <input class="markdown-upload-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-upload-input hidden />
+  <button class="button secondary compact" type="button" data-upload-button>{copy.upload}</button>
+  <span class="markdown-upload-status" data-upload-status aria-live="polite"></span>
+</div>
+
+<script define:vars={{ copy }} is:inline>
+  (() => {
+    document.querySelectorAll("[data-markdown-upload]").forEach((root) => {
+      if (root.dataset.bound === "1") {
+        return;
+      }
+
+      root.dataset.bound = "1";
+
+      const input = root.querySelector("[data-upload-input]");
+      const button = root.querySelector("[data-upload-button]");
+      const status = root.querySelector("[data-upload-status]");
+      const form = root.closest("form");
+      const textarea = form?.querySelector('textarea[name="contentMarkdown"]');
+
+      if (!input || !button || !status) {
+        return;
+      }
+
+      const setStatus = (message) => {
+        status.textContent = message || "";
+      };
+
+      const setBusy = (busy) => {
+        button.disabled = busy;
+        button.textContent = busy ? copy.uploading : copy.upload;
+      };
+
+      button.addEventListener("click", () => {
+        if (!textarea) {
+          setStatus(copy.noEditor);
+          return;
+        }
+
+        input.click();
+      });
+
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+
+        if (!file || !textarea) {
+          return;
+        }
+
+        setBusy(true);
+        setStatus("");
+
+        try {
+          const body = new FormData();
+          body.append("image", file);
+
+          const response = await fetch("/api/uploads/images", {
+            method: "POST",
+            body,
+          });
+          const payload = await response.json();
+
+          if (!response.ok) {
+            throw new Error(payload.error || copy.failed);
+          }
+
+          insertAtCursor(textarea, payload.markdown || `![${file.name}](${payload.url})`);
+          setStatus(copy.done);
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : copy.failed);
+        } finally {
+          setBusy(false);
+          input.value = "";
+        }
+      });
+    });
+
+    function insertAtCursor(textarea, text) {
+      const start = textarea.selectionStart ?? textarea.value.length;
+      const end = textarea.selectionEnd ?? textarea.value.length;
+      const before = textarea.value.slice(0, start);
+      const after = textarea.value.slice(end);
+      const prefix = before && !before.endsWith("\n") ? "\n\n" : "";
+      const suffix = after && !after.startsWith("\n") ? "\n\n" : "";
+      const inserted = `${prefix}${text}${suffix}`;
+
+      textarea.value = `${before}${inserted}${after}`;
+      textarea.focus();
+      textarea.selectionStart = start + inserted.length;
+      textarea.selectionEnd = start + inserted.length;
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  })();
+</script>

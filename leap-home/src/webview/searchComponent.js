@@ -842,10 +842,32 @@ function getSearchScript() {
         complete.dataset.taskId = item.taskId;
         actions.appendChild(complete);
       }
+      if (item.category === 'task') {
+        const source = getSearchTaskLink(item, 'source');
+        const output = getSearchTaskLink(item, 'output');
+        if (source && source.filePath) {
+          const openSource = searchActionButton('↗', '打开来源文档', 'open');
+          openSource.dataset.filePath = source.filePath;
+          if (source.line) openSource.dataset.line = String(source.line);
+          actions.appendChild(openSource);
+        }
+        if (output && output.filePath) {
+          const openOutput = searchActionButton('◈', '打开产出文档', 'open');
+          openOutput.dataset.filePath = output.filePath;
+          if (output.line) openOutput.dataset.line = String(output.line);
+          actions.appendChild(openOutput);
+        }
+      }
       if (item.category !== 'task') {
         const task = searchActionButton('+', '加入待办', 'addTask');
         task.title = tr('加入四象限的重要不紧急');
         task.dataset.filePath = item.filePath || '';
+        task.dataset.sourceId = item.sourceId || '';
+        task.dataset.sourceName = item.sourceName || '';
+        task.dataset.sourceType = item.sourceType || '';
+        task.dataset.relativePath = item.relativePath || '';
+        task.dataset.docTitle = item.title || item.fileName || '';
+        if (item.line) task.dataset.line = String(item.line);
         task.dataset.taskText = buildSearchTaskText(item);
         actions.appendChild(task);
       }
@@ -867,9 +889,22 @@ function getSearchScript() {
         const parts = relative.split(' · ').map((part) => part.trim()).filter(Boolean);
         const date = parts.find((part) => /^\\d{4}-\\d{2}-\\d{2}$/.test(part));
         const quadrant = item.quadrantTitle || parts.find((part) => !/^\\d{4}-\\d{2}-\\d{2}$/.test(part)) || '';
-        return [tr(item.sourceName || '四象限'), tr(quadrant), date];
+        const linkTitles = getSearchTaskLinks(item)
+          .slice(0, 2)
+          .map((link) => link.title || link.relativePath || '')
+          .filter(Boolean)
+          .join(' / ');
+        return [tr(item.sourceName || '四象限'), tr(quadrant), date, linkTitles];
       }
       return [tr(item.sourceName || ''), item.relativePath || item.fileName];
+    }
+
+    function getSearchTaskLink(item, role) {
+      return getSearchTaskLinks(item).find((link) => link.role === role && (link.filePath || link.relativePath));
+    }
+
+    function getSearchTaskLinks(item) {
+      return Array.isArray(item && item.links) ? item.links : [];
     }
 
     function localizeSearchResultSystemText(text) {

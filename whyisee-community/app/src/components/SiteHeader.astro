@@ -1,6 +1,7 @@
 ---
 import { getSessionFromAstro } from "@lib/auth";
 import { t, type Lang } from "@lib/i18n";
+import { countUnreadNotifications } from "@server/services/notifications";
 
 interface Props {
   lang: Lang;
@@ -10,8 +11,45 @@ const { lang } = Astro.props;
 const redirectParams = new URLSearchParams(Astro.url.searchParams);
 redirectParams.delete("lang");
 const redirectPath = `${Astro.url.pathname}${redirectParams.toString() ? `?${redirectParams.toString()}` : ""}`;
-const session = getSessionFromAstro(Astro);
-const loginHref = session ? "/admin" : `/login?redirect=${encodeURIComponent(redirectPath)}`;
+const session = await getSessionFromAstro(Astro);
+const loginHref = `/login?redirect=${encodeURIComponent(redirectPath)}`;
+const unreadNotifications = session ? await countUnreadNotifications(session.userId) : 0;
+const searchLabel = lang === "en" ? "Search" : "搜索";
+const searchValue = Astro.url.pathname === "/search" ? Astro.url.searchParams.get("q") || "" : "";
+const searchOpen = Astro.url.pathname === "/search";
+const searchCopy = lang === "en"
+  ? {
+      loading: "Searching...",
+      noResults: "No matching results.",
+      error: "Search failed. Try again later.",
+    }
+  : {
+      loading: "搜索中...",
+      noResults: "没有匹配结果。",
+      error: "搜索失败，稍后再试。",
+    };
+const notificationLabel = lang === "en" ? "Notifications" : "通知";
+const menuCopy = lang === "en"
+  ? {
+      profile: "Profile",
+      topics: "Topics",
+      following: "Following",
+      admin: "Admin",
+      logout: "Log out",
+      account: "Account",
+      unread: "unread",
+    }
+  : {
+      profile: "个人资料",
+      topics: "话题",
+      following: "关注",
+      admin: "管理后台",
+      logout: "退出登录",
+      account: "账号",
+      unread: "未读",
+    };
+const avatarLabel = session ? `${session.displayName || session.username}` : t(lang, "header.login");
+const avatarInitial = session ? (session.displayName || session.username).trim().slice(0, 1).toUpperCase() : "";
 ---
 
 <header class="site-header">
@@ -42,10 +80,39 @@ const loginHref = session ? "/admin" : `/login?redirect=${encodeURIComponent(red
   </div>
 
   <div class="header-actions">
-    <a class="login-button" href={loginHref}>
-      <span class="login-icon" aria-hidden="true"></span>
-      <span>{session ? t(lang, "header.admin") : t(lang, "header.login")}</span>
-    </a>
+    <form
+      class:list={["header-search", searchOpen && "is-open"]}
+      method="get"
+      action="/search"
+      data-header-search
+      data-search-lang={lang}
+      data-search-loading={searchCopy.loading}
+      data-search-empty={searchCopy.noResults}
+      data-search-error={searchCopy.error}
+    >
+      <button
+        class="header-icon-button search-toggle"
+        type="button"
+        aria-label={searchLabel}
+        aria-expanded={searchOpen ? "true" : "false"}
+        data-search-toggle
+      >
+        <span class="search-icon" aria-hidden="true"></span>
+      </button>
+      <input
+        class="header-search-input"
+        name="q"
+        value={searchValue}
+        placeholder={searchLabel}
+        autocomplete="off"
+        tabindex={searchOpen ? "0" : "-1"}
+        data-search-input
+      />
+      <div class="header-search-panel" data-search-panel hidden>
+        <div class="header-search-state" data-search-state hidden></div>
+        <div class="header-search-results" data-search-results></div>
+      </div>
+    </form>
 
     <form class="language-switch" method="post" action="/api/lang" data-language-switch>
       <input type="hidden" name="redirect" value={redirectPath} />
@@ -74,6 +141,44 @@ const loginHref = session ? "/admin" : `/login?redirect=${encodeURIComponent(red
         </button>
       </div>
     </form>
+
+    {session ? (
+      <div class="user-menu" data-user-menu>
+        <button
+          class:list={["avatar-button", unreadNotifications > 0 && "has-unread"]}
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          aria-label={avatarLabel}
+          data-user-menu-button
+        >
+          <span class="avatar-mark" aria-hidden="true">{avatarInitial}</span>
+        </button>
+        <div class="user-menu-panel" role="menu" data-user-menu-panel hidden>
+          <div class="user-menu-head">
+            <strong>{session.displayName}</strong>
+            <span>@{session.username}</span>
+          </div>
+          <a class="user-menu-item" href="/notifications" role="menuitem">
+            <span>{notificationLabel}</span>
+            {unreadNotifications > 0 && <small>{unreadNotifications} {menuCopy.unread}</small>}
+          </a>
+          <a class="user-menu-item" href="/settings/profile" role="menuitem">{menuCopy.profile}</a>
+          <a class="user-menu-item" href={`/u/${session.username}`} role="menuitem">{menuCopy.topics}</a>
+          <a class="user-menu-item" href={`/u/${session.username}?view=following`} role="menuitem">{menuCopy.following}</a>
+          {session.role === "admin" && <a class="user-menu-item" href="/admin" role="menuitem">{menuCopy.admin}</a>}
+          <a class="user-menu-item" href="/settings/account" role="menuitem">{menuCopy.account}</a>
+          <form method="post" action="/api/logout?redirect=/">
+            <button class="user-menu-item danger" type="submit" role="menuitem">{menuCopy.logout}</button>
+          </form>
+        </div>
+      </div>
+    ) : (
+      <a class="login-compact-button" href={loginHref}>
+        <span class="login-icon" aria-hidden="true"></span>
+        <span>{t(lang, "header.login")}</span>
+      </a>
+    )}
   </div>
 </header>
 
@@ -99,6 +204,7 @@ const loginHref = session ? "/admin" : `/login?redirect=${encodeURIComponent(red
     };
 
     let collapsed = false;
+    let animationTimer = 0;
 
     try {
       collapsed = localStorage.getItem(storageKey) === "1";
@@ -109,6 +215,8 @@ const loginHref = session ? "/admin" : `/login?redirect=${encodeURIComponent(red
     applyState(collapsed);
 
     button.addEventListener("click", () => {
+      window.clearTimeout(animationTimer);
+      document.documentElement.dataset.sidebarAnimating = "true";
       collapsed = document.documentElement.dataset.sidebar !== "collapsed";
       applyState(collapsed);
 
@@ -116,6 +224,278 @@ const loginHref = session ? "/admin" : `/login?redirect=${encodeURIComponent(red
         localStorage.setItem(storageKey, collapsed ? "1" : "0");
       } catch {
         // Ignore storage failures; the current page can still toggle normally.
+      }
+
+      animationTimer = window.setTimeout(() => {
+        document.documentElement.removeAttribute("data-sidebar-animating");
+      }, 380);
+    });
+  })();
+
+  (() => {
+    const form = document.querySelector("[data-header-search]");
+    const button = document.querySelector("[data-search-toggle]");
+    const input = document.querySelector("[data-search-input]");
+    const panel = document.querySelector("[data-search-panel]");
+    const state = document.querySelector("[data-search-state]");
+    const results = document.querySelector("[data-search-results]");
+
+    if (!form || !button || !input || !panel || !state || !results) {
+      return;
+    }
+
+    const labels = {
+      loading: form.dataset.searchLoading || "Searching...",
+      empty: form.dataset.searchEmpty || "No matching results.",
+      error: form.dataset.searchError || "Search failed.",
+    };
+    const kindLabels = form.dataset.searchLang === "en"
+      ? {
+          topic: "Topic",
+          reply: "Reply",
+          category: "Category",
+          tag: "Tag",
+          user: "User",
+        }
+      : {
+          topic: "话题",
+          reply: "回复",
+          category: "分类",
+          tag: "标签",
+          user: "用户",
+        };
+    const searchDelay = 280;
+    let searchTimer = 0;
+    let lastQuery = "";
+    let activeController = null;
+    let resultItems = [];
+    let activeIndex = -1;
+
+    const setOpen = (open) => {
+      form.classList.toggle("is-open", open);
+      button.setAttribute("aria-expanded", String(open));
+      input.tabIndex = open ? 0 : -1;
+
+      if (!open) {
+        panel.hidden = true;
+        form.classList.remove("has-results");
+      }
+
+      if (open) {
+        requestAnimationFrame(() => input.focus());
+      }
+    };
+
+    const setPanelOpen = (open) => {
+      panel.hidden = !open;
+      form.classList.toggle("has-results", open);
+    };
+
+    const setActive = (index) => {
+      resultItems.forEach((item, itemIndex) => {
+        item.classList.toggle("is-active", itemIndex === index);
+      });
+      activeIndex = index;
+    };
+
+    const clearResults = () => {
+      results.replaceChildren();
+      resultItems = [];
+      activeIndex = -1;
+    };
+
+    const showState = (message) => {
+      clearResults();
+      state.hidden = false;
+      state.textContent = message;
+      setPanelOpen(true);
+    };
+
+    const hidePanel = () => {
+      setPanelOpen(false);
+      setActive(-1);
+    };
+
+    const renderResult = (item) => {
+      const row = document.createElement("a");
+      row.className = "header-search-result";
+      row.href = item.href;
+
+      const head = document.createElement("span");
+      head.className = "header-search-result-head";
+
+      const badge = document.createElement("span");
+      badge.className = "header-search-kind";
+      badge.textContent = kindLabels[item.kind] || item.kind || "";
+
+      const title = document.createElement("strong");
+      title.textContent = item.title || "";
+
+      head.append(badge, title);
+      row.append(head);
+
+      if (item.summary) {
+        const summary = document.createElement("span");
+        summary.className = "header-search-summary";
+        summary.textContent = item.summary;
+        row.append(summary);
+      }
+
+      if (item.meta) {
+        const meta = document.createElement("small");
+        meta.textContent = item.meta;
+        row.append(meta);
+      }
+
+      return row;
+    };
+
+    const renderResults = (items) => {
+      clearResults();
+
+      if (!items.length) {
+        showState(labels.empty);
+        return;
+      }
+
+      state.hidden = true;
+      items.forEach((item) => results.append(renderResult(item)));
+      resultItems = Array.from(results.querySelectorAll(".header-search-result"));
+      setPanelOpen(true);
+    };
+
+    const runSearch = async () => {
+      const query = input.value.trim();
+
+      if (!query) {
+        lastQuery = "";
+        clearResults();
+        setPanelOpen(false);
+        return;
+      }
+
+      if (query === lastQuery && resultItems.length) {
+        setPanelOpen(true);
+        return;
+      }
+
+      lastQuery = query;
+      showState(labels.loading);
+
+      if (activeController) {
+        activeController.abort();
+      }
+
+      activeController = new AbortController();
+
+      try {
+        const url = new URL("/api/search", window.location.origin);
+        url.searchParams.set("q", query);
+        url.searchParams.set("limit", "8");
+        url.searchParams.set("lang", form.dataset.searchLang || "zh");
+
+        const response = await fetch(url, {
+          headers: { accept: "application/json" },
+          signal: activeController.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Search failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (input.value.trim() !== query) {
+          return;
+        }
+
+        renderResults(Array.isArray(data.results) ? data.results : []);
+      } catch (error) {
+        if (error?.name === "AbortError") {
+          return;
+        }
+
+        showState(labels.error);
+      }
+    };
+
+    const scheduleSearch = () => {
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(runSearch, searchDelay);
+    };
+
+    button.addEventListener("click", () => {
+      const isOpen = form.classList.contains("is-open");
+
+      if (!isOpen) {
+        setOpen(true);
+        return;
+      }
+
+      if (input.value.trim()) {
+        runSearch();
+        return;
+      }
+
+      setOpen(false);
+    });
+
+    input.addEventListener("input", () => {
+      setOpen(true);
+      scheduleSearch();
+    });
+
+    input.addEventListener("focus", () => {
+      if (input.value.trim()) {
+        runSearch();
+      }
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        window.clearTimeout(searchTimer);
+        hidePanel();
+
+        if (!input.value.trim()) {
+          setOpen(false);
+          button.focus();
+        }
+      }
+
+      if (event.key === "ArrowDown" && resultItems.length) {
+        event.preventDefault();
+        setActive((activeIndex + 1) % resultItems.length);
+      }
+
+      if (event.key === "ArrowUp" && resultItems.length) {
+        event.preventDefault();
+        setActive(activeIndex <= 0 ? resultItems.length - 1 : activeIndex - 1);
+      }
+
+      if (event.key === "Enter" && resultItems.length) {
+        event.preventDefault();
+        resultItems[Math.max(activeIndex, 0)]?.click();
+      }
+    });
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+
+      if (resultItems.length) {
+        resultItems[Math.max(activeIndex, 0)]?.click();
+        return;
+      }
+
+      runSearch();
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!form.contains(event.target)) {
+        hidePanel();
+
+        if (!input.value.trim()) {
+          setOpen(false);
+        }
       }
     });
   })();
@@ -148,6 +528,39 @@ const loginHref = session ? "/admin" : `/login?redirect=${encodeURIComponent(red
 
     document.addEventListener("click", (event) => {
       if (!switcher.contains(event.target)) {
+        setOpen(false);
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        button.focus();
+      }
+    });
+  })();
+
+  (() => {
+    const menu = document.querySelector("[data-user-menu]");
+    const button = document.querySelector("[data-user-menu-button]");
+    const panel = document.querySelector("[data-user-menu-panel]");
+
+    if (!menu || !button || !panel) {
+      return;
+    }
+
+    const setOpen = (open) => {
+      panel.hidden = !open;
+      button.setAttribute("aria-expanded", String(open));
+      menu.dataset.open = open ? "true" : "false";
+    };
+
+    button.addEventListener("click", () => {
+      setOpen(panel.hidden);
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!menu.contains(event.target)) {
         setOpen(false);
       }
     });

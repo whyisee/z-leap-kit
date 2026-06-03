@@ -1,8 +1,7 @@
 import type { APIRoute } from "astro";
 import {
   authCookieName,
-  authenticateAdmin,
-  createSessionToken,
+  authenticateUser,
   getSessionMaxAgeSeconds,
   safeRedirectPath,
 } from "@lib/auth";
@@ -13,14 +12,14 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const formData = await request.formData();
   const username = String(formData.get("username") || "");
   const password = String(formData.get("password") || "");
-  const target = safeRedirectPath(formData.get("redirect"), "/admin");
-  const session = authenticateAdmin(username, password);
+  const target = safeRedirectPath(formData.get("redirect"), "/");
+  const session = await authenticateUser(username, password);
 
   if (!session) {
     return redirect(`/login?error=1&redirect=${encodeURIComponent(target)}`, 303);
   }
 
-  cookies.set(authCookieName, createSessionToken(session), {
+  cookies.set(authCookieName, session.sessionId, {
     httpOnly: true,
     maxAge: getSessionMaxAgeSeconds(),
     path: "/",

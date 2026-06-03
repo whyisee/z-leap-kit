@@ -1,5 +1,6 @@
-export type TopicType = "discussion" | "article" | "project" | "resource" | "announcement";
-export type TopicStatus = "draft" | "published" | "hidden" | "deleted";
+export type TopicType = "discussion" | "question" | "article" | "project" | "resource" | "announcement";
+export type TopicStatus = "draft" | "pending" | "published" | "hidden" | "deleted";
+export type PostStatus = "published" | "hidden" | "deleted";
 
 export interface Category {
   id: number;
@@ -26,6 +27,7 @@ export interface Topic {
   summary: string;
   contentMarkdown: string;
   contentHtml: string;
+  authorId: number;
   type: TopicType;
   status: TopicStatus;
   isPinned: boolean;
@@ -33,10 +35,29 @@ export interface Topic {
   viewCount: number;
   replyCount: number;
   publishedAt: string;
+  lastActivityAt: string;
   createdAt: string;
   updatedAt: string;
   category: Category;
   tags: Tag[];
+}
+
+export interface TopicAuthor {
+  id: number;
+  username: string;
+  displayName: string;
+  role: "admin" | "moderator" | "member" | "new_user";
+}
+
+export interface Post {
+  id: number;
+  topicId: number;
+  contentMarkdown: string;
+  contentHtml: string;
+  status: PostStatus;
+  createdAt: string;
+  updatedAt: string;
+  author: TopicAuthor;
 }
 
 export interface TopicListOptions {
@@ -45,6 +66,8 @@ export interface TopicListOptions {
   categorySlug?: string;
   tagSlug?: string;
   type?: TopicType;
+  authorId?: number;
+  search?: string;
   includeDrafts?: boolean;
   lang?: import("./i18n").Lang;
 }

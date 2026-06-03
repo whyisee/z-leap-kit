@@ -1,0 +1,139 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import ForumFrame from "@components/ForumFrame.astro";
+import TopicCard from "@components/TopicCard.astro";
+import TopicListHeader from "@components/TopicListHeader.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { getLangFromAstro } from "@lib/i18n";
+import { topicPath } from "@lib/routes";
+import { listCategories, listTags } from "@server/services/categories";
+import { listFeaturedTopics } from "@server/services/topics";
+import { getUserByUsername, listUserTopics } from "@server/services/users";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+const username = String(Astro.params.username || "");
+const user = await getUserByUsername(username);
+const categories = await listCategories(lang);
+const tags = await listTags(lang);
+const featuredTopics = await listFeaturedTopics(4, lang);
+const submitted = Astro.url.searchParams.get("submitted") === "1";
+const canEditProfile = Boolean(user && session && (session.userId === user.id || isAdmin(session)));
+const topics = user ? await listUserTopics(user.id, lang, canEditProfile) : [];
+const copy = lang === "en"
+  ? {
+      notFound: "User not found",
+      notFoundDescription: "This user does not exist.",
+      topics: "Public topics",
+      myTopics: "My topics",
+      profileDescription: "whyisee.xyz user profile.",
+      submitted: "Topic submitted. It will appear after review.",
+      deleted: "Topic deleted.",
+      settings: "Settings",
+      newTopic: "New topic",
+      joined: "Joined",
+      noTopics: "No public topics yet.",
+      edit: "Edit",
+      view: "View",
+      draft: "Draft",
+      pending: "Pending",
+      published: "Published",
+      hidden: "Hidden",
+      deletedStatus: "Deleted",
+    }
+  : {
+      notFound: "用户未找到",
+      notFoundDescription: "这个用户不存在。",
+      topics: "公开话题",
+      myTopics: "我的话题",
+      profileDescription: "whyisee.xyz 用户主页。",
+      submitted: "话题已提交，通过审核后会展示。",
+      deleted: "话题已删除。",
+      settings: "资料设置",
+      newTopic: "新建话题",
+      joined: "加入时间",
+      noTopics: "暂无公开话题。",
+      edit: "编辑",
+      view: "查看",
+      draft: "草稿",
+      pending: "待审核",
+      published: "已发布",
+      hidden: "已隐藏",
+      deletedStatus: "已删除",
+    };
+const deleted = Astro.url.searchParams.get("deleted") === "1";
+---
+
+<BaseLayout title={`${user?.displayName || copy.notFound} - whyisee.xyz`} description={user ? (user.bio || copy.profileDescription) : copy.notFoundDescription}>
+  {user ? (
+    <ForumFrame categories={categories} tags={tags} featuredTopics={featuredTopics} lang={lang}>
+      <section class="user-profile-head">
+        <div>
+          <p class="eyebrow">@{user.username}</p>
+          <h1>{user.displayName}</h1>
+          <p>{user.bio || (lang === "en" ? "No bio yet." : "还没有填写简介。")}</p>
+          <div class="topic-meta">
+            <span>{copy.joined} {new Date(user.createdAt).toLocaleDateString(lang === "en" ? "en-US" : "zh-CN")}</span>
+            {user.websiteUrl && <a class="text-link" href={user.websiteUrl} rel="noreferrer" target="_blank">Website</a>}
+            {user.githubUrl && <a class="text-link" href={user.githubUrl} rel="noreferrer" target="_blank">GitHub</a>}
+          </div>
+        </div>
+        {canEditProfile && (
+          <div class="profile-actions">
+            <a class="button primary" href="/new-topic">{copy.newTopic}</a>
+            <a class="button secondary" href="/settings/profile">{copy.settings}</a>
+          </div>
+        )}
+      </section>
+
+      {submitted && <p class="auth-message muted">{copy.submitted}</p>}
+      {deleted && <p class="auth-message muted">{copy.deleted}</p>}
+
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">{canEditProfile ? copy.myTopics : copy.topics}</p>
+          <h2>{canEditProfile ? copy.myTopics : copy.topics}</h2>
+        </div>
+        <span class="count-pill">{topics.length}</span>
+      </div>
+
+      {topics.length > 0 && canEditProfile ? (
+        <div class="admin-topic-list">
+          {topics.map((topic) => (
+            <article class="admin-topic-row">
+              <div>
+                <div class="topic-meta">
+                  <span class={`admin-status ${topic.status}`}>
+                    {topic.status === "deleted" ? copy.deletedStatus : copy[topic.status]}
+                  </span>
+                  <span>{topic.category.name}</span>
+                  <span>{topic.type}</span>
+                </div>
+                <h2>{topic.title}</h2>
+                <p>{topic.summary}</p>
+              </div>
+              <div class="admin-row-actions">
+                <a class="button secondary" href={`/topics/${topic.id}/edit`}>{copy.edit}</a>
+                {topic.status === "published" && <a class="button secondary" href={topicPath(topic)}>{copy.view}</a>}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : topics.length > 0 ? (
+        <div class="topic-list">
+          <TopicListHeader lang={lang} />
+          {topics.map((topic) => <TopicCard topic={topic} lang={lang} />)}
+        </div>
+      ) : (
+        <p class="auth-message muted">{copy.noTopics}</p>
+      )}
+    </ForumFrame>
+  ) : (
+    <section class="article-page">
+      <h1>{copy.notFound}</h1>
+      <p>{copy.notFoundDescription}</p>
+    </section>
+  )}
+</BaseLayout>

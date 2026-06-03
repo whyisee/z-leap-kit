@@ -1,0 +1,61 @@
+---
+import AdminTopicForm from "@components/AdminTopicForm.astro";
+import AdminNav from "@components/AdminNav.astro";
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { getLangFromAstro, t } from "@lib/i18n";
+import { listCategories, listTags } from "@server/services/categories";
+import { getTopicByIdForAdmin } from "@server/services/topics";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/", 303);
+}
+
+const id = Number(Astro.params.id || 0);
+const topic = Number.isFinite(id) ? await getTopicByIdForAdmin(id, lang) : undefined;
+const categories = await listCategories(lang);
+const tags = await listTags(lang);
+const error = Astro.url.searchParams.get("error") === "1";
+const saved = Astro.url.searchParams.get("saved") === "1";
+const copy = lang === "en"
+  ? { title: "Edit Topic", saved: "Saved.", notFound: "Topic not found." }
+  : { title: "编辑话题", saved: "已保存。", notFound: "话题未找到。" };
+
+if (!topic) {
+  Astro.response.status = 404;
+}
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={t(lang, "admin.newTopicPageDescription")}>
+  <section class="admin-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{t(lang, "admin.title")}</p>
+        <h1>{topic ? copy.title : copy.notFound}</h1>
+      </div>
+    </div>
+    <AdminNav lang={lang} />
+    {saved && <p class="auth-message muted">{copy.saved}</p>}
+    {topic ? (
+      <AdminTopicForm
+        action={`/api/admin/topics/${topic.id}`}
+        categories={categories}
+        tags={tags}
+        lang={lang}
+        topic={topic}
+        error={error}
+      />
+    ) : (
+      <p>{copy.notFound}</p>
+    )}
+  </section>
+</BaseLayout>

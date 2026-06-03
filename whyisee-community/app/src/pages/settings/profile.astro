@@ -1,0 +1,92 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { getSessionFromAstro } from "@lib/auth";
+import { getLangFromAstro } from "@lib/i18n";
+import { getUserById } from "@server/services/users";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect("/login?redirect=/settings/profile", 303);
+}
+
+const user = await getUserById(session.userId);
+const saved = Astro.url.searchParams.get("saved") === "1";
+const hasError = Astro.url.searchParams.get("error") === "1";
+const copy = lang === "en"
+  ? {
+      title: "Profile settings",
+      description: "Update your public profile and language preference.",
+      displayName: "Display name",
+      bio: "Bio",
+      website: "Website",
+      github: "GitHub",
+      locale: "Language",
+      save: "Save profile",
+      saved: "Profile saved.",
+      error: "Failed to save profile.",
+      publicPage: "Public profile",
+      account: "Account security",
+    }
+  : {
+      title: "个人资料设置",
+      description: "更新公开资料和语言偏好。",
+      displayName: "显示名称",
+      bio: "简介",
+      website: "网站",
+      github: "GitHub",
+      locale: "语言",
+      save: "保存资料",
+      saved: "资料已保存。",
+      error: "保存失败。",
+      publicPage: "公开主页",
+      account: "账号安全",
+    };
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="article-page auth-page">
+    <div class="auth-card profile-card">
+      <p class="eyebrow">{session.username}</p>
+      <h1>{copy.title}</h1>
+      <p>{copy.description}</p>
+
+      {saved && <p class="auth-message muted">{copy.saved}</p>}
+      {hasError && <p class="auth-message error">{copy.error}</p>}
+
+      <form class="auth-form" method="post" action="/api/settings/profile">
+        <label>
+          {copy.displayName}
+          <input name="displayName" value={user?.displayName || session.displayName} required type="text" />
+        </label>
+        <label>
+          {copy.bio}
+          <textarea name="bio" rows="5">{user?.bio || ""}</textarea>
+        </label>
+        <label>
+          {copy.website}
+          <input name="websiteUrl" value={user?.websiteUrl || ""} type="url" />
+        </label>
+        <label>
+          {copy.github}
+          <input name="githubUrl" value={user?.githubUrl || ""} type="url" />
+        </label>
+        <label>
+          {copy.locale}
+          <select name="locale">
+            <option value="zh" selected={(user?.locale || lang) === "zh"}>中文</option>
+            <option value="en" selected={(user?.locale || lang) === "en"}>English</option>
+          </select>
+        </label>
+        <div class="form-actions">
+          <button class="button primary" type="submit">{copy.save}</button>
+          <a class="button secondary" href={`/u/${session.username}`}>{copy.publicPage}</a>
+          <a class="button secondary" href="/settings/account">{copy.account}</a>
+        </div>
+      </form>
+    </div>
+  </section>
+</BaseLayout>

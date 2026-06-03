@@ -206,6 +206,10 @@ function getWebviewHtml(webview) {
       border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-focusBorder));
       box-shadow: 0 0 0 1px var(--vscode-inputValidation-warningBorder, var(--vscode-focusBorder)) inset;
     }
+    .block.focus-flash {
+      border-color: var(--vscode-focusBorder);
+      box-shadow: 0 0 0 1px var(--vscode-focusBorder) inset;
+    }
     .resize-handle {
       display: none;
       position: absolute;
@@ -558,6 +562,7 @@ function getWebviewHtml(webview) {
       layoutNoticeTimer: undefined,
       completedQuadrants: {},
       activeQuadrantAdd: '',
+      quadrantAddDrafts: {},
       focusTimerHistoryVisible: false,
       countdownFormId: '',
       countdownShowDone: false,
@@ -567,6 +572,8 @@ function getWebviewHtml(webview) {
       nextActionSeen: {},
       nextActionPending: {},
       nextActionNotice: '',
+      pendingQuadrantsFocus: undefined,
+      lastEscapeAt: 0,
       knowledgeGraphView: 'cluster',
       knowledgeGraphRelation: 'all',
       knowledgeGraphNodeId: '',
@@ -715,11 +722,18 @@ function getWebviewHtml(webview) {
       if (event.data && event.data.type === 'knowledgeGraphAiStatus') {
         handleKnowledgeGraphAiStatus(event.data);
       }
+      if (event.data && event.data.type === 'quadrantAddDraftLink') {
+        handleQuadrantAddDraftLink(event.data);
+      }
+      if (event.data && event.data.type === 'focusQuadrantsTask') {
+        handleFocusQuadrantsTask(event.data);
+      }
     });
 
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', finishDrag);
     document.addEventListener('click', closeDatePickers);
+    document.addEventListener('keydown', handleHomeEscapeShortcut);
     document.addEventListener('wheel', releasePageScrollAtNestedBoundary, { passive: false });
     if (els.editHomeButton) {
       els.editHomeButton.addEventListener('click', () => setDesignMode(true));
@@ -745,11 +759,22 @@ function getWebviewHtml(webview) {
         }
       }
       if (action === 'addTask') {
+        const taskLinks = filePath ? [{
+          role: 'source',
+          sourceId: button.dataset.sourceId || '',
+          sourceName: button.dataset.sourceName || '',
+          sourceType: button.dataset.sourceType || '',
+          filePath,
+          relativePath: button.dataset.relativePath || '',
+          title: button.dataset.docTitle || button.dataset.taskText || '',
+          line: Number.isNaN(line) ? 0 : line
+        }] : [];
         post('addQuadrantTask', {
           quadrantId: 'importantNotUrgent',
           text: button.dataset.taskText || '处理搜索结果',
           source: 'search',
-          reason: filePath || ''
+          reason: filePath || '',
+          links: taskLinks
         });
       }
       if (action === 'completeTask') {
@@ -763,6 +788,46 @@ function getWebviewHtml(webview) {
 
     function post(type, payload) {
       vscodeApi.postMessage(Object.assign({ type }, payload || {}));
+    }
+
+    function handleHomeEscapeShortcut(event) {
+      if (!event || event.key !== 'Escape') {
+        state.lastEscapeAt = 0;
+        return;
+      }
+      if (state.designMode) {
+        state.lastEscapeAt = 0;
+        return;
+      }
+      const now = Date.now();
+      const doubleEscape = now - (state.lastEscapeAt || 0) <= 700;
+      state.lastEscapeAt = now;
+      if (!doubleEscape || !hasActiveSearchQuery()) {
+        return;
+      }
+      event.preventDefault();
+      state.lastEscapeAt = 0;
+      clearHomeSearch();
+    }
+
+    function hasActiveSearchQuery() {
+      return Boolean(
+        String(state.query || '').trim()
+        || state.search.loading
+        || state.search.error
+        || state.search.total
+        || (Array.isArray(state.search.groups) && state.search.groups.length)
+      );
+    }
+
+    function clearHomeSearch() {
+      runSearchFromCommand('');
+      state.searchSuggestionIndex = -1;
+      state.suppressSearchSuggestionOnce = false;
+      for (const suggest of document.querySelectorAll('.search-suggest')) {
+        suggest.hidden = true;
+      }
+      render();
     }
 
     function logToExtension(message, details) {
@@ -875,6 +940,7 @@ function getWebviewHtml(webview) {
       try {
         renderContent();
         localizeNode(document.body);
+        flushPendingQuadrantsFocus();
         logToExtension('render completed', { blocks: getActiveLayout().length, designMode: state.designMode });
       } catch (error) {
         logToExtension('render failed', formatWebviewError(error));
@@ -927,6 +993,70 @@ function getWebviewHtml(webview) {
       }
     }
 
+    function handleFocusQuadrantsTask(payload) {
+      state.pendingQuadrantsFocus = {
+        quadrantId: payload.quadrantId || '',
+        taskId: payload.taskId || '',
+        title: payload.title || ''
+      };
+      window.requestAnimationFrame(flushPendingQuadrantsFocus);
+    }
+
+    function flushPendingQuadrantsFocus() {
+      const request = state.pendingQuadrantsFocus;
+      if (!request) {
+        return;
+      }
+      const block = getActiveLayout().find((item) => item.component === 'fourQuadrants');
+      if (!block) {
+        state.pendingQuadrantsFocus = undefined;
+        state.nextActionNotice = tr('已创建四象限事项，但当前首页没有四象限组件。可在布局编辑中添加“四象限”。');
+        refreshComponentBlocks('nextAction');
+        return;
+      }
+      const wrapper = findRenderedBlock(block.id);
+      if (!wrapper) {
+        return;
+      }
+      state.pendingQuadrantsFocus = undefined;
+      wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      flashElement(wrapper);
+      const taskElement = findQuadrantTaskElement(request.taskId);
+      if (taskElement) {
+        taskElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        flashElement(taskElement);
+        const input = taskElement.matches && taskElement.matches('input')
+          ? taskElement
+          : taskElement.querySelector && taskElement.querySelector('input.task-input');
+        if (input && typeof input.focus === 'function') {
+          window.setTimeout(() => {
+            input.focus();
+            if (typeof input.select === 'function') input.select();
+          }, 120);
+        }
+      }
+    }
+
+    function findQuadrantTaskElement(taskId) {
+      if (!taskId) {
+        return undefined;
+      }
+      for (const element of els.grid.querySelectorAll('[data-quadrant-task-id]')) {
+        if (element.dataset.quadrantTaskId === taskId) {
+          return element.closest('.task') || element;
+        }
+      }
+      return undefined;
+    }
+
+    function flashElement(element) {
+      if (!element || !element.classList) {
+        return;
+      }
+      element.classList.add('focus-flash');
+      window.setTimeout(() => element.classList.remove('focus-flash'), 1800);
+    }
+
     function findRenderedBlock(blockId) {
       for (const element of els.grid.querySelectorAll('.block')) {
         if (element.dataset.layoutId === blockId) {
@@ -951,6 +1081,7 @@ function getWebviewHtml(webview) {
       if (block.id === state.selectedBlockId && state.designMode) wrapperClasses.push('selected');
       wrapper.className = wrapperClasses.join(' ');
       wrapper.dataset.layoutId = block.id;
+      wrapper.dataset.component = block.component;
       applyGridPosition(wrapper, block);
       if (state.designMode) {
         wrapper.addEventListener('pointerdown', (event) => {

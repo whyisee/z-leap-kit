@@ -1,90 +1,116 @@
 import type { APIContext } from "astro";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { queryOne, execute } from "@server/db/client";
+import { verifyPassword } from "@lib/password";
 
 export const authCookieName = "whyisee_session";
 
 const sessionMaxAgeSeconds = 60 * 60 * 24 * 7;
 
 export interface AuthSession {
+  userId: number;
   username: string;
   displayName: string;
-  role: "admin";
-  expiresAt: number;
-}
-
-export function getAuthConfig() {
-  const configuredUsername = process.env.WHYISEE_ADMIN_USERNAME || process.env.ADMIN_USERNAME || "whyisee";
-  const configuredPassword = process.env.WHYISEE_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD;
-  const devPassword = import.meta.env.PROD ? "" : "whyisee";
-  const password = configuredPassword || devPassword;
-
-  return {
-    username: configuredUsername,
-    password,
-    isConfigured: Boolean(password),
-    usesDevPassword: !configuredPassword && Boolean(devPassword),
-  };
+  email: string | null;
+  role: "admin" | "moderator" | "member" | "new_user";
+  status: "active" | "pending" | "suspended" | "banned";
+  sessionId: string;
 }
 
 export function getSessionMaxAgeSeconds() {
   return sessionMaxAgeSeconds;
 }
 
-export function authenticateAdmin(username: string, password: string): AuthSession | undefined {
-  const config = getAuthConfig();
+export async function authenticateUser(identifier: string, password: string): Promise<AuthSession | undefined> {
+  const user = await queryOne<UserAuthRow>(
+    `
+    SELECT id, username, display_name, email, role, status, password_hash
+    FROM users
+    WHERE lower(username) = lower($1) OR lower(email) = lower($1)
+    LIMIT 1
+    `,
+    [identifier.trim()],
+  );
 
-  if (!config.isConfigured) {
+  if (!user || user.status !== "active") {
     return undefined;
   }
 
-  if (!safeEqual(username.trim(), config.username) || !safeEqual(password, config.password)) {
+  const valid = await verifyPassword(password, user.password_hash);
+
+  if (!valid) {
     return undefined;
   }
 
-  return {
-    username: config.username,
-    displayName: config.username,
-    role: "admin",
-    expiresAt: Date.now() + sessionMaxAgeSeconds * 1000,
-  };
+  await execute("UPDATE users SET last_login_at = $1, last_seen_at = $1 WHERE id = $2", [new Date().toISOString(), user.id]);
+
+  return createUserSession(user);
 }
 
-export function createSessionToken(session: AuthSession) {
-  const payload = toBase64Url(JSON.stringify(session));
-  const signature = signPayload(payload);
+export async function createUserSession(user: UserSessionSource): Promise<AuthSession> {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + sessionMaxAgeSeconds * 1000).toISOString();
+  const sessionId = randomBytes(32).toString("base64url");
 
-  return `${payload}.${signature}`;
+  await execute(
+    `
+    INSERT INTO sessions (id, user_id, expires_at, created_at, last_seen_at)
+    VALUES ($1, $2, $3, $4, $4)
+    `,
+    [sessionId, user.id, expiresAt, now.toISOString()],
+  );
+
+  return mapSession(user, sessionId);
 }
 
-export function readSessionToken(token: string | undefined): AuthSession | undefined {
-  if (!token) {
+export async function getSessionFromAstro(astro: Pick<APIContext, "cookies">): Promise<AuthSession | undefined> {
+  return readSessionId(astro.cookies.get(authCookieName)?.value);
+}
+
+export async function readSessionId(sessionId: string | undefined): Promise<AuthSession | undefined> {
+  if (!sessionId) {
     return undefined;
   }
 
-  const [payload, signature] = token.split(".");
+  const row = await queryOne<UserSessionRow>(
+    `
+    SELECT
+      sessions.id AS session_id,
+      users.id,
+      users.username,
+      users.display_name,
+      users.email,
+      users.role,
+      users.status
+    FROM sessions
+    INNER JOIN users ON users.id = sessions.user_id
+    WHERE sessions.id = $1
+      AND sessions.revoked_at IS NULL
+      AND sessions.expires_at > $2
+      AND users.status = 'active'
+    LIMIT 1
+    `,
+    [sessionId, new Date().toISOString()],
+  );
 
-  if (!payload || !signature || !safeEqual(signature, signPayload(payload))) {
+  if (!row) {
     return undefined;
   }
 
-  try {
-    const session = JSON.parse(fromBase64Url(payload)) as AuthSession;
+  await execute("UPDATE sessions SET last_seen_at = $1 WHERE id = $2", [new Date().toISOString(), sessionId]);
 
-    if (session.role !== "admin" || Date.now() > session.expiresAt) {
-      return undefined;
-    }
+  return mapSession(row, row.session_id);
+}
 
-    return session;
-  } catch {
-    return undefined;
+export async function revokeSession(sessionId: string | undefined) {
+  if (!sessionId) {
+    return;
   }
+
+  await execute("UPDATE sessions SET revoked_at = $1 WHERE id = $2", [new Date().toISOString(), sessionId]);
 }
 
-export function getSessionFromAstro(astro: Pick<APIContext, "cookies">): AuthSession | undefined {
-  return readSessionToken(astro.cookies.get(authCookieName)?.value);
-}
-
-export function safeRedirectPath(value: FormDataEntryValue | string | null | undefined, fallback = "/admin") {
+export function safeRedirectPath(value: FormDataEntryValue | string | null | undefined, fallback = "/") {
   const target = String(value || fallback);
 
   if (!target.startsWith("/") || target.startsWith("//")) {
@@ -94,29 +120,35 @@ export function safeRedirectPath(value: FormDataEntryValue | string | null | und
   return target;
 }
 
-function signPayload(payload: string) {
-  return createHmac("sha256", getAuthSecret()).update(payload).digest("base64url");
+export function isAdmin(session: AuthSession | undefined) {
+  return session?.role === "admin";
 }
 
-function getAuthSecret() {
-  return process.env.WHYISEE_AUTH_SECRET || process.env.AUTH_SECRET || getAuthConfig().password || "whyisee-dev-secret";
+function mapSession(user: UserSessionSource, sessionId: string): AuthSession {
+  return {
+    userId: user.id,
+    username: user.username,
+    displayName: user.display_name,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    sessionId,
+  };
 }
 
-function toBase64Url(value: string) {
-  return Buffer.from(value, "utf8").toString("base64url");
+interface UserSessionSource {
+  id: number;
+  username: string;
+  display_name: string;
+  email: string | null;
+  role: AuthSession["role"];
+  status: AuthSession["status"];
 }
 
-function fromBase64Url(value: string) {
-  return Buffer.from(value, "base64url").toString("utf8");
+interface UserAuthRow extends UserSessionSource {
+  password_hash: string | null;
 }
 
-function safeEqual(left: string, right: string) {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-
-  if (leftBuffer.length !== rightBuffer.length) {
-    return false;
-  }
-
-  return timingSafeEqual(leftBuffer, rightBuffer);
+interface UserSessionRow extends UserSessionSource {
+  session_id: string;
 }

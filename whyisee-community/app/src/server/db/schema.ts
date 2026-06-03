@@ -1,33 +1,43 @@
 export const schemaSql = `
 CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
   display_name TEXT NOT NULL,
   email TEXT UNIQUE,
+  password_hash TEXT,
   avatar_url TEXT,
   role TEXT NOT NULL DEFAULT 'member',
   status TEXT NOT NULL DEFAULT 'pending',
   bio TEXT NOT NULL DEFAULT '',
   website_url TEXT,
   github_url TEXT,
+  email_verified_at TEXT,
+  last_login_at TEXT,
+  last_seen_at TEXT,
+  locale TEXT NOT NULL DEFAULT 'zh',
+  timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+  notification_email_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  suspended_until TEXT,
+  banned_at TEXT,
+  ban_reason TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS categories (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   description TEXT NOT NULL DEFAULT '',
   color TEXT NOT NULL DEFAULT '#7fb3ff',
   sort_order INTEGER NOT NULL DEFAULT 100,
-  is_public INTEGER NOT NULL DEFAULT 1,
+  is_public BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS topics (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   title TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   summary TEXT NOT NULL DEFAULT '',
@@ -37,8 +47,8 @@ CREATE TABLE IF NOT EXISTS topics (
   category_id INTEGER NOT NULL,
   type TEXT NOT NULL DEFAULT 'discussion',
   status TEXT NOT NULL DEFAULT 'draft',
-  is_pinned INTEGER NOT NULL DEFAULT 0,
-  is_featured INTEGER NOT NULL DEFAULT 0,
+  is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+  is_featured BOOLEAN NOT NULL DEFAULT FALSE,
   view_count INTEGER NOT NULL DEFAULT 0,
   reply_count INTEGER NOT NULL DEFAULT 0,
   last_activity_at TEXT,
@@ -50,7 +60,7 @@ CREATE TABLE IF NOT EXISTS topics (
 );
 
 CREATE TABLE IF NOT EXISTS posts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   topic_id INTEGER NOT NULL,
   author_id INTEGER NOT NULL,
   content_markdown TEXT NOT NULL,
@@ -63,7 +73,7 @@ CREATE TABLE IF NOT EXISTS posts (
 );
 
 CREATE TABLE IF NOT EXISTS tags (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   description TEXT NOT NULL DEFAULT '',
@@ -79,7 +89,7 @@ CREATE TABLE IF NOT EXISTS topic_tags (
 );
 
 CREATE TABLE IF NOT EXISTS reactions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   target_type TEXT NOT NULL,
   target_id INTEGER NOT NULL,
   user_id INTEGER NOT NULL,
@@ -90,7 +100,7 @@ CREATE TABLE IF NOT EXISTS reactions (
 );
 
 CREATE TABLE IF NOT EXISTS bookmarks (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL,
   topic_id INTEGER NOT NULL,
   created_at TEXT NOT NULL,
@@ -100,7 +110,7 @@ CREATE TABLE IF NOT EXISTS bookmarks (
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   actor_id INTEGER,
   action TEXT NOT NULL,
   target_type TEXT NOT NULL,
@@ -110,9 +120,159 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   FOREIGN KEY (actor_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  user_agent TEXT,
+  ip_hash TEXT,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  revoked_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS invitations (
+  id SERIAL PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  email TEXT,
+  role TEXT NOT NULL DEFAULT 'member',
+  max_uses INTEGER NOT NULL DEFAULT 1,
+  use_count INTEGER NOT NULL DEFAULT 0,
+  expires_at TEXT,
+  created_by INTEGER,
+  created_at TEXT NOT NULL,
+  disabled_at TEXT,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS follows (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (user_id, target_type, target_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  actor_id INTEGER,
+  type TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  href TEXT NOT NULL DEFAULT '/',
+  read_at TEXT,
+  emailed_at TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS reports (
+  id SERIAL PRIMARY KEY,
+  reporter_id INTEGER NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id INTEGER NOT NULL,
+  reason TEXT NOT NULL,
+  details TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open',
+  resolved_by INTEGER,
+  resolved_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (reporter_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS email_logs (
+  id SERIAL PRIMARY KEY,
+  recipient_user_id INTEGER,
+  recipient_email TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'console',
+  status TEXT NOT NULL DEFAULT 'queued',
+  error TEXT,
+  created_at TEXT NOT NULL,
+  sent_at TEXT,
+  FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS page_views (
+  id SERIAL PRIMARY KEY,
+  path TEXT NOT NULL,
+  method TEXT NOT NULL,
+  user_id INTEGER,
+  ip_hash TEXT,
+  user_agent TEXT,
+  referrer TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS uploaded_files (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  original_name TEXT NOT NULL,
+  stored_path TEXT NOT NULL UNIQUE,
+  public_url TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ai_model_configs (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'deepseek',
+  model TEXT NOT NULL,
+  base_url TEXT NOT NULL,
+  api_key TEXT NOT NULL DEFAULT '',
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  temperature NUMERIC(4, 2) NOT NULL DEFAULT 0.70,
+  max_tokens INTEGER NOT NULL DEFAULT 4096,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_topics_status_published_at ON topics(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_topics_category_id ON topics(category_id);
 CREATE INDEX IF NOT EXISTS idx_topics_type ON topics(type);
 CREATE INDEX IF NOT EXISTS idx_posts_topic_id ON posts(topic_id);
 CREATE INDEX IF NOT EXISTS idx_topic_tags_tag_id ON topic_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts(author_id);
+CREATE INDEX IF NOT EXISTS idx_reactions_target ON reactions(target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_bookmarks_user_id ON bookmarks(user_id);
+CREATE INDEX IF NOT EXISTS idx_follows_user_target ON follows(user_id, target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_follows_target ON follows(target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, read_at);
+CREATE INDEX IF NOT EXISTS idx_reports_status_created ON reports(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_page_views_created ON page_views(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_page_views_path_created ON page_views(path, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_uploaded_files_user_created ON uploaded_files(user_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_model_configs_default ON ai_model_configs ((is_default)) WHERE is_default = TRUE;
+CREATE INDEX IF NOT EXISTS idx_ai_model_configs_provider ON ai_model_configs(provider, is_enabled);
+CREATE INDEX IF NOT EXISTS idx_topics_search ON topics USING GIN (to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content_markdown, '')));
+CREATE INDEX IF NOT EXISTS idx_posts_search ON posts USING GIN (to_tsvector('simple', coalesce(content_markdown, '')));
 `;

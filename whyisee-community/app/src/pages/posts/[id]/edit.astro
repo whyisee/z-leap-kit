@@ -1,0 +1,75 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import MarkdownImageUpload from "@components/MarkdownImageUpload.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { getLangFromAstro } from "@lib/i18n";
+import { getPostForEdit } from "@server/services/posts";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+const id = Number(Astro.params.id || 0);
+const post = Number.isFinite(id) ? await getPostForEdit(id) : undefined;
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!post || (post.author.id !== session.userId && !isAdmin(session))) {
+  Astro.response.status = 404;
+}
+
+const error = Astro.url.searchParams.get("error") === "1";
+const copy = lang === "en"
+  ? {
+      title: "Edit reply",
+      description: "Update or delete your reply.",
+      body: "Reply body",
+      save: "Save reply",
+      delete: "Delete reply",
+      cancel: "Cancel",
+      error: "Failed to save reply.",
+      notFound: "Reply not found",
+    }
+  : {
+      title: "编辑回复",
+      description: "修改或删除你的回复。",
+      body: "回复内容",
+      save: "保存回复",
+      delete: "删除回复",
+      cancel: "取消",
+      error: "保存回复失败。",
+      notFound: "回复未找到",
+    };
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  {post && (post.author.id === session?.userId || isAdmin(session)) ? (
+    <section class="article-page">
+      <p class="eyebrow">#{post.id}</p>
+      <h1>{copy.title}</h1>
+      <p>{copy.description}</p>
+      {error && <p class="auth-message error">{copy.error}</p>}
+      <form class="draft-form" method="post" action={`/api/posts/${post.id}`}>
+        <label>
+          {copy.body}
+          <textarea name="contentMarkdown" rows="10" required>{post.contentMarkdown}</textarea>
+          <MarkdownImageUpload lang={lang} />
+        </label>
+        <div class="form-actions">
+          <button class="button primary" type="submit">{copy.save}</button>
+          <a class="button secondary" href={`/t/${post.topicId}/${post.topicSlug}#post-${post.id}`}>{copy.cancel}</a>
+        </div>
+      </form>
+      <form class="danger-zone" method="post" action={`/api/posts/${post.id}`}>
+        <input type="hidden" name="intent" value="delete" />
+        <button class="button danger" type="submit">{copy.delete}</button>
+      </form>
+    </section>
+  ) : (
+    <section class="article-page">
+      <h1>{copy.notFound}</h1>
+    </section>
+  )}
+</BaseLayout>

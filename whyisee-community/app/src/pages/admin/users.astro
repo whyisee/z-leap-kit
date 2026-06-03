@@ -1,0 +1,100 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import AdminNav from "@components/AdminNav.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { formatRelative } from "@lib/format";
+import { getLangFromAstro } from "@lib/i18n";
+import { listAdminUsers } from "@server/services/admin";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/", 303);
+}
+
+const search = Astro.url.searchParams.get("q") || "";
+const users = await listAdminUsers(search, 200);
+const error = Astro.url.searchParams.get("error") === "1";
+const copy = lang === "en"
+  ? {
+      title: "Users",
+      description: "Manage roles and account status.",
+      search: "Search users",
+      empty: "No users found.",
+      error: "User update failed.",
+      update: "Update",
+      role: "Role",
+      status: "Status",
+      created: "Created",
+      lastLogin: "Last login",
+    }
+  : {
+      title: "用户管理",
+      description: "管理用户角色和账号状态。",
+      search: "搜索用户",
+      empty: "没有找到用户。",
+      error: "用户更新失败。",
+      update: "更新",
+      role: "角色",
+      status: "状态",
+      created: "创建",
+      lastLogin: "最后登录",
+    };
+const roles = ["admin", "moderator", "member", "new_user"];
+const statuses = ["active", "pending", "suspended", "banned"];
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="admin-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{copy.title}</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.description}</p>
+      </div>
+      <span class="count-pill">{users.length}</span>
+    </div>
+
+    <AdminNav lang={lang} />
+
+    {error && <p class="auth-message error">{copy.error}</p>}
+
+    <form class="search-page-form compact" method="get" action="/admin/users">
+      <input name="q" value={search} placeholder={copy.search} />
+      <button class="button secondary" type="submit">{copy.search}</button>
+    </form>
+
+    {users.length > 0 ? (
+      <div class="admin-table">
+        {users.map((user) => (
+          <article class="admin-table-row">
+            <div>
+              <strong>{user.displayName}</strong>
+              <span>@{user.username} · {user.email || "no email"}</span>
+              <small>{copy.created}: {formatRelative(user.createdAt, lang)} · {copy.lastLogin}: {user.lastLoginAt ? formatRelative(user.lastLoginAt, lang) : "-"}</small>
+            </div>
+            <form class="admin-inline-form" method="post" action={`/api/admin/users/${user.id}`}>
+              <input type="hidden" name="redirect" value={`/admin/users${search ? `?q=${encodeURIComponent(search)}` : ""}`} />
+              <select name="role" aria-label={copy.role}>
+                {roles.map((role) => <option value={role} selected={role === user.role}>{role}</option>)}
+              </select>
+              <select name="status" aria-label={copy.status}>
+                {statuses.map((item) => <option value={item} selected={item === user.status}>{item}</option>)}
+              </select>
+              <button class="button secondary" type="submit">{copy.update}</button>
+            </form>
+          </article>
+        ))}
+      </div>
+    ) : (
+      <p class="auth-message muted">{copy.empty}</p>
+    )}
+  </section>
+</BaseLayout>

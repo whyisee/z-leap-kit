@@ -107,7 +107,7 @@ function getQuadrantsStyles() {
     }
     .task {
       display: grid;
-      grid-template-columns: 16px minmax(0, 1fr) 108px 20px;
+      grid-template-columns: 16px minmax(0, 1fr) 108px 24px 20px;
       align-items: center;
       gap: 5px;
       min-height: 30px;
@@ -121,8 +121,13 @@ function getQuadrantsStyles() {
     .task:focus-within {
       background: var(--vscode-sideBar-background);
     }
+    .task.focus-flash {
+      background: color-mix(in srgb, var(--quadrant-accent, var(--vscode-focusBorder)) 24%, var(--vscode-sideBar-background));
+      box-shadow: 0 0 0 1px var(--quadrant-accent, var(--vscode-focusBorder)) inset;
+    }
     .task-check,
-    .task-delete {
+    .task-delete,
+    .task-doc-button {
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -157,6 +162,32 @@ function getQuadrantsStyles() {
       opacity: 1;
       pointer-events: auto;
     }
+    .task-doc-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 2px;
+      min-width: 0;
+    }
+    .task-doc-button {
+      min-width: 22px;
+      width: 22px;
+      height: 22px;
+      min-height: 22px;
+      border-radius: 4px;
+      border-color: transparent;
+      padding: 0;
+      color: var(--vscode-descriptionForeground);
+      background: transparent;
+      font-size: 11px;
+      opacity: 0.78;
+    }
+    .task-doc-button:hover,
+    .task-doc-button:focus {
+      color: var(--vscode-button-foreground);
+      background: var(--vscode-button-background);
+      opacity: 1;
+    }
     .task-input {
       height: 28px;
       min-width: 0;
@@ -168,6 +199,58 @@ function getQuadrantsStyles() {
     .task-input:focus {
       border-color: var(--vscode-input-border, var(--vscode-focusBorder));
       background: var(--vscode-input-background);
+    }
+    .task-title-cell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .task-title-cell .task-input {
+      width: 100%;
+      max-width: 100%;
+      min-width: 42px;
+      box-sizing: border-box;
+    }
+    .task-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .task-doc-label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-start;
+      width: 100%;
+      min-width: 0;
+      height: 24px;
+      min-height: 24px;
+      border-color: transparent;
+      padding: 0 4px;
+      color: var(--vscode-descriptionForeground);
+      background: transparent;
+      font-size: 11px;
+      line-height: 18px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      opacity: 0.88;
+    }
+    .task-doc-label:hover,
+    .task-doc-label:focus {
+      color: var(--vscode-button-foreground);
+      background: var(--vscode-button-background);
+      opacity: 1;
+    }
+    .task-doc-label.empty {
+      opacity: 0;
+    }
+    .task:hover .task-doc-label.empty,
+    .task:focus-within .task-doc-label.empty {
+      opacity: 0.62;
     }
     .date-picker {
       position: relative;
@@ -298,6 +381,54 @@ function getQuadrantsStyles() {
       align-items: start;
       gap: 6px;
     }
+    .quadrant-add-main {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+    .quadrant-add-note-actions {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+    .quadrant-add-note-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+    }
+    .quadrant-add-note-button {
+      min-height: 24px;
+      height: 24px;
+      border-color: var(--vscode-panel-border);
+      padding: 0 8px;
+      color: var(--vscode-descriptionForeground);
+      background: transparent;
+      font-size: 11px;
+    }
+    .quadrant-add-note-button:hover,
+    .quadrant-add-note-button:focus {
+      color: var(--vscode-button-foreground);
+      background: var(--vscode-button-background);
+    }
+    .quadrant-add-draft-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      min-width: 0;
+    }
+    .quadrant-add-draft-link {
+      max-width: 100%;
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      color: var(--vscode-descriptionForeground);
+      background: var(--vscode-sideBar-background);
+      font-size: 11px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .quadrant-add-form input {
       height: 28px;
     }
@@ -327,12 +458,12 @@ function getQuadrantsScript() {
         const titleWrap = div('quadrant-title-wrap');
         titleWrap.appendChild(div('quadrant-title', quadrant.title));
         if (!state.designMode && (completedItems.length > 0 || showCompleted)) {
-          const toggle = button('已完成 ' + String(completedItems.length), () => {
+          const toggle = button(tr('已完成') + ' ' + String(completedItems.length), () => {
             state.completedQuadrants[quadrant.id] = !showCompleted;
             render();
           }, true);
           toggle.className = showCompleted ? 'completed-toggle active' : 'completed-toggle';
-          toggle.title = showCompleted ? '隐藏已完成事项' : '展示已完成事项';
+          toggle.title = showCompleted ? tr('隐藏已完成事项') : tr('展示已完成事项');
           titleWrap.appendChild(toggle);
         }
         head.append(titleWrap, div('count', String(activeItems.length) + (completedItems.length ? '/' + String(allItems.length) : '')));
@@ -360,23 +491,39 @@ function getQuadrantsScript() {
 
     function readonlyQuadrantTask(task) {
       const row = div(task.done ? 'task-readonly done' : 'task-readonly');
-      if (task.reason) row.title = 'AI 归类理由：' + task.reason;
-      row.append(div('task-dot'), div('task-text', task.dueDate ? task.text + ' · ' + task.dueDate : task.text));
+      if (task.reason) row.title = tr('AI 归类理由：') + task.reason;
+      row.append(div('task-dot'), readonlyTaskText(task));
       return row;
+    }
+
+    function readonlyTaskText(task) {
+      const documentLabel = getTaskDocumentDisplayName(task);
+      const wrap = div('task-title-cell');
+      wrap.appendChild(div('task-text', task.dueDate ? task.text + ' · ' + task.dueDate : task.text));
+      if (documentLabel) {
+        const label = div('task-doc-label', '@' + documentLabel);
+        label.title = tr('关联文档：') + documentLabel;
+        wrap.appendChild(label);
+      } else {
+        wrap.appendChild(div('task-doc-label empty', '@' + tr('关联文档')));
+      }
+      return wrap;
     }
 
     function editableQuadrantTask(quadrantId, task) {
       const row = div(task.done ? 'task done' : 'task');
+      row.dataset.quadrantTaskId = task.id || '';
       const check = button(task.done ? '✓' : '', () => {
         post('toggleQuadrantTask', { quadrantId, taskId: task.id, done: !task.done });
       }, true);
       check.className = 'task-check';
-      check.title = task.done ? '标记为未完成' : '标记为完成';
+      check.title = task.done ? tr('标记为未完成') : tr('标记为完成');
 
       const input = document.createElement('input');
       input.className = 'task-input';
+      input.dataset.quadrantTaskId = task.id || '';
       input.value = task.text;
-      input.title = task.reason ? 'AI 归类理由：' + task.reason : '修改事项内容';
+      input.title = task.reason ? tr('AI 归类理由：') + task.reason : tr('修改事项内容');
       input.addEventListener('change', () => {
         const text = input.value.trim();
         if (text && text !== task.text) {
@@ -397,9 +544,64 @@ function getQuadrantsScript() {
         post('deleteQuadrantTask', { quadrantId, taskId: task.id });
       }, true);
       remove.className = 'task-delete';
-      remove.title = '删除事项';
-      row.append(check, input, date, remove);
+      remove.title = tr('删除事项');
+      row.append(check, taskTitleCell(quadrantId, input, task), date, taskDocumentActions(quadrantId, task), remove);
       return row;
+    }
+
+    function taskTitleCell(quadrantId, input, task) {
+      const documentLabel = getTaskDocumentDisplayName(task);
+      const wrap = div('task-title-cell');
+      wrap.appendChild(input);
+      const label = button(documentLabel ? '@' + documentLabel : '@' + tr('关联文档'), () => {
+        post('selectQuadrantTaskDocumentAction', { quadrantId, taskId: task.id });
+      }, true);
+      label.className = documentLabel ? 'task-doc-label' : 'task-doc-label empty';
+      label.title = documentLabel ? tr('关联文档：') + documentLabel : tr('关联或新建文档');
+      label.setAttribute('aria-label', documentLabel ? tr('管理关联文档') : tr('关联或新建文档'));
+      wrap.appendChild(label);
+      return wrap;
+    }
+
+    function taskDocumentActions(quadrantId, task) {
+      const wrap = div('task-doc-actions');
+      const primary = getPrimaryTaskDocumentLink(task);
+      if (primary && primary.filePath) {
+        const openSource = button('↗', () => {
+          post('openItem', Object.assign({ filePath: primary.filePath }, primary.line ? { line: primary.line } : {}));
+        }, true);
+        openSource.className = 'task-doc-button';
+        openSource.title = tr('打开文档') + formatTaskLinkTitle(primary);
+        openSource.setAttribute('aria-label', tr('打开文档'));
+        wrap.appendChild(openSource);
+      }
+      return wrap;
+    }
+
+    function getTaskLink(task, role) {
+      return (Array.isArray(task && task.links) ? task.links : []).find((link) => link && link.role === role && (link.filePath || link.relativePath));
+    }
+
+    function getTaskDocumentDisplayName(task) {
+      const link = getPrimaryTaskDocumentLink(task);
+      if (!link) return '';
+      return cleanTaskDocumentDisplayName(link.title || link.relativePath || link.filePath || '');
+    }
+
+    function getPrimaryTaskDocumentLink(task) {
+      return getTaskLink(task, 'output') || getTaskLink(task, 'source') || getTaskLink(task, 'reference');
+    }
+
+    function cleanTaskDocumentDisplayName(value) {
+      const text = String(value || '').replace(/\\/g, '/').trim();
+      if (!text) return '';
+      const fileName = text.split('/').filter(Boolean).pop() || text;
+      return fileName.replace(/\.(markdown|mdx|mdc|md)$/i, '').trim() || fileName;
+    }
+
+    function formatTaskLinkTitle(link) {
+      const label = link && (link.title || link.relativePath || link.filePath);
+      return label ? tr('：') + label : '';
     }
 
     function quadrantAiForm() {
@@ -425,6 +627,7 @@ function getQuadrantsScript() {
 
     function quadrantAddForm(quadrantId) {
       const wrap = div('quadrant-add');
+      const draft = getQuadrantAddDraft(quadrantId);
       if (state.activeQuadrantAdd !== quadrantId) {
         const triggerRow = div('quadrant-add-trigger-row');
         const trigger = button('+', () => {
@@ -436,24 +639,27 @@ function getQuadrantsScript() {
           });
         }, true);
         trigger.className = 'quadrant-add-trigger';
-        trigger.title = '添加事项';
-        trigger.setAttribute('aria-label', '添加事项');
+        trigger.title = tr('添加事项');
+        trigger.setAttribute('aria-label', tr('添加事项'));
         triggerRow.appendChild(trigger);
         wrap.appendChild(triggerRow);
         return wrap;
       }
 
       const form = div('quadrant-add-form');
+      const main = div('quadrant-add-main');
       const input = document.createElement('input');
-      input.placeholder = '添加事项';
+      input.placeholder = tr('添加事项');
+      input.value = draft.text || '';
       input.dataset.quadrantAddInput = quadrantId;
-      const dueDate = inlineDateField();
+      const dueDate = inlineDateField(draft.dueDate || '');
       const add = button('添加', commit, false);
       const cancel = button('取消', () => {
         state.activeQuadrantAdd = '';
+        delete state.quadrantAddDrafts[quadrantId];
         render();
       }, true);
-      cancel.title = '收起添加事项';
+      cancel.title = tr('收起添加事项');
       input.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') commit();
         if (event.key === 'Escape') {
@@ -461,19 +667,128 @@ function getQuadrantsScript() {
           render();
         }
       });
-      form.append(input, dueDate, add, cancel);
+      main.append(input, quadrantAddNoteActions(quadrantId, input, dueDate));
+      form.append(main, dueDate, add, cancel);
       wrap.appendChild(form);
       return wrap;
 
       function commit() {
         const text = input.value.trim();
         if (!text) return;
+        const links = getQuadrantAddDraftLinks(quadrantId);
+        const createOutputDocument = links.some((link) => link.role === 'output' && link.filePath);
         state.activeQuadrantAdd = '';
-        post('addQuadrantTask', { quadrantId, text, dueDate: dueDate.getValue() });
+        delete state.quadrantAddDrafts[quadrantId];
+        post('addQuadrantTask', { quadrantId, text, dueDate: dueDate.getValue(), links, createOutputDocument });
         input.value = '';
         dueDate.clearValue();
         render();
       }
+    }
+
+    function quadrantAddNoteActions(quadrantId, input, dueDate) {
+      const wrap = div('quadrant-add-note-actions');
+      const buttonRow = div('quadrant-add-note-buttons');
+      const linkExisting = button('关联笔记', () => {
+        const text = input.value.trim();
+        if (!text) {
+          input.focus();
+          return;
+        }
+        saveQuadrantAddDraft(quadrantId, input, dueDate);
+        clearQuadrantAddDraftIncompatibleLinks(quadrantId, 'source');
+        render();
+        post('pickQuadrantTaskExistingDocument', { quadrantId });
+      }, true);
+      linkExisting.className = 'quadrant-add-note-button';
+      linkExisting.title = tr('搜索现有笔记并关联到这个事项');
+
+      const createNote = button('创建笔记', () => {
+        const text = input.value.trim();
+        if (!text) {
+          input.focus();
+          return;
+        }
+        saveQuadrantAddDraft(quadrantId, input, dueDate);
+        clearQuadrantAddDraftIncompatibleLinks(quadrantId, 'output');
+        render();
+        post('pickQuadrantTaskOutputDocument', { quadrantId, text, dueDate: dueDate.getValue() });
+      }, true);
+      createNote.className = 'quadrant-add-note-button';
+      createNote.title = tr('创建事项并新建产出笔记');
+      buttonRow.append(linkExisting, createNote);
+      wrap.appendChild(buttonRow);
+      const draftLinks = getQuadrantAddDraftLinks(quadrantId);
+      if (draftLinks.length) {
+        const links = div('quadrant-add-draft-links');
+        for (const link of draftLinks) {
+          links.appendChild(div('quadrant-add-draft-link', formatQuadrantAddDraftLink(link)));
+        }
+        wrap.appendChild(links);
+      }
+      return wrap;
+    }
+
+    function handleQuadrantAddDraftLink(message) {
+      const quadrantId = message && message.quadrantId || state.activeQuadrantAdd || '';
+      const link = message && message.link;
+      if (!quadrantId || !link) return;
+      const draft = getQuadrantAddDraft(quadrantId);
+      draft.links = upsertQuadrantAddDraftLink(draft.links, link);
+      state.quadrantAddDrafts[quadrantId] = draft;
+      render();
+      requestAnimationFrame(() => {
+        const input = document.querySelector('[data-quadrant-add-input="' + quadrantId + '"]');
+        if (input) input.focus();
+      });
+    }
+
+    function getQuadrantAddDraft(quadrantId) {
+      const draft = state.quadrantAddDrafts && state.quadrantAddDrafts[quadrantId];
+      return draft && typeof draft === 'object' ? draft : { text: '', dueDate: '', links: [] };
+    }
+
+    function saveQuadrantAddDraft(quadrantId, input, dueDate) {
+      const draft = getQuadrantAddDraft(quadrantId);
+      draft.text = input.value.trim();
+      draft.dueDate = dueDate.getValue();
+      state.quadrantAddDrafts[quadrantId] = draft;
+    }
+
+    function getQuadrantAddDraftLinks(quadrantId) {
+      const draft = getQuadrantAddDraft(quadrantId);
+      return Array.isArray(draft.links) ? draft.links : [];
+    }
+
+    function clearQuadrantAddDraftIncompatibleLinks(quadrantId, role) {
+      const draft = getQuadrantAddDraft(quadrantId);
+      const links = Array.isArray(draft.links) ? draft.links : [];
+      draft.links = role === 'output'
+        ? links.filter((link) => link && link.role === 'output')
+        : links.filter((link) => link && link.role !== 'output');
+      state.quadrantAddDrafts[quadrantId] = draft;
+    }
+
+    function upsertQuadrantAddDraftLink(links, link) {
+      const next = Array.isArray(links) ? links.slice() : [];
+      const key = getQuadrantAddDraftLinkKey(link);
+      const filtered = next.filter((item) => {
+        if (link.role === 'output') return false;
+        if (item.role === 'output') return false;
+        if (item.role === link.role) return false;
+        return getQuadrantAddDraftLinkKey(item) !== key;
+      });
+      filtered.push(link);
+      return filtered.slice(0, 6);
+    }
+
+    function getQuadrantAddDraftLinkKey(link) {
+      return [link && link.role || '', String(link && (link.filePath || link.relativePath || link.title) || '').toLowerCase()].join('|');
+    }
+
+    function formatQuadrantAddDraftLink(link) {
+      const prefix = link.role === 'output' ? '将创建' : link.role === 'source' ? '将关联' : '参考';
+      return tr(prefix) + tr('：') + (link.title || link.relativePath || link.filePath || tr('笔记'));
     }
 
 `;

@@ -896,6 +896,7 @@ function buildTaskSearchEntities(quadrants) {
   for (const definition of QUADRANT_DEFINITIONS) {
     const tasks = Array.isArray(quadrants && quadrants[definition.id]) ? quadrants[definition.id] : [];
     for (const task of tasks) {
+      const linkText = buildTaskLinkSearchText(task.links);
       result.push({
         id: `task:${definition.id}:${task.id}`,
         entityType: 'task',
@@ -910,19 +911,27 @@ function buildTaskSearchEntities(quadrants) {
         quadrantTitle: definition.title,
         taskId: task.id,
         done: Boolean(task.done),
+        links: Array.isArray(task.links) ? task.links : [],
         tags: [],
         headings: [],
         frontmatterText: '',
         searchLines: [{
           line: 1,
-          text: [task.text, task.note, task.reason, task.dueDate, task.done ? '已完成' : '未完成'].filter(Boolean).join(' ')
+          text: [task.text, task.note, task.reason, task.dueDate, linkText, task.done ? '已完成' : '未完成'].filter(Boolean).join(' ')
         }],
         updatedAt: toTimestamp(task.updatedAt || task.createdAt),
-        searchContent: [task.text, task.note, task.reason, task.dueDate, definition.title, task.done ? '已完成' : '未完成'].filter(Boolean).join(' ')
+        searchContent: [task.text, task.note, task.reason, task.dueDate, definition.title, linkText, task.done ? '已完成' : '未完成'].filter(Boolean).join(' ')
       });
     }
   }
   return result;
+}
+
+function buildTaskLinkSearchText(links) {
+  return (Array.isArray(links) ? links : [])
+    .map((link) => [link.title, link.relativePath, link.sourceName].filter(Boolean).join(' '))
+    .filter(Boolean)
+    .join(' ');
 }
 
 function buildCalendarSearchEntities(events) {
@@ -1582,6 +1591,7 @@ function scoreSearchItem(item, terms, context) {
     quadrantTitle: item.quadrantTitle || '',
     taskId: item.taskId || '',
     done: Boolean(item.done),
+    links: Array.isArray(item.links) ? item.links : [],
     eventId: item.eventId || '',
     date: item.date || '',
     start: item.start || '',

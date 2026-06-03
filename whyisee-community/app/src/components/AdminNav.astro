@@ -1,0 +1,72 @@
+---
+import type { Lang } from "@lib/i18n";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const pathname = Astro.url.pathname;
+const hasSearch = Astro.url.search.length > 0;
+const copy = lang === "en"
+  ? {
+      title: "Admin",
+      topics: "Topics",
+      reports: "Reports",
+      users: "Users",
+      categories: "Categories",
+      tags: "Tags",
+      ai: "AI Settings",
+      stats: "Stats",
+      back: "Back to site",
+      logout: "Log out",
+    }
+  : {
+      title: "管理",
+      topics: "话题",
+      reports: "举报",
+      users: "用户",
+      categories: "分类",
+      tags: "标签",
+      ai: "AI 配置",
+      stats: "统计",
+      back: "返回前台",
+      logout: "退出登录",
+    };
+
+const items = [
+  { href: "/admin", label: copy.topics, match: (path: string) => path === "/admin" || path.startsWith("/admin/topics/") && !path.endsWith("/new") },
+  { href: "/admin/reports", label: copy.reports, match: (path: string) => path.startsWith("/admin/reports") },
+  { href: "/admin/users", label: copy.users, match: (path: string) => path.startsWith("/admin/users") },
+  { href: "/admin/categories", label: copy.categories, match: (path: string) => path.startsWith("/admin/categories") },
+  { href: "/admin/tags", label: copy.tags, match: (path: string) => path.startsWith("/admin/tags") },
+  { href: "/admin/ai", label: copy.ai, match: (path: string) => path.startsWith("/admin/ai") },
+  { href: "/admin/stats", label: copy.stats, match: (path: string) => path.startsWith("/admin/stats") },
+];
+---
+
+<nav class="admin-nav" aria-label={copy.title}>
+  <strong>{copy.title}</strong>
+  <div class="admin-nav-list">
+    {items.map((item) => {
+      const active = item.match(pathname);
+      const isCurrentPage = item.href === pathname && !hasSearch;
+
+      return isCurrentPage ? (
+        <span class="admin-nav-item is-active" aria-current="page">
+          {item.label}
+        </span>
+      ) : (
+        <a class:list={["admin-nav-item", active && "is-active"]} aria-current={active ? "page" : undefined} href={item.href}>
+          {item.label}
+        </a>
+      );
+    })}
+  </div>
+  <div class="admin-nav-foot">
+    <a class="admin-nav-item" href="/latest">{copy.back}</a>
+    <form method="post" action="/api/logout?redirect=/">
+      <button class="admin-nav-item danger" type="submit">{copy.logout}</button>
+    </form>
+  </div>
+</nav>

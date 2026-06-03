@@ -1,0 +1,144 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import AdminNav from "@components/AdminNav.astro";
+import AdminCollapsibleController from "@components/AdminCollapsibleController.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { getLangFromAstro } from "@lib/i18n";
+import { listAdminCategories } from "@server/services/admin";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/", 303);
+}
+
+const categories = await listAdminCategories();
+const copy = lang === "en"
+  ? {
+      title: "Categories",
+      description: "Create and maintain community categories.",
+      name: "Name",
+      slug: "Slug",
+      descriptionField: "Description",
+      color: "Color",
+      sort: "Sort",
+      public: "Public",
+      hidden: "Hidden",
+      topics: "topics",
+      create: "New category",
+      edit: "Edit",
+      update: "Update",
+      saved: "Category saved.",
+      error: "Category update failed.",
+    }
+  : {
+      title: "分类管理",
+      description: "创建和维护社区分类。",
+      name: "名称",
+      slug: "Slug",
+      descriptionField: "描述",
+      color: "颜色",
+      sort: "排序",
+      public: "公开",
+      hidden: "隐藏",
+      topics: "话题",
+      create: "新增分类",
+      edit: "编辑",
+      update: "更新",
+      saved: "分类已保存。",
+      error: "分类保存失败。",
+    };
+const saved = Astro.url.searchParams.get("saved") === "1";
+const error = Astro.url.searchParams.get("error") === "1";
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="admin-page category-admin-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{copy.title}</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.description}</p>
+      </div>
+      <span class="count-pill">{categories.length}</span>
+    </div>
+
+    <AdminNav lang={lang} />
+
+    {saved && <p class="auth-message success">{copy.saved}</p>}
+    {error && <p class="auth-message error">{copy.error}</p>}
+
+    <details class="category-create-card admin-collapsible-card admin-create-drawer" data-admin-collapsible>
+      <summary class="admin-create-summary">
+        <button class="button primary" type="button" data-collapse-button>+ {copy.create}</button>
+      </summary>
+
+      <div class="admin-create-body">
+        <form class="category-create-form" method="post" action="/api/admin/categories">
+          <div class="admin-form-head">
+            <strong>{copy.create}</strong>
+            <span>{copy.description}</span>
+          </div>
+          <div class="category-form-grid">
+            <label>{copy.name}<input name="name" required /></label>
+            <label>{copy.slug}<input name="slug" /></label>
+            <label class="span-two">{copy.descriptionField}<input name="description" /></label>
+            <label>{copy.color}<input class="category-color-input" name="color" type="color" value="#7fb3ff" /></label>
+            <label>{copy.sort}<input name="sortOrder" type="number" value="100" /></label>
+            <label class="category-toggle">
+              <input name="isPublic" type="hidden" value="0" />
+              <input name="isPublic" type="checkbox" value="1" checked />
+              {copy.public}
+            </label>
+          </div>
+          <button class="button primary" type="submit">{copy.create}</button>
+        </form>
+      </div>
+    </details>
+
+    <div class="category-admin-list">
+      {categories.map((category) => (
+        <details class="category-admin-card admin-collapsible-card" style={`--pill-color:${category.color}`} data-admin-collapsible>
+          <summary class="category-card-summary">
+            <span class="category-card-mark" aria-hidden="true"></span>
+            <div>
+              <strong>{category.name}</strong>
+              <span>/{category.slug} · {category.topicCount ?? 0} {copy.topics}</span>
+              <small>{category.description || "-"}</small>
+            </div>
+            <span class="category-card-actions">
+              <span class:list={["admin-status", category.isPublic ? "published" : "hidden"]}>
+                {category.isPublic ? copy.public : copy.hidden}
+              </span>
+              <button class="button secondary compact" type="button" data-collapse-button>{copy.edit}</button>
+            </span>
+          </summary>
+
+          <form class="category-edit-form" method="post" action={`/api/admin/categories/${category.id}`}>
+            <input type="hidden" name="redirect" value="/admin/categories" />
+            <label>{copy.name}<input name="name" value={category.name} required /></label>
+            <label>{copy.slug}<input name="slug" value={category.slug} /></label>
+            <label class="span-two">{copy.descriptionField}<input name="description" value={category.description} /></label>
+            <label>{copy.color}<input class="category-color-input" name="color" type="color" value={category.color} /></label>
+            <label>{copy.sort}<input name="sortOrder" type="number" value={category.sortOrder} /></label>
+            <label>{copy.public}
+              <select name="isPublic">
+                <option value="1" selected={category.isPublic}>{copy.public}</option>
+                <option value="0" selected={!category.isPublic}>{copy.hidden}</option>
+              </select>
+            </label>
+            <button class="button secondary" type="submit">{copy.update}</button>
+          </form>
+        </details>
+      ))}
+    </div>
+    <AdminCollapsibleController />
+  </section>
+</BaseLayout>

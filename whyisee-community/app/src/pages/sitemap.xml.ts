@@ -6,13 +6,16 @@ import { listTopics } from "@server/services/topics";
 
 export const prerender = false;
 
-export const GET: APIRoute = ({ site }) => {
+export const GET: APIRoute = async ({ site }) => {
   const baseUrl = site?.toString() || process.env.SITE_URL || "https://whyisee.xyz";
   const staticPaths = ["/", "/latest", "/categories", "/projects", "/about", "/guidelines"];
+  const categories = await listCategories();
+  const tags = await listTags();
+  const topics = await listTopics({ limit: 500 });
   const dynamicPaths = [
-    ...listCategories().map((category) => categoryPath(category.slug)),
-    ...listTags().map((tag) => tagPath(tag.slug)),
-    ...listTopics({ limit: 500 }).map((topic) => topicPath(topic)),
+    ...categories.map((category) => categoryPath(category.slug)),
+    ...tags.map((tag) => tagPath(tag.slug)),
+    ...topics.map((topic) => topicPath(topic)),
   ];
   const paths = [...staticPaths, ...dynamicPaths];
   const localizedPaths = [...paths, ...paths.map((path) => addLangQuery(path, "en"))];

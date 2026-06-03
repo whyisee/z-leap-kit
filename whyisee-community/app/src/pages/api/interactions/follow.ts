@@ -1,0 +1,33 @@
+import type { APIRoute } from "astro";
+import { getSessionFromAstro, safeRedirectPath } from "@lib/auth";
+import { toggleFollow } from "@server/services/interactions";
+
+export const prerender = false;
+
+export const POST: APIRoute = async (context) => {
+  const formData = await context.request.formData();
+  const redirectPath = safeRedirectPath(formData.get("redirect"), "/latest");
+  const session = await getSessionFromAstro(context);
+
+  if (!session) {
+    return context.redirect(`/login?redirect=${encodeURIComponent(redirectPath)}`, 303);
+  }
+
+  const targetType = readTargetType(formData.get("targetType"));
+  const targetId = Number(formData.get("targetId") || 0);
+
+  if (targetType && Number.isFinite(targetId) && targetId > 0) {
+    await toggleFollow(session.userId, targetType, targetId);
+  }
+
+  return context.redirect(redirectPath, 303);
+};
+
+function readTargetType(value: FormDataEntryValue | null) {
+  const targetType = String(value || "");
+  if (targetType === "topic" || targetType === "category" || targetType === "tag" || targetType === "user") {
+    return targetType;
+  }
+
+  return undefined;
+}

@@ -1,0 +1,110 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import AdminNav from "@components/AdminNav.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { getLangFromAstro } from "@lib/i18n";
+import { getAdminStats } from "@server/services/analytics";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/", 303);
+}
+
+const stats = await getAdminStats();
+const copy = lang === "en"
+  ? {
+      title: "Operations",
+      description: "Community traffic and moderation statistics.",
+      totals: "Totals",
+      today: "Today",
+      topPages: "Top pages in 7 days",
+      reports: "Reports",
+      users: "Users",
+      topics: "Topics",
+      posts: "Replies",
+      openReports: "Open reports",
+      pendingTopics: "Pending topics",
+      pageViews: "Page views",
+      uniqueVisitors: "Unique visitors",
+      newUsers: "New users",
+      newTopics: "New topics",
+      newPosts: "New replies",
+    }
+  : {
+      title: "运营统计",
+      description: "社区访问、内容增长和审核压力统计。",
+      totals: "总览",
+      today: "今日",
+      topPages: "7 天热门页面",
+      reports: "举报状态",
+      users: "用户",
+      topics: "话题",
+      posts: "回复",
+      openReports: "待处理举报",
+      pendingTopics: "待审核话题",
+      pageViews: "访问量",
+      uniqueVisitors: "独立访客",
+      newUsers: "新增用户",
+      newTopics: "新增话题",
+      newPosts: "新增回复",
+    };
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="admin-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{copy.title}</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.description}</p>
+      </div>
+    </div>
+
+    <AdminNav lang={lang} />
+
+    <section class="stats-section">
+      <h2>{copy.totals}</h2>
+      <div class="stats-grid">
+        <article><strong>{stats.totals.users}</strong><span>{copy.users}</span></article>
+        <article><strong>{stats.totals.topics}</strong><span>{copy.topics}</span></article>
+        <article><strong>{stats.totals.posts}</strong><span>{copy.posts}</span></article>
+        <article><strong>{stats.totals.reports}</strong><span>{copy.openReports}</span></article>
+        <article><strong>{stats.totals.pendingTopics}</strong><span>{copy.pendingTopics}</span></article>
+      </div>
+    </section>
+
+    <section class="stats-section">
+      <h2>{copy.today}</h2>
+      <div class="stats-grid">
+        <article><strong>{stats.today.pageViews}</strong><span>{copy.pageViews}</span></article>
+        <article><strong>{stats.today.uniqueVisitors}</strong><span>{copy.uniqueVisitors}</span></article>
+        <article><strong>{stats.today.newUsers}</strong><span>{copy.newUsers}</span></article>
+        <article><strong>{stats.today.newTopics}</strong><span>{copy.newTopics}</span></article>
+        <article><strong>{stats.today.newPosts}</strong><span>{copy.newPosts}</span></article>
+      </div>
+    </section>
+
+    <section class="stats-section two-columns">
+      <div>
+        <h2>{copy.topPages}</h2>
+        <div class="compact-list">
+          {stats.topPages.map((item) => <a href={item.path}><span>{item.path}</span><strong>{item.views}</strong></a>)}
+        </div>
+      </div>
+      <div>
+        <h2>{copy.reports}</h2>
+        <div class="compact-list">
+          {stats.reports.map((item) => <span class="static-row"><span>{item.status}</span><strong>{item.count}</strong></span>)}
+        </div>
+      </div>
+    </section>
+  </section>
+</BaseLayout>

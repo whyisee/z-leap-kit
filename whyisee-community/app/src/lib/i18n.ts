@@ -13,7 +13,10 @@ export function getLangFromAstro(astro: {
   cookies: { get(name: string): { value?: string } | undefined };
   url: URL;
 }): Lang {
-  return normalizeLang(astro.url.searchParams.get("lang") || astro.cookies.get(langCookieName)?.value);
+  return normalizeLang(
+    astro.url.searchParams.get("lang") ||
+      astro.cookies.get(langCookieName)?.value,
+  );
 }
 
 export function getLangFromRequest(request: Request): Lang {
@@ -119,9 +122,10 @@ type TranslationKey =
 
 const translations: Record<Lang, Record<TranslationKey, string>> = {
   zh: {
-    "site.title": "whyisee.xyz - 独立开发与 AI 工具实战社区",
-    "site.description": "whyisee.xyz 是一个面向独立开发者、AI 工具玩家、效率工具作者和小产品站长的实战社区。",
-    "site.slogan": "看见想法，验证想法，做出东西",
+    "site.title": "whyisee - 独立开发与 AI 工具实战社区",
+    "site.description":
+      "whyisee 是一个面向独立开发者、AI 工具玩家、效率工具作者和小产品站长的实战社区。",
+    "site.slogan": "看见想法",
     "header.login": "登录",
     "header.language": "语言",
     "header.sidebarToggle": "展开或收起侧边栏",
@@ -155,34 +159,41 @@ const translations: Record<Lang, Record<TranslationKey, string>> = {
     "tag.notFound": "标签未找到",
     "tag.notFoundDescription": "这个标签还没有创建。",
     "sidebar.status": "社区状态",
-    "sidebar.statusText": "当前处于自研 MVP 阶段。先沉淀内容，再逐步开放邀请制互动。",
+    "sidebar.statusText":
+      "当前处于自研 MVP 阶段。先沉淀内容，再逐步开放邀请制互动。",
     "sidebar.featured": "精选话题",
     "sidebar.categories": "分类",
     "sidebar.tags": "标签",
     "page.latest": "最新话题",
     "page.categories": "社区分类",
     "page.projects": "项目展示",
-    "page.about": "关于 whyisee.xyz",
+    "page.about": "关于 whyisee",
     "page.guidelines": "社区规则",
-    "page.latestDescription": "whyisee.xyz 最新话题、项目展示和独立开发复盘。",
-    "page.categoriesDescription": "whyisee.xyz 社区分类：AI 工具、独立开发、效率工具、SEO 与流量、项目展示。",
-    "page.projectsDescription": "whyisee.xyz 项目展示，发布工具、插件、网站、小游戏和开源项目。",
-    "page.aboutDescription": "whyisee.xyz 是一个给独立开发者、AI 工具玩家和小产品站长的实战社区。",
-    "page.guidelinesDescription": "whyisee.xyz 社区规则和内容边界。",
+    "page.latestDescription": "whyisee 最新话题、项目展示和独立开发复盘。",
+    "page.categoriesDescription":
+      "whyisee 社区分类：AI 工具、独立开发、效率工具、SEO 与流量、项目展示。",
+    "page.projectsDescription":
+      "whyisee 项目展示，发布工具、插件、网站、小游戏和开源项目。",
+    "page.aboutDescription":
+      "whyisee 是一个给独立开发者、AI 工具玩家和小产品站长的实战社区。",
+    "page.guidelinesDescription": "whyisee 社区规则和内容边界。",
     "page.submitProjectDraft": "提交项目草稿",
     "page.items": "条",
-    "about.body1": "whyisee.xyz 是一个面向独立开发者、AI 工具玩家、效率工具作者和小产品站长的实战社区。这里关注真实项目、真实复盘、真实踩坑，而不是泛泛的概念讨论。",
-    "about.body2": "首版会先由站长发布种子内容，等内容结构和运营节奏稳定后，再逐步开放邀请制互动。",
+    "about.body1":
+      "whyisee 是一个面向独立开发者、AI 工具玩家、效率工具作者和小产品站长的实战社区。这里关注真实项目、真实复盘、真实踩坑，而不是泛泛的概念讨论。",
+    "about.body2":
+      "首版会先由站长发布种子内容，等内容结构和运营节奏稳定后，再逐步开放邀请制互动。",
     "guidelines.item1": "鼓励真实项目、真实复盘和具体问题。",
     "guidelines.item2": "允许 AI 辅助写作，但内容必须有人的判断和上下文。",
     "guidelines.item3": "不做刷量、互点广告、灰产和标题党内容。",
     "guidelines.item4": "提问时请提供背景、目标、已经尝试的方法和卡住的位置。",
     "guidelines.item5": "项目展示请说明当前阶段、希望获得什么反馈。",
     "admin.title": "管理后台",
-    "admin.description": "后台功能已预留。V0.1 下一步会实现管理员登录、发布话题和编辑话题。",
+    "admin.description": "管理社区话题、草稿、发布状态、置顶和精选内容。",
     "admin.newTopic": "新建话题",
-    "admin.newTopicDescription": "这里先放后台编辑器入口占位。后续会接入 Markdown textarea、分类、标签、草稿和发布状态。",
-    "admin.newTopicPageDescription": "whyisee.xyz 新建话题。",
+    "admin.newTopicDescription":
+      "填写标题、正文、分类、标签和发布状态，保存为草稿或直接发布。",
+    "admin.newTopicPageDescription": "whyisee 新建话题。",
     "admin.titleLabel": "标题",
     "admin.titlePlaceholder": "写一个具体的问题或复盘标题",
     "admin.bodyLabel": "正文",
@@ -190,14 +201,16 @@ const translations: Record<Lang, Record<TranslationKey, string>> = {
     "admin.saveDraft": "保存草稿",
     "admin.backToSite": "返回前台",
     "auth.loginTitle": "登录 whyisee",
-    "auth.loginDescription": "当前只开放管理员登录，用于发布和维护社区内容。",
+    "auth.loginDescription":
+      "登录后可以发帖、回复、维护个人资料。早期社区采用邀请制注册。",
     "auth.username": "用户名",
     "auth.password": "密码",
-    "auth.usernamePlaceholder": "输入管理员用户名",
+    "auth.usernamePlaceholder": "输入用户名或邮箱",
     "auth.passwordPlaceholder": "输入管理员密码",
     "auth.loginAction": "登录",
     "auth.loginError": "用户名或密码不正确。",
-    "auth.loginDisabled": "登录尚未配置。生产环境请设置 WHYISEE_ADMIN_PASSWORD。",
+    "auth.loginDisabled":
+      "登录尚未配置。生产环境请设置 WHYISEE_ADMIN_PASSWORD。",
     "auth.devHint": "开发环境默认账号：whyisee / whyisee。上线前必须修改。",
     "auth.logout": "退出登录",
     "auth.loggedInAs": "当前登录",
@@ -207,8 +220,9 @@ const translations: Record<Lang, Record<TranslationKey, string>> = {
     "404.backHome": "回到首页",
   },
   en: {
-    "site.title": "whyisee.xyz - Indie Building and AI Tools Community",
-    "site.description": "whyisee.xyz is a practical community for indie builders, AI tool users, productivity tool makers, and small product founders.",
+    "site.title": "whyisee - Indie Building and AI Tools Community",
+    "site.description":
+      "whyisee is a practical community for indie builders, AI tool users, productivity tool makers, and small product founders.",
     "site.slogan": "See ideas. Test them. Build things.",
     "header.login": "Log In",
     "header.language": "Language",
@@ -235,58 +249,79 @@ const translations: Record<Lang, Record<TranslationKey, string>> = {
     "topic.published": "Published",
     "topic.related": "Related Topics",
     "topic.notFound": "Topic Not Found",
-    "topic.notFoundDescription": "This topic does not exist or has not been published yet.",
+    "topic.notFoundDescription":
+      "This topic does not exist or has not been published yet.",
     "category.category": "Category",
     "category.notFound": "Category Not Found",
-    "category.notFoundDescription": "This category has not been created or is hidden.",
+    "category.notFoundDescription":
+      "This category has not been created or is hidden.",
     "tag.tag": "Tag",
     "tag.notFound": "Tag Not Found",
     "tag.notFoundDescription": "This tag has not been created yet.",
     "sidebar.status": "Community Status",
-    "sidebar.statusText": "The community is in its self-built MVP stage. We are building content first, then opening invited interactions gradually.",
+    "sidebar.statusText":
+      "The community is in its self-built MVP stage. We are building content first, then opening invited interactions gradually.",
     "sidebar.featured": "Featured Topics",
     "sidebar.categories": "Categories",
     "sidebar.tags": "Tags",
     "page.latest": "Latest Topics",
     "page.categories": "Categories",
     "page.projects": "Projects",
-    "page.about": "About whyisee.xyz",
+    "page.about": "About whyisee",
     "page.guidelines": "Community Guidelines",
-    "page.latestDescription": "Latest topics, project showcases, and indie building retrospectives from whyisee.xyz.",
-    "page.categoriesDescription": "Community categories for AI tools, indie building, productivity tools, SEO, traffic, and projects.",
-    "page.projectsDescription": "Project showcases for tools, plugins, websites, small games, and open-source projects.",
-    "page.aboutDescription": "whyisee.xyz is a practical community for indie builders, AI tool users, and small product founders.",
-    "page.guidelinesDescription": "Community guidelines and content boundaries for whyisee.xyz.",
+    "page.latestDescription":
+      "Latest topics, project showcases, and indie building retrospectives from whyisee.",
+    "page.categoriesDescription":
+      "Community categories for AI tools, indie building, productivity tools, SEO, traffic, and projects.",
+    "page.projectsDescription":
+      "Project showcases for tools, plugins, websites, small games, and open-source projects.",
+    "page.aboutDescription":
+      "whyisee is a practical community for indie builders, AI tool users, and small product founders.",
+    "page.guidelinesDescription":
+      "Community guidelines and content boundaries for whyisee.",
     "page.submitProjectDraft": "Submit Project Draft",
     "page.items": "items",
-    "about.body1": "whyisee.xyz is a practical community for indie builders, AI tool users, productivity tool makers, and small product founders. It focuses on real projects, real retrospectives, and real lessons learned.",
-    "about.body2": "The first version is seeded by the maintainer. Once content structure and operating rhythm are stable, invited interaction will open gradually.",
-    "guidelines.item1": "Share real projects, real retrospectives, and specific questions.",
-    "guidelines.item2": "AI-assisted writing is welcome, but posts must include human judgment and context.",
-    "guidelines.item3": "No traffic manipulation, ad-click exchange, gray-market tactics, or clickbait.",
-    "guidelines.item4": "When asking questions, include context, goal, what you tried, and where you are stuck.",
-    "guidelines.item5": "Project showcase posts should explain the current stage and the feedback you want.",
+    "about.body1":
+      "whyisee is a practical community for indie builders, AI tool users, productivity tool makers, and small product founders. It focuses on real projects, real retrospectives, and real lessons learned.",
+    "about.body2":
+      "The first version is seeded by the maintainer. Once content structure and operating rhythm are stable, invited interaction will open gradually.",
+    "guidelines.item1":
+      "Share real projects, real retrospectives, and specific questions.",
+    "guidelines.item2":
+      "AI-assisted writing is welcome, but posts must include human judgment and context.",
+    "guidelines.item3":
+      "No traffic manipulation, ad-click exchange, gray-market tactics, or clickbait.",
+    "guidelines.item4":
+      "When asking questions, include context, goal, what you tried, and where you are stuck.",
+    "guidelines.item5":
+      "Project showcase posts should explain the current stage and the feedback you want.",
     "admin.title": "Admin",
-    "admin.description": "The admin area is reserved. The next V0.1 step is admin login, topic publishing, and topic editing.",
+    "admin.description":
+      "Manage community topics, drafts, publishing status, pinned items, and featured content.",
     "admin.newTopic": "New Topic",
-    "admin.newTopicDescription": "This is a placeholder for the editor. Next steps include Markdown textarea, category, tags, draft, and publish status.",
-    "admin.newTopicPageDescription": "Create a new topic on whyisee.xyz.",
+    "admin.newTopicDescription":
+      "Write the title, body, category, tags, and publishing status. Save as draft or publish directly.",
+    "admin.newTopicPageDescription": "Create a new topic on whyisee.",
     "admin.titleLabel": "Title",
-    "admin.titlePlaceholder": "Write a specific question or retrospective title",
+    "admin.titlePlaceholder":
+      "Write a specific question or retrospective title",
     "admin.bodyLabel": "Body",
     "admin.bodyPlaceholder": "Markdown body",
     "admin.saveDraft": "Save Draft",
     "admin.backToSite": "Back to Site",
     "auth.loginTitle": "Log in to whyisee",
-    "auth.loginDescription": "Admin login is currently available for publishing and maintaining community content.",
+    "auth.loginDescription":
+      "Log in to post topics, reply, and maintain your profile. Early access uses invitation codes.",
     "auth.username": "Username",
     "auth.password": "Password",
-    "auth.usernamePlaceholder": "Enter admin username",
+    "auth.usernamePlaceholder": "Enter username or email",
     "auth.passwordPlaceholder": "Enter admin password",
     "auth.loginAction": "Log In",
     "auth.loginError": "Invalid username or password.",
-    "auth.loginDisabled": "Login is not configured. Set WHYISEE_ADMIN_PASSWORD in production.",
-    "auth.devHint": "Development default: whyisee / whyisee. Change it before going live.",
+    "auth.loginDisabled":
+      "Login is not configured. Set WHYISEE_ADMIN_PASSWORD in production.",
+    "auth.devHint":
+      "Development default: whyisee / whyisee. Change it before going live.",
     "auth.logout": "Log Out",
     "auth.loggedInAs": "Signed in as",
     "footer.icpPending": "ICP filing number: pending",
@@ -300,83 +335,154 @@ export function t(lang: Lang, key: TranslationKey) {
   return translations[lang][key] || translations[defaultLang][key] || key;
 }
 
-export const categoryTranslations: Record<string, Partial<Record<Lang, { name: string; description: string }>>> = {
+export const categoryTranslations: Record<
+  string,
+  Partial<Record<Lang, { name: string; description: string }>>
+> = {
   announcements: {
-    en: { name: "Announcements", description: "Site updates, rules, feedback collection, and community operations." },
+    en: {
+      name: "Announcements",
+      description:
+        "Site updates, rules, feedback collection, and community operations.",
+    },
   },
   "ai-tools": {
-    en: { name: "AI Tools", description: "Cursor, Codex, Claude Code, DeepSeek, agents, prompts, and AI workflows." },
+    en: {
+      name: "AI Tools",
+      description:
+        "Cursor, Codex, Claude Code, DeepSeek, agents, prompts, and AI workflows.",
+    },
   },
   "indie-dev": {
-    en: { name: "Indie Building", description: "Ideas, MVPs, tech choices, launch notes, revenue reviews, and failure retrospectives." },
+    en: {
+      name: "Indie Building",
+      description:
+        "Ideas, MVPs, tech choices, launch notes, revenue reviews, and failure retrospectives.",
+    },
   },
   "productivity-tools": {
-    en: { name: "Productivity Tools", description: "Plugins, scripts, personal knowledge bases, automation, and developer productivity tools." },
+    en: {
+      name: "Productivity Tools",
+      description:
+        "Plugins, scripts, personal knowledge bases, automation, and developer productivity tools.",
+    },
   },
   "seo-traffic": {
-    en: { name: "SEO and Traffic", description: "Google SEO, content sites, community promotion, links, ads, and growth experiments." },
+    en: {
+      name: "SEO and Traffic",
+      description:
+        "Google SEO, content sites, community promotion, links, ads, and growth experiments.",
+    },
   },
   projects: {
-    en: { name: "Projects", description: "Show your tools, plugins, websites, games, and open-source projects for feedback." },
+    en: {
+      name: "Projects",
+      description:
+        "Show your tools, plugins, websites, games, and open-source projects for feedback.",
+    },
   },
   "games-content-sites": {
-    en: { name: "Games and Content Sites", description: "H5 game sites, content sites, ads, retention, and lightweight community experiments." },
+    en: {
+      name: "Games and Content Sites",
+      description:
+        "H5 game sites, content sites, ads, retention, and lightweight community experiments.",
+    },
   },
   chat: {
-    en: { name: "Chat", description: "Ideas, casual discussion, small updates, and community life." },
+    en: {
+      name: "Chat",
+      description:
+        "Ideas, casual discussion, small updates, and community life.",
+    },
   },
 };
 
-export const tagTranslations: Record<string, Partial<Record<Lang, { name: string; description: string }>>> = {
+export const tagTranslations: Record<
+  string,
+  Partial<Record<Lang, { name: string; description: string }>>
+> = {
   cursor: {
-    en: { name: "cursor", description: "Cursor usage, plugin development, and workflows" },
+    en: {
+      name: "cursor",
+      description: "Cursor usage, plugin development, and workflows",
+    },
   },
   codex: {
-    en: { name: "codex", description: "Codex usage, development collaboration, and automation" },
+    en: {
+      name: "codex",
+      description: "Codex usage, development collaboration, and automation",
+    },
   },
   deepseek: {
-    en: { name: "deepseek", description: "DeepSeek API, model capabilities, and integration notes" },
+    en: {
+      name: "deepseek",
+      description: "DeepSeek API, model capabilities, and integration notes",
+    },
   },
   seo: {
-    en: { name: "seo", description: "Search engine optimization and organic traffic" },
+    en: {
+      name: "seo",
+      description: "Search engine optimization and organic traffic",
+    },
   },
   adsense: {
-    en: { name: "adsense", description: "Ad monetization and content-site revenue" },
+    en: {
+      name: "adsense",
+      description: "Ad monetization and content-site revenue",
+    },
   },
   "open-vsx": {
-    en: { name: "open-vsx", description: "Open VSX extension publishing and promotion" },
+    en: {
+      name: "open-vsx",
+      description: "Open VSX extension publishing and promotion",
+    },
   },
   "github-pages": {
     en: { name: "github-pages", description: "GitHub Pages sites and SEO" },
   },
   "indie-dev": {
-    en: { name: "indie-dev", description: "Indie building process and retrospectives" },
+    en: {
+      name: "indie-dev",
+      description: "Indie building process and retrospectives",
+    },
   },
   plugin: {
-    en: { name: "plugin", description: "Plugins, extensions, and tool development" },
+    en: {
+      name: "plugin",
+      description: "Plugins, extensions, and tool development",
+    },
   },
   "mini-game": {
     en: { name: "mini-game", description: "Small games and game sites" },
   },
   retrospective: {
-    en: { name: "retrospective", description: "Project retrospectives and lessons learned" },
+    en: {
+      name: "retrospective",
+      description: "Project retrospectives and lessons learned",
+    },
   },
   feedback: {
-    en: { name: "feedback", description: "Project showcase and feedback requests" },
+    en: {
+      name: "feedback",
+      description: "Project showcase and feedback requests",
+    },
   },
 };
 
 export const topicTranslations: Record<
   string,
-  Partial<Record<Lang, { title: string; summary: string; contentMarkdown: string }>>
+  Partial<
+    Record<Lang, { title: string; summary: string; contentMarkdown: string }>
+  >
 > = {
   "why-build-whyisee-community": {
     en: {
-      title: "Why I Decided to Build whyisee.xyz Myself",
-      summary: "When ready-made forum systems become friction, a lightweight self-built MVP can validate content, traffic, and operating rhythm first.",
+      title: "Why I Decided to Build whyisee Myself",
+      summary:
+        "When ready-made forum systems become friction, a lightweight self-built MVP can validate content, traffic, and operating rhythm first.",
       contentMarkdown: `## Background
 
-whyisee.xyz is not a forum built for technical vanity. It is an indie building experiment.
+whyisee is not a forum built for technical vanity. It is an indie building experiment.
 
 I want to validate a few questions:
 
@@ -392,7 +498,8 @@ The first version will not be a full forum system. It starts as a lightweight co
   "cursor-codex-deepseek-real-workflow": {
     en: {
       title: "How Do Cursor, Codex, and DeepSeek Fit Into Real Development?",
-      summary: "Not prompt demos, but a full workflow from requirements and coding to debugging, release, and retrospective.",
+      summary:
+        "Not prompt demos, but a full workflow from requirements and coding to debugging, release, and retrospective.",
       contentMarkdown: `## The Problem
 
 Many AI tool demos stop at looking smart. In real development, the harder questions are:
@@ -404,13 +511,14 @@ Many AI tool demos stop at looking smart. In real development, the harder questi
 
 ## Direction
 
-whyisee.xyz will keep documenting how AI tools work in real projects, including useful patterns and failed attempts.`,
+whyisee will keep documenting how AI tools work in real projects, including useful patterns and failed attempts.`,
     },
   },
   "open-vsx-no-download-checklist": {
     en: {
       title: "What to Check When an Open VSX Extension Gets No Downloads",
-      summary: "Publishing is not the finish line. README, keywords, screenshots, community links, and real use cases all affect downloads.",
+      summary:
+        "Publishing is not the finish line. README, keywords, screenshots, community links, and real use cases all affect downloads.",
       contentMarkdown: `## Checklist
 
 - Does the README have an English version?
@@ -427,7 +535,8 @@ Publishing is only step one. Extensions also need content, distribution, and a f
   "leap-home-project-showcase": {
     en: {
       title: "Leap Home: A Cursor Homepage Plugin for Personal Knowledge Bases",
-      summary: "A Cursor plugin that combines a knowledge homepage, Eisenhower matrix, calendar, search, Pomodoro, and next-action recommendations.",
+      summary:
+        "A Cursor plugin that combines a knowledge homepage, Eisenhower matrix, calendar, search, Pomodoro, and next-action recommendations.",
       contentMarkdown: `## Project Intro
 
 Leap Home is a Cursor plugin that puts a personal knowledge homepage in the editor area instead of the sidebar.
@@ -451,7 +560,8 @@ Should it feel more like a personal dashboard or a knowledge-base workbench?`,
   "2c2g-vps-community-start": {
     en: {
       title: "Can a 2C2G VPS Support an Early Community Site?",
-      summary: "The early bottleneck is usually not the server. It is content, operations, and spam control.",
+      summary:
+        "The early bottleneck is usually not the server. It is content, operations, and spam control.",
       contentMarkdown: `## Initial Judgment
 
 A 2C2G VPS is enough for an early community if the first version avoids a heavy stack.
@@ -460,8 +570,8 @@ A 2C2G VPS is enough for an early community if the first version avoids a heavy 
 
 - Nginx handles static assets
 - Node.js serves SSR pages and APIs
-- SQLite stores content
-- Migrate to PostgreSQL and search services only after traffic grows`,
+- PostgreSQL stores content
+- Add dedicated search and cache services only after traffic grows`,
     },
   },
 };

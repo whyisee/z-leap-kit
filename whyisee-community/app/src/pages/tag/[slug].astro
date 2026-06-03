@@ -11,16 +11,16 @@ export const prerender = false;
 
 const lang = getLangFromAstro(Astro);
 const slug = Astro.params.slug || "";
-const tag = getTagBySlug(slug, lang);
-const categories = listCategories(lang);
-const tags = listTags(lang);
-const featuredTopics = listFeaturedTopics(4, lang);
+const tag = await getTagBySlug(slug, lang);
+const categories = await listCategories(lang);
+const tags = await listTags(lang);
+const featuredTopics = await listFeaturedTopics(4, lang);
 
 if (!tag) {
   Astro.response.status = 404;
 }
 
-const topics = tag ? listTopics({ tagSlug: tag.slug, limit: 50, lang }) : [];
+const topics = tag ? await listTopics({ tagSlug: tag.slug, limit: 50, lang }) : [];
 ---
 
 <BaseLayout title={`#${tag?.name ?? t(lang, "tag.notFound")} - whyisee.xyz`} description={tag?.description ?? t(lang, "tag.notFound")}>

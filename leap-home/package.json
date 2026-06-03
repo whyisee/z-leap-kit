@@ -2,7 +2,7 @@
   "name": "leap-home",
   "displayName": "Leap Home",
   "description": "Personal knowledge dashboard for Cursor / VS Code with AI search, notes, Pomodoro, tasks, calendars, and knowledge graph.",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "publisher": "whyisee",
   "author": "whyisee",
   "license": "MIT",
@@ -419,6 +419,16 @@
           "minimum": 4,
           "maximum": 512,
           "description": "每个文件最多读取并参与检索的正文大小，单位 KB。"
+        },
+        "leapHome.taskDocuments.defaultDir": {
+          "type": "string",
+          "default": "notes",
+          "description": "Default relative directory for new task output documents, for example notes or docs/tasks. / 事项新建产出文档时使用的默认相对目录，例如 notes、docs/tasks。"
+        },
+        "leapHome.taskDocuments.preferSourceDirectory": {
+          "type": "boolean",
+          "default": true,
+          "description": "When a task has a linked source document, prefer creating the output document in the same directory. / 事项有关联来源文档时，是否优先把产出文档创建在来源文档同目录。"
         },
         "leapHome.ai.provider": {
           "type": "string",

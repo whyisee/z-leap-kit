@@ -1,0 +1,89 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { getSessionFromAstro, safeRedirectPath } from "@lib/auth";
+import { getLangFromAstro } from "@lib/i18n";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+const redirectTarget = safeRedirectPath(Astro.url.searchParams.get("redirect"), "/");
+const hasError = Astro.url.searchParams.get("error") === "1";
+const copy = getCopy(lang);
+
+if (session) {
+  return Astro.redirect(redirectTarget, 303);
+}
+
+function getCopy(lang: "zh" | "en") {
+  if (lang === "en") {
+    return {
+      title: "Create account",
+      description: "Use an invitation code to join whyisee.xyz.",
+      username: "Username",
+      email: "Email",
+      password: "Password",
+      inviteCode: "Invitation code",
+      usernamePlaceholder: "letters, numbers, _ or -",
+      emailPlaceholder: "you@example.com",
+      passwordPlaceholder: "at least 8 characters",
+      invitePlaceholder: "Invitation code",
+      action: "Create account",
+      error: "Sign up failed. Check invitation code, username, email, and password.",
+      login: "Already have an account? Log in",
+    };
+  }
+
+  return {
+    title: "注册账号",
+    description: "使用邀请码加入 whyisee.xyz。",
+    username: "用户名",
+    email: "邮箱",
+    password: "密码",
+    inviteCode: "邀请码",
+    usernamePlaceholder: "字母、数字、_ 或 -",
+    emailPlaceholder: "you@example.com",
+    passwordPlaceholder: "至少 8 位",
+    invitePlaceholder: "输入邀请码",
+    action: "创建账号",
+    error: "注册失败，请检查邀请码、用户名、邮箱和密码。",
+    login: "已有账号？去登录",
+  };
+}
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="article-page auth-page">
+    <div class="auth-card">
+      <p class="eyebrow">{copy.action}</p>
+      <h1>{copy.title}</h1>
+      <p>{copy.description}</p>
+
+      {hasError && <p class="auth-message error">{copy.error}</p>}
+
+      <form class="auth-form" method="post" action="/api/signup">
+        <input type="hidden" name="redirect" value={redirectTarget} />
+        <label>
+          {copy.username}
+          <input autocomplete="username" name="username" placeholder={copy.usernamePlaceholder} required type="text" />
+        </label>
+        <label>
+          {copy.email}
+          <input autocomplete="email" name="email" placeholder={copy.emailPlaceholder} required type="email" />
+        </label>
+        <label>
+          {copy.password}
+          <input autocomplete="new-password" name="password" placeholder={copy.passwordPlaceholder} required type="password" />
+        </label>
+        <label>
+          {copy.inviteCode}
+          <input name="inviteCode" placeholder={copy.invitePlaceholder} required type="text" />
+        </label>
+        <button class="button primary" type="submit">{copy.action}</button>
+        <div class="auth-links">
+          <a href={`/login?redirect=${encodeURIComponent(redirectTarget)}`}>{copy.login}</a>
+        </div>
+      </form>
+    </div>
+  </section>
+</BaseLayout>

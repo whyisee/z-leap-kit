@@ -11,12 +11,21 @@ interface Props {
   lang: Lang;
   activeCategorySlug?: string;
   activeTagSlug?: string;
+  showSidebar?: boolean;
 }
 
-const { categories, tags, featuredTopics, lang, activeCategorySlug, activeTagSlug } = Astro.props;
+const {
+  categories,
+  tags,
+  featuredTopics,
+  lang,
+  activeCategorySlug,
+  activeTagSlug,
+  showSidebar = true,
+} = Astro.props;
 ---
 
-<section class="page-grid">
+<section class:list={["page-grid", !showSidebar && "no-right-sidebar"]}>
   <LeftNav
     categories={categories}
     tags={tags}
@@ -27,5 +36,5 @@ const { categories, tags, featuredTopics, lang, activeCategorySlug, activeTagSlu
   <div class="content-column">
     <slot />
   </div>
-  <Sidebar featuredTopics={featuredTopics} lang={lang} />
+  {showSidebar && <Sidebar featuredTopics={featuredTopics} lang={lang} />}
 </section>

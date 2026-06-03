@@ -7,7 +7,7 @@
 - Astro：公开页面和 SEO 页面
 - Hono：API 层
 - TypeScript：业务代码、脚本和服务层
-- SQLite WAL：首版数据库
+- PostgreSQL：首版数据库
 - Nginx：生产环境反向代理
 
 ## 本地开发
@@ -32,16 +32,22 @@ http://localhost:4321/api/health
 
 ## 数据库
 
-默认数据库路径：
+默认数据库配置：
 
 ```text
-data/whyisee.sqlite
+DB_HOST=127.0.0.1
+DB_PORT=15432
+DB_NAME=zi
+DB_USER=postgres
+DB_PASSWORD=123456
+DB_SCHEMA=ws
+PG_DUMP_BIN=pg_dump
 ```
 
-也可以用环境变量指定：
+也可以用环境变量覆盖后启动：
 
 ```bash
-WHYISEE_DB_PATH=/var/lib/whyisee/whyisee.sqlite npm run start
+DB_HOST=127.0.0.1 DB_PORT=15432 DB_NAME=zi DB_USER=postgres DB_PASSWORD=123456 DB_SCHEMA=ws npm run start
 ```
 
 ## 当前已实现
@@ -55,7 +61,7 @@ WHYISEE_DB_PATH=/var/lib/whyisee/whyisee.sqlite npm run start
 - RSS
 - Sitemap
 - Hono API
-- SQLite schema
+- PostgreSQL schema
 - migration 脚本
 - seed 脚本
 - 数据库备份脚本

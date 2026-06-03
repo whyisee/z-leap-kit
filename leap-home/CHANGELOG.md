@@ -2,6 +2,28 @@
 
 All notable changes to Leap Home will be documented in this file.
 
+## [0.4.0] - 2026-06-03
+
+### Added
+
+- Added task-document linking for Four Quadrants tasks, including source, output, and reference document link metadata.
+- Added commands and UI flows for linking an existing note to a task and creating an output document for a task.
+- Added `leapHome.taskDocuments.defaultDir` and `leapHome.taskDocuments.preferSourceDirectory` settings for task output document placement.
+- Added AI Next Action support for creating tasks with linked source/output documents.
+- Added task document links to search indexing so linked note titles, paths, and source names can be found from the Search component.
+
+### Changed
+
+- Improved Four Quadrants task creation to support linking notes before adding the task.
+- Improved Next Action actions so AI-generated task actions can carry document context into the resulting task.
+- Improved task normalization and storage compatibility so existing tasks continue to work while new tasks can store `links`.
+- Improved English localization for task-document linking, output document creation, picker labels, notifications, and generated output-note templates.
+
+### Fixed
+
+- Fixed missing task document context in search results and task search scoring.
+- Fixed AI task action normalization so document link suggestions are preserved instead of being discarded.
+
 ## [0.3.0] - 2026-06-02
 
 ### Added

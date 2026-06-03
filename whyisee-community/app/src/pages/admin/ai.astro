@@ -1,0 +1,285 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import AdminNav from "@components/AdminNav.astro";
+import AdminCollapsibleController from "@components/AdminCollapsibleController.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { getLangFromAstro } from "@lib/i18n";
+import { getDefaultBaseUrl, listAiModelConfigs } from "@server/services/aiConfig";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/", 303);
+}
+
+const configs = await listAiModelConfigs();
+const saved = Astro.url.searchParams.get("saved") === "1";
+const error = Astro.url.searchParams.get("error") === "1";
+const copy = lang === "en"
+  ? {
+      title: "AI Settings",
+      description: "Configure model providers for recommendation, writing, moderation, and future AI features.",
+      createTitle: "Add model provider",
+      listTitle: "Configured models",
+      empty: "No model provider configured yet.",
+      saved: "AI configuration saved.",
+      error: "AI configuration failed to save.",
+      name: "Display name",
+      provider: "Provider",
+      model: "Model",
+      baseUrl: "Base URL",
+      apiKey: "API Key",
+      temperature: "Temperature",
+      maxTokens: "Max tokens",
+      notes: "Notes",
+      enabled: "Enabled",
+      disabled: "Disabled",
+      defaultModel: "Default model",
+      defaultBadge: "Default",
+      configured: "API key configured",
+      missingKey: "API key missing",
+      clearKey: "Clear saved API key",
+      create: "Add model",
+      edit: "Edit",
+      update: "Save",
+      keepKey: "Leave blank to keep the saved key.",
+      deepseekHint: "DeepSeek is the preferred first provider. Recommended model: deepseek-chat.",
+    }
+  : {
+      title: "AI 配置",
+      description: "配置后续推荐、写作、审核等 AI 功能使用的大模型 API。",
+      createTitle: "新增模型接入",
+      listTitle: "已配置模型",
+      empty: "还没有配置模型接入。",
+      saved: "AI 配置已保存。",
+      error: "AI 配置保存失败。",
+      name: "显示名称",
+      provider: "服务商",
+      model: "模型",
+      baseUrl: "Base URL",
+      apiKey: "API Key",
+      temperature: "温度",
+      maxTokens: "最大 Tokens",
+      notes: "备注",
+      enabled: "启用",
+      disabled: "停用",
+      defaultModel: "系统默认模型",
+      defaultBadge: "默认",
+      configured: "API Key 已配置",
+      missingKey: "未配置 API Key",
+      clearKey: "清空已保存 API Key",
+      create: "新增模型",
+      edit: "编辑",
+      update: "保存",
+      keepKey: "留空则保持当前密钥不变。",
+      deepseekHint: "优先支持 DeepSeek，推荐模型：deepseek-chat。",
+    };
+
+const providers = [
+  { value: "deepseek", label: "DeepSeek", model: "deepseek-chat", baseUrl: getDefaultBaseUrl("deepseek") },
+  { value: "openai", label: "OpenAI", model: "gpt-4.1-mini", baseUrl: getDefaultBaseUrl("openai") },
+  { value: "anthropic", label: "Anthropic", model: "claude-3-5-sonnet-latest", baseUrl: getDefaultBaseUrl("anthropic") },
+  { value: "google", label: "Google", model: "gemini-1.5-pro", baseUrl: getDefaultBaseUrl("google") },
+  { value: "custom", label: lang === "en" ? "Custom" : "自定义", model: "", baseUrl: "" },
+];
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="admin-page ai-settings-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{copy.title}</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.description}</p>
+      </div>
+      <span class="count-pill">{configs.length}</span>
+    </div>
+
+    <AdminNav lang={lang} />
+
+    {saved && <p class="auth-message success">{copy.saved}</p>}
+    {error && <p class="auth-message error">{copy.error}</p>}
+
+    <section class="ai-config-layout">
+      <details class="ai-config-create-card admin-collapsible-card admin-create-drawer" data-admin-collapsible>
+        <summary class="admin-create-summary">
+          <button class="button primary" type="button" data-collapse-button>+ {copy.create}</button>
+        </summary>
+
+        <form class="ai-config-create-form" method="post" action="/api/admin/ai-models" data-ai-config-form>
+          <div class="admin-form-head">
+            <strong>{copy.createTitle}</strong>
+            <span>{copy.deepseekHint}</span>
+          </div>
+          <div class="ai-config-form-grid">
+            <label>
+              {copy.name}
+              <input name="name" value="DeepSeek" required />
+            </label>
+            <label>
+              {copy.provider}
+              <select name="provider" data-provider-select>
+                {providers.map((provider) => (
+                  <option value={provider.value} data-base-url={provider.baseUrl} data-model={provider.model}>
+                    {provider.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {copy.model}
+              <input name="model" value="deepseek-chat" required data-model-input />
+            </label>
+            <label>
+              {copy.baseUrl}
+              <input name="baseUrl" value={getDefaultBaseUrl("deepseek")} required data-base-url-input />
+            </label>
+            <label class="span-two">
+              {copy.apiKey}
+              <input name="apiKey" type="password" autocomplete="off" placeholder="sk-..." />
+            </label>
+            <label>
+              {copy.temperature}
+              <input name="temperature" type="number" min="0" max="2" step="0.1" value="0.7" />
+            </label>
+            <label>
+              {copy.maxTokens}
+              <input name="maxTokens" type="number" min="128" step="128" value="4096" />
+            </label>
+            <label class="span-two">
+              {copy.notes}
+              <input name="notes" placeholder={copy.deepseekHint} />
+            </label>
+          </div>
+
+          <div class="ai-config-switches">
+            <label><input name="isEnabled" type="checkbox" value="1" checked /> {copy.enabled}</label>
+            <label><input name="isDefault" type="checkbox" value="1" checked /> {copy.defaultModel}</label>
+          </div>
+
+          <button class="button primary" type="submit">{copy.create}</button>
+        </form>
+      </details>
+
+      <section class="ai-config-list" aria-label={copy.listTitle}>
+        <h2>{copy.listTitle}</h2>
+        {configs.length > 0 ? (
+          configs.map((config) => (
+            <details
+              class:list={["ai-config-card", "admin-collapsible-card", config.isDefault && "is-default", !config.isEnabled && "is-disabled"]}
+              data-admin-collapsible
+            >
+              <summary class="ai-config-summary">
+                <div>
+                  <strong>{config.name}</strong>
+                  <span>{config.provider} · {config.model}</span>
+                </div>
+                <div class="ai-config-badges">
+                  {config.isDefault && <span class="admin-status published">{copy.defaultBadge}</span>}
+                  <span class:list={["admin-status", config.isEnabled ? "published" : "hidden"]}>
+                    {config.isEnabled ? copy.enabled : copy.disabled}
+                  </span>
+                  <span class:list={["admin-status", config.apiKeyConfigured ? "draft" : "deleted"]}>
+                    {config.apiKeyConfigured ? copy.configured : copy.missingKey}
+                  </span>
+                  <button class="button secondary compact" type="button" data-collapse-button>{copy.edit}</button>
+                </div>
+              </summary>
+
+              <form class="ai-config-edit-form" method="post" action={`/api/admin/ai-models/${config.id}`} data-ai-config-form>
+                <input type="hidden" name="redirect" value="/admin/ai?saved=1" />
+                <label>
+                  {copy.name}
+                  <input name="name" value={config.name} required />
+                </label>
+                <label>
+                  {copy.provider}
+                  <select name="provider" data-provider-select>
+                    {providers.map((provider) => (
+                      <option
+                        value={provider.value}
+                        selected={provider.value === config.provider}
+                        data-base-url={provider.baseUrl}
+                        data-model={provider.model}
+                      >
+                        {provider.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  {copy.model}
+                  <input name="model" value={config.model} required data-model-input />
+                </label>
+                <label>
+                  {copy.baseUrl}
+                  <input name="baseUrl" value={config.baseUrl} required data-base-url-input />
+                </label>
+                <label class="span-two">
+                  {copy.apiKey}
+                  <input name="apiKey" type="password" autocomplete="off" placeholder={copy.keepKey} />
+                  <small>{copy.keepKey}</small>
+                </label>
+                <label>
+                  {copy.temperature}
+                  <input name="temperature" type="number" min="0" max="2" step="0.1" value={config.temperature} />
+                </label>
+                <label>
+                  {copy.maxTokens}
+                  <input name="maxTokens" type="number" min="128" step="128" value={config.maxTokens} />
+                </label>
+                <label class="span-two">
+                  {copy.notes}
+                  <input name="notes" value={config.notes} />
+                </label>
+                <div class="ai-config-switches span-two">
+                  <label><input name="isEnabled" type="checkbox" value="1" checked={config.isEnabled} /> {copy.enabled}</label>
+                  <label><input name="isDefault" type="checkbox" value="1" checked={config.isDefault} /> {copy.defaultModel}</label>
+                  <label><input name="clearApiKey" type="checkbox" value="1" /> {copy.clearKey}</label>
+                </div>
+                <button class="button secondary" type="submit">{copy.update}</button>
+              </form>
+            </details>
+          ))
+        ) : (
+          <p class="auth-message muted">{copy.empty}</p>
+        )}
+      </section>
+    </section>
+  </section>
+</BaseLayout>
+
+<AdminCollapsibleController />
+
+<script>
+  document.querySelectorAll("[data-ai-config-form]").forEach((form) => {
+    const provider = form.querySelector("[data-provider-select]");
+    const baseUrl = form.querySelector("[data-base-url-input]");
+    const model = form.querySelector("[data-model-input]");
+
+    if (!(provider instanceof HTMLSelectElement) || !(baseUrl instanceof HTMLInputElement) || !(model instanceof HTMLInputElement)) {
+      return;
+    }
+
+    provider.addEventListener("change", () => {
+      const option = provider.selectedOptions[0];
+      const nextBaseUrl = option?.dataset.baseUrl || "";
+      const nextModel = option?.dataset.model || "";
+
+      if (nextBaseUrl) {
+        baseUrl.value = nextBaseUrl;
+      }
+
+      if (nextModel && !model.value.trim()) {
+        model.value = nextModel;
+      }
+    });
+  });
+</script>

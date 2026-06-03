@@ -1,4 +1,5 @@
 const { QUADRANT_DEFINITIONS, updateLeapState } = require('./storage');
+const { normalizeTaskLinks } = require('./taskLinks');
 
 function addQuadrantTask(context, quadrantId, text, metadata) {
   const taskText = cleanText(text);
@@ -76,6 +77,7 @@ function createTask(text, metadata) {
     source,
     reason,
     confidence,
+    links: normalizeTaskLinks(metadata && metadata.links, { defaultCreatedAt: now }),
     createdAt: now,
     updatedAt: now
   };
@@ -90,6 +92,9 @@ function normalizeTaskPatch(patch, task) {
   }
   if (Object.prototype.hasOwnProperty.call(source, 'dueDate')) {
     result.dueDate = normalizeDate(source.dueDate);
+  }
+  if (Object.prototype.hasOwnProperty.call(source, 'links')) {
+    result.links = normalizeTaskLinks(source.links, { defaultCreatedAt: new Date().toISOString() });
   }
   return result;
 }

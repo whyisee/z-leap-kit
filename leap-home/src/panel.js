@@ -2,7 +2,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const vscode = require('vscode');
 const { classifyQuadrantTask, organizeKnowledgeInsight, recommendNextActions, understandSearchQuery } = require('./ai');
-const { PANEL_VIEW_TYPE } = require('./constants');
+const { EXCLUDED_DIRECTORIES, PANEL_VIEW_TYPE } = require('./constants');
 const {
   addQuadrantTask,
   deleteQuadrantTask,
@@ -47,6 +47,7 @@ const {
   saveQuickCaptureToInbox
 } = require('./quickCapture');
 const { recordSearchHistory } = require('./searchHistory');
+const { normalizeTaskLinks, upsertTaskLink } = require('./taskLinks');
 const { getWebviewHtml } = require('./webview');
 const { getLanguage, t } = require('./i18n');
 
@@ -170,16 +171,78 @@ class LeapHomePanelController {
     }
 
     if (message.type === 'addQuadrantTask') {
-      await addQuadrantTask(this.context, message.quadrantId, message.text, {
+      const task = await addQuadrantTask(this.context, message.quadrantId, message.text, {
         dueDate: message.dueDate,
         source: message.source,
-        reason: message.reason
+        reason: message.reason,
+        links: message.links
       });
+      let outputResult;
+      if (task && message.createOutputDocument) {
+        const outputLink = getTaskLinkByRole(task, 'output');
+        if (outputLink && outputLink.filePath) {
+          const target = resolveTaskOutputDocumentTargetFromLink(this.context, this.index, outputLink, task);
+          if (target) {
+            outputResult = await writeTaskOutputDocumentForTask(this.context, this.index, {
+              quadrantId: normalizeQuadrantId(message.quadrantId),
+              quadrantTitle: getQuadrantName(normalizeQuadrantId(message.quadrantId)),
+              task
+            }, target);
+            await this.index.refresh();
+          }
+        }
+      }
       await this.recordNextActionFromMessage(message);
-      this.postModel();
-      if (message.nextAction) {
+      const modelPosted = this.postModel();
+      if (task && message.focusQuadrants) {
+        await modelPosted;
+        this.postFocusQuadrantsTask({
+          quadrantId: normalizeQuadrantId(message.quadrantId),
+          taskId: task.id,
+          title: task.text
+        });
+        const hasQuadrants = hasLayoutComponent(this.index, 'fourQuadrants');
+        vscode.window.showInformationMessage(
+          hasQuadrants
+            ? `Leap Home: ${t('已创建四象限事项「')}${task.text}${t('」，已定位到四象限。')}`
+            : `Leap Home: ${t('已创建四象限事项「')}${task.text}${t('」，但当前首页没有四象限组件。')}`
+        );
+      } else if (message.nextAction) {
         vscode.window.setStatusBarMessage(`Leap Home: ${t('已按推荐加入待办')}`, 2500);
       }
+      if (outputResult && outputResult.filePath) {
+        await openFile(outputResult.filePath, this.context, this);
+        vscode.window.setStatusBarMessage(
+          `Leap Home: ${t('已添加事项并新建笔记「')}${path.basename(outputResult.filePath)}${t('」')}`,
+          3000
+        );
+      }
+      return;
+    }
+
+    if (message.type === 'pickQuadrantTaskExistingDocument') {
+      const link = await this.pickQuadrantTaskExistingDocument();
+      if (!link) {
+        return;
+      }
+      this.panel.webview.postMessage({
+        type: 'quadrantAddDraftLink',
+        quadrantId: message.quadrantId,
+        link
+      });
+      return;
+    }
+
+    if (message.type === 'pickQuadrantTaskOutputDocument') {
+      const link = await this.pickQuadrantTaskOutputDocument(message.quadrantId, message.text, message.dueDate);
+      if (!link) {
+        return;
+      }
+      this.panel.webview.postMessage({
+        type: 'quadrantAddDraftLink',
+        quadrantId: message.quadrantId,
+        link
+      });
       return;
     }
 
@@ -305,10 +368,57 @@ class LeapHomePanelController {
       return;
     }
 
+    if (message.type === 'selectQuadrantTaskDocumentAction') {
+      const result = await this.selectQuadrantTaskDocumentAction(message.quadrantId, message.taskId);
+      if (!result) {
+        return;
+      }
+      if (result.refreshIndex) {
+        await this.index.refresh();
+      }
+      this.postModel();
+      if (result.openFilePath) {
+        await openFile(result.openFilePath, this.context, this);
+      }
+      vscode.window.setStatusBarMessage(result.message, 3000);
+      return;
+    }
+
+    if (message.type === 'createQuadrantTaskOutputDocument') {
+      const result = await this.createQuadrantTaskOutputDocument(message.quadrantId, message.taskId);
+      if (!result) {
+        return;
+      }
+      await this.index.refresh();
+      this.postModel();
+      await openFile(result.filePath, this.context, this);
+      vscode.window.setStatusBarMessage(
+        `Leap Home: ${t('已新建')}${t('产出文档「')}${path.basename(result.filePath)}${t('」')}`,
+        3000
+      );
+      return;
+    }
+
+    if (message.type === 'linkQuadrantTaskDocument') {
+      const result = await this.linkExistingDocumentToQuadrantTask(message.quadrantId, message.taskId, {
+        replacePrimary: true
+      });
+      if (!result) {
+        return;
+      }
+      this.postModel();
+      vscode.window.setStatusBarMessage(
+        `Leap Home: ${t('已关联文档「')}${result.title || path.basename(result.filePath || result.relativePath || '')}${t('」')}`,
+        2500
+      );
+      return;
+    }
+
     if (message.type === 'updateQuadrantTask') {
       const patch = {};
       if (Object.prototype.hasOwnProperty.call(message, 'text')) patch.text = message.text;
       if (Object.prototype.hasOwnProperty.call(message, 'dueDate')) patch.dueDate = message.dueDate;
+      if (Object.prototype.hasOwnProperty.call(message, 'links')) patch.links = message.links;
       await updateQuadrantTask(this.context, message.quadrantId, message.taskId, patch);
       await this.recordNextActionFromMessage(message);
       this.postModel();
@@ -319,11 +429,15 @@ class LeapHomePanelController {
     }
 
     if (message.type === 'toggleQuadrantTask') {
+      const taskRef = message.done ? findQuadrantTask(this.context, message.quadrantId, message.taskId) : undefined;
       await toggleQuadrantTask(this.context, message.quadrantId, message.taskId, message.done);
       await this.recordNextActionFromMessage(message);
       this.postModel();
       if (message.nextAction) {
         vscode.window.setStatusBarMessage(`Leap Home: ${t('已按推荐完成事项')}`, 2500);
+      }
+      if (message.done && taskRef) {
+        await maybeOpenDraftOutputDocument(taskRef, this.context, this);
       }
       return;
     }
@@ -480,6 +594,154 @@ class LeapHomePanelController {
     return result;
   }
 
+  async createQuadrantTaskOutputDocument(quadrantId, taskId) {
+    if (this.index && typeof this.index.ensureReady === 'function') {
+      await this.index.ensureReady();
+    }
+    const taskRef = findQuadrantTask(this.context, quadrantId, taskId);
+    if (!taskRef) {
+      throw new Error(t('没有找到要创建产出文档的事项。'));
+    }
+    const target = await resolveTaskOutputDocumentTarget(this.context, this.index, taskRef);
+    if (!target) {
+      return undefined;
+    }
+    return writeTaskOutputDocumentForTask(this.context, this.index, taskRef, target);
+  }
+
+  async selectQuadrantTaskDocumentAction(quadrantId, taskId) {
+    const taskRef = findQuadrantTask(this.context, quadrantId, taskId);
+    if (!taskRef) {
+      throw new Error(t('没有找到要管理文档的事项。'));
+    }
+    const primaryLink = getPrimaryTaskDocumentLink(taskRef.task);
+    const picked = await vscode.window.showQuickPick([
+      {
+        label: primaryLink ? `$(replace) ${t('修改关联文档')}` : `$(link) ${t('关联现有文档')}`,
+        description: primaryLink ? primaryLink.title || primaryLink.relativePath || path.basename(primaryLink.filePath || '') : '',
+        action: 'replace'
+      },
+      {
+        label: `$(new-file) ${t('新建文档')}`,
+        description: t('为这个事项创建新的产出文档'),
+        action: 'create'
+      }
+    ], {
+      placeHolder: primaryLink
+        ? `${t('管理关联文档：')}${primaryLink.title || primaryLink.relativePath || path.basename(primaryLink.filePath || '')}`
+        : t('选择事项文档操作'),
+      matchOnDescription: true
+    });
+    if (!picked) {
+      return undefined;
+    }
+    if (picked.action === 'replace') {
+      const link = await this.linkExistingDocumentToQuadrantTask(quadrantId, taskId, {
+        replacePrimary: true,
+        targetRole: primaryLink && primaryLink.role
+      });
+      if (!link) {
+        return undefined;
+      }
+      return {
+        message: `Leap Home: ${t('已修改关联文档「')}${link.title || path.basename(link.filePath || link.relativePath || '')}${t('」')}`
+      };
+    }
+    const output = await this.createQuadrantTaskOutputDocument(quadrantId, taskId);
+    if (!output) {
+      return undefined;
+    }
+    return {
+      refreshIndex: true,
+      openFilePath: output.filePath,
+      message: `Leap Home: ${t('已新建')}${t('产出文档「')}${path.basename(output.filePath)}${t('」')}`
+    };
+  }
+
+  async pickQuadrantTaskExistingDocument() {
+    if (this.index && typeof this.index.ensureReady === 'function') {
+      await this.index.ensureReady();
+    }
+    const item = await pickExistingTaskDocument(this.index, {
+      task: { links: [] }
+    });
+    if (!item) {
+      return undefined;
+    }
+    const now = new Date().toISOString();
+    const link = buildTaskLinkFromIndexItem(item, {
+      role: 'source',
+      createdAt: now
+    });
+    return link;
+  }
+
+  async pickQuadrantTaskOutputDocument(quadrantId, text, dueDate) {
+    const taskText = cleanTaskText(text);
+    const normalizedQuadrantId = normalizeQuadrantId(quadrantId);
+    if (!taskText || !normalizedQuadrantId) {
+      return undefined;
+    }
+    if (this.index && typeof this.index.ensureReady === 'function') {
+      await this.index.ensureReady();
+    }
+    const now = new Date().toISOString();
+    const draftTask = {
+      id: `task-draft-${Date.now()}`,
+      text: taskText,
+      done: false,
+      dueDate: normalizeDate(dueDate),
+      links: [],
+      createdAt: now,
+      updatedAt: now
+    };
+    const target = await resolveTaskOutputDocumentTarget(this.context, this.index, {
+      quadrantId: normalizedQuadrantId,
+      quadrantTitle: getQuadrantName(normalizedQuadrantId),
+      task: draftTask
+    });
+    if (!target) {
+      return undefined;
+    }
+    return buildTaskFileLink(target.filePath, target.source, {
+      role: 'output',
+      title: cleanNoteTitle(taskText) || t('事项产出'),
+      status: 'draft',
+      createdAt: now
+    });
+  }
+
+  async linkExistingDocumentToQuadrantTask(quadrantId, taskId, options = {}) {
+    if (this.index && typeof this.index.ensureReady === 'function') {
+      await this.index.ensureReady();
+    }
+    const taskRef = findQuadrantTask(this.context, quadrantId, taskId);
+    if (!taskRef) {
+      throw new Error(t('没有找到要关联文档的事项。'));
+    }
+    const item = await pickExistingTaskDocument(this.index, taskRef);
+    if (!item) {
+      return undefined;
+    }
+    const primaryLink = getPrimaryTaskDocumentLink(taskRef.task);
+    const replacePrimary = options.replacePrimary !== false;
+    const role = replacePrimary
+      ? getReplacementTaskDocumentRole(options.targetRole || primaryLink && primaryLink.role)
+      : getTaskLinkByRole(taskRef.task, 'source') ? 'reference' : 'source';
+    const now = new Date().toISOString();
+    const link = buildTaskLinkFromIndexItem(item, {
+      role,
+      status: role === 'output' ? 'ready' : '',
+      createdAt: now
+    });
+    const baseLinks = replacePrimary
+      ? removePrimaryTaskDocumentLinks(taskRef.task.links, role)
+      : taskRef.task.links;
+    const links = upsertTaskLink(baseLinks, link, { defaultCreatedAt: now });
+    await updateQuadrantTask(this.context, taskRef.quadrantId, taskRef.task.id, { links });
+    return link;
+  }
+
   async organizeKnowledgeGraphInsight(insight) {
     const source = insight && typeof insight === 'object' ? insight : {};
     const insightId = String(source.id || source.title || '');
@@ -623,7 +885,7 @@ class LeapHomePanelController {
   postModel() {
     if (!this.panel) {
       logger.warn('postModel skipped because panel is missing');
-      return;
+      return Promise.resolve(false);
     }
 
     try {
@@ -635,11 +897,15 @@ class LeapHomePanelController {
         items: Array.isArray(data.items) ? data.items.length : 0,
         quadrants: Array.isArray(data.quadrants) ? data.quadrants.length : 0
       });
-      this.panel.webview.postMessage({
+      return this.panel.webview.postMessage({
         type: 'model',
         model
       }).then((accepted) => {
         logger.info('postModel completed', { accepted });
+        return accepted;
+      }, (error) => {
+        logger.warn('postModel delivery failed', error);
+        return false;
       });
     } catch (error) {
       logger.error('postModel failed', error);
@@ -647,7 +913,21 @@ class LeapHomePanelController {
         type: 'error',
         message: error.message || String(error)
       });
+      return Promise.resolve(false);
     }
+  }
+
+  postFocusQuadrantsTask(payload) {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.webview.postMessage(Object.assign({
+      type: 'focusQuadrantsTask'
+    }, payload || {})).then((accepted) => {
+      logger.info('postFocusQuadrantsTask completed', { accepted });
+    }, (error) => {
+      logger.warn('postFocusQuadrantsTask delivery failed', error);
+    });
   }
 
   ensureIndexReady() {
@@ -963,6 +1243,477 @@ async function fileExists(filePath) {
 function isPathInside(filePath, rootPath) {
   const relative = path.relative(rootPath, filePath);
   return relative === '' || Boolean(relative) && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+function hasLayoutComponent(index, componentType) {
+  try {
+    const model = index && typeof index.getModel === 'function' ? index.getModel() : {};
+    const layout = Array.isArray(model.layout) ? model.layout : [];
+    return layout.some((block) => block && block.component === componentType);
+  } catch (error) {
+    return false;
+  }
+}
+
+function cleanTaskText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function findQuadrantTask(context, quadrantId, taskId) {
+  const normalizedQuadrantId = normalizeQuadrantId(quadrantId);
+  const normalizedTaskId = String(taskId || '').trim();
+  if (!normalizedQuadrantId || !normalizedTaskId) {
+    return undefined;
+  }
+  const state = readLeapState(context);
+  const task = ((state.quadrants && state.quadrants[normalizedQuadrantId]) || []).find((item) => item.id === normalizedTaskId);
+  if (!task) {
+    return undefined;
+  }
+  return {
+    quadrantId: normalizedQuadrantId,
+    quadrantTitle: getQuadrantName(normalizedQuadrantId),
+    task
+  };
+}
+
+async function resolveTaskOutputDocumentTarget(context, index, taskRef) {
+  const candidates = await buildTaskOutputDocumentCandidates(context, index, taskRef);
+  if (!candidates.length) {
+    throw new Error('没有可写入的工作区或知识源。');
+  }
+  const picked = await vscode.window.showQuickPick(candidates.map((candidate, index) => ({
+    label: `${index === 0 && candidate.recommended ? '$(star) ' : '$(folder) '}${candidate.label}`,
+    description: candidate.sourceName,
+    detail: `${t('创建为 ')}${candidate.relativePath}`,
+    candidate
+  })), {
+    placeHolder: t('选择创建笔记的目录'),
+    matchOnDescription: true,
+    matchOnDetail: true
+  });
+  return picked ? picked.candidate : undefined;
+}
+
+async function buildTaskOutputDocumentCandidates(context, index, taskRef) {
+  const sources = getWritableKnowledgeSources(context, index);
+  if (!sources.length) {
+    return [];
+  }
+  const config = getTaskDocumentConfiguration();
+  const fileName = ensureMarkdownFilePath(sanitizeNotePathSegment(taskRef.task.text || t('事项产出')));
+  const sourceLink = getTaskLinkByRole(taskRef.task, 'source');
+  const outputLink = getTaskLinkByRole(taskRef.task, 'output');
+  const sourceFromLink = sourceLink && sourceLink.filePath ? getSourceForFilePath(sources, sourceLink.filePath) : undefined;
+  const preferredSource = sourceFromLink || pickNoteSource(sources, {}) || sources[0];
+  const directoryActivity = buildDirectoryActivityFromIndex(sources, index);
+  const result = [];
+
+  if (outputLink && outputLink.relativePath && !outputLink.filePath) {
+    const outputSource = sources.find((source) => outputLink.sourceId && source.id === outputLink.sourceId) || preferredSource;
+    addTaskOutputCandidate(result, outputSource, path.dirname(path.resolve(outputSource.path, outputLink.relativePath)), fileName, t('建议产出目录'), true, directoryActivity);
+  }
+
+  if (sourceLink && sourceLink.filePath) {
+    const source = sourceFromLink;
+    if (source && config.preferSourceDirectory) {
+      addTaskOutputCandidate(result, source, path.dirname(sourceLink.filePath), fileName, t('来源文档同目录'), true, directoryActivity);
+    }
+  }
+
+  addTaskOutputCandidate(
+    result,
+    preferredSource,
+    path.resolve(preferredSource.path, config.defaultDir || 'notes'),
+    fileName,
+    config.defaultDir === 'notes' ? t('默认 notes 目录') : `${t('默认目录 ')}${config.defaultDir}`,
+    true,
+    directoryActivity
+  );
+
+  const projectDirectories = await collectProjectDirectories(sources, directoryActivity);
+  for (const directory of projectDirectories) {
+    addTaskOutputCandidate(result, directory.source, directory.path, fileName, directory.label, false, directoryActivity);
+  }
+  return result.sort(sortTaskOutputCandidates);
+}
+
+function addTaskOutputCandidate(result, source, directoryPath, fileName, label, recommended, directoryActivity) {
+  if (!source || !source.path || !directoryPath || !isPathInside(directoryPath, source.path)) {
+    return;
+  }
+  const normalizedDirectory = path.normalize(directoryPath);
+  const filePath = path.join(normalizedDirectory, fileName);
+  if (result.some((candidate) => candidate.directoryPath === normalizedDirectory)) {
+    return;
+  }
+  const directoryRelativePath = normalizePathForLink(path.relative(source.path, normalizedDirectory)) || '.';
+  const fileRelativePath = normalizePathForLink(path.relative(source.path, filePath));
+  result.push({
+    source,
+    sourceName: source.name || '',
+    directoryPath: normalizedDirectory,
+    filePath,
+    relativePath: fileRelativePath,
+    directoryRelativePath,
+    label,
+    recommended: Boolean(recommended),
+    activeAt: getDirectoryActiveAt(directoryActivity, normalizedDirectory)
+  });
+}
+
+function sortTaskOutputCandidates(left, right) {
+  return (right.activeAt || 0) - (left.activeAt || 0)
+    || getDirectoryRelativeDepth(right.directoryRelativePath) - getDirectoryRelativeDepth(left.directoryRelativePath)
+    || Number(Boolean(right.recommended)) - Number(Boolean(left.recommended))
+    || String(left.directoryRelativePath || left.label || '').localeCompare(String(right.directoryRelativePath || right.label || ''));
+}
+
+function buildDirectoryActivityFromIndex(sources, index) {
+  const activity = new Map();
+  const items = Array.isArray(index && index.items) ? index.items : [];
+  for (const item of items) {
+    const filePath = String(item && item.filePath || '').trim();
+    const updatedAt = Number(item && item.updatedAt) || 0;
+    if (!filePath || !updatedAt) continue;
+    const source = getSourceForFilePath(sources, filePath);
+    if (!source || !source.path) continue;
+    let directoryPath = path.dirname(filePath);
+    for (let depth = 0; depth < 1000; depth += 1) {
+      if (!isPathInside(directoryPath, source.path)) break;
+      setDirectoryActiveAt(activity, directoryPath, updatedAt);
+      if (path.resolve(directoryPath) === path.resolve(source.path)) break;
+      const parentPath = path.dirname(directoryPath);
+      if (!parentPath || parentPath === directoryPath) break;
+      directoryPath = parentPath;
+    }
+  }
+  return activity;
+}
+
+function setDirectoryActiveAt(activity, directoryPath, updatedAt) {
+  const key = getDirectoryActivityKey(directoryPath);
+  activity.set(key, Math.max(activity.get(key) || 0, updatedAt || 0));
+}
+
+function getDirectoryActiveAt(activity, directoryPath) {
+  if (!activity || typeof activity.get !== 'function') {
+    return 0;
+  }
+  return activity.get(getDirectoryActivityKey(directoryPath)) || 0;
+}
+
+function getDirectoryActivityKey(directoryPath) {
+  return normalizePathForLink(path.normalize(directoryPath)).toLowerCase();
+}
+
+function getDirectoryRelativeDepth(relativePath) {
+  const normalized = normalizePathForLink(relativePath || '').replace(/^\.\/?$/, '').trim();
+  if (!normalized || normalized === '.') {
+    return 0;
+  }
+  return normalized.split('/').filter(Boolean).length;
+}
+
+function getTaskDocumentConfiguration() {
+  const config = vscode.workspace.getConfiguration('leapHome');
+  return {
+    defaultDir: normalizeTaskDocumentDir(config.get('taskDocuments.defaultDir', 'notes')),
+    preferSourceDirectory: config.get('taskDocuments.preferSourceDirectory', true) !== false
+  };
+}
+
+function normalizeTaskDocumentDir(value) {
+  const cleaned = cleanNotePath(value || 'notes')
+    .replace(/^\/+/, '')
+    .split('/')
+    .filter((part) => part && part !== '.' && part !== '..')
+    .map(sanitizeNotePathSegment)
+    .filter(Boolean)
+    .join('/');
+  return cleaned || 'notes';
+}
+
+async function collectProjectDirectories(sources, directoryActivity) {
+  const roots = getProjectDirectoryRoots(sources);
+  const result = [];
+  const seen = new Set();
+  for (const source of roots) {
+    const directories = await walkProjectDirectories(source.path);
+    for (const directoryPath of directories) {
+      const key = normalizePathForLink(directoryPath).toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push({
+        source,
+        path: directoryPath,
+        label: normalizePathForLink(path.relative(source.path, directoryPath)) || '.',
+        activeAt: getDirectoryActiveAt(directoryActivity, directoryPath)
+      });
+    }
+  }
+  return result.sort((left, right) => {
+    return (right.activeAt || 0) - (left.activeAt || 0)
+      || getDirectoryRelativeDepth(right.label) - getDirectoryRelativeDepth(left.label)
+      || left.label.localeCompare(right.label);
+  });
+}
+
+function getProjectDirectoryRoots(sources) {
+  const result = [];
+  const seen = new Set();
+  for (const folder of vscode.workspace.workspaceFolders || []) {
+    if (!folder || folder.uri.scheme !== 'file') continue;
+    const source = getSourceForFilePath(sources, folder.uri.fsPath) || {
+      id: `workspace:${folder.uri.fsPath}`,
+      name: folder.name,
+      path: folder.uri.fsPath,
+      type: 'workspace'
+    };
+    const key = normalizePathForLink(source.path).toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(source);
+    }
+  }
+  if (result.length) {
+    return result;
+  }
+  for (const source of sources) {
+    if (!source || !source.path || source.type !== 'workspace') continue;
+    const key = normalizePathForLink(source.path).toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(source);
+    }
+  }
+  return result;
+}
+
+async function walkProjectDirectories(rootPath) {
+  const result = [rootPath];
+  const queue = [rootPath];
+  while (queue.length) {
+    const currentPath = queue.shift();
+    let entries;
+    try {
+      entries = await fs.readdir(currentPath, { withFileTypes: true });
+    } catch (error) {
+      continue;
+    }
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      if (!entry.isDirectory() || shouldSkipTaskDocumentDirectory(entry.name)) {
+        continue;
+      }
+      const entryPath = path.join(currentPath, entry.name);
+      result.push(entryPath);
+      queue.push(entryPath);
+    }
+  }
+  return result;
+}
+
+function shouldSkipTaskDocumentDirectory(name) {
+  return EXCLUDED_DIRECTORIES.has(name);
+}
+
+function getTaskLinkByRole(task, role) {
+  return (Array.isArray(task && task.links) ? task.links : []).find((link) => link && link.role === role && (link.filePath || link.relativePath));
+}
+
+function getPrimaryTaskDocumentLink(task) {
+  return getTaskLinkByRole(task, 'output') || getTaskLinkByRole(task, 'source') || getTaskLinkByRole(task, 'reference');
+}
+
+function getReplacementTaskDocumentRole(role) {
+  return role === 'output' ? 'output' : role === 'reference' ? 'reference' : 'source';
+}
+
+function removePrimaryTaskDocumentLinks(links, role) {
+  const normalizedRole = getReplacementTaskDocumentRole(role);
+  return normalizeTaskLinks(links).filter((link) => {
+    if (normalizedRole === 'output') {
+      return link.role !== 'output';
+    }
+    if (normalizedRole === 'reference') {
+      return link.role !== 'reference' && link.role !== 'source';
+    }
+    return link.role !== 'source' && link.role !== 'reference';
+  });
+}
+
+async function pickExistingTaskDocument(index, taskRef) {
+  const items = Array.isArray(index && index.items) ? index.items : [];
+  const existingPaths = new Set((Array.isArray(taskRef.task.links) ? taskRef.task.links : [])
+    .map((link) => normalizePathForLink(link.filePath || link.relativePath).toLowerCase())
+    .filter(Boolean));
+  const candidates = items
+    .filter((item) => item && item.filePath && !existingPaths.has(normalizePathForLink(item.filePath).toLowerCase()))
+    .filter((item) => item.category !== 'task' && item.category !== 'calendar')
+    .filter((item) => item.category !== 'code' || isMarkdownFile(item.filePath))
+    .sort(sortTaskDocumentCandidates)
+    .slice(0, 120);
+  if (!candidates.length) {
+    vscode.window.showInformationMessage(`Leap Home: ${t('当前索引里没有可关联的文档。')}`);
+    return undefined;
+  }
+  const picked = await vscode.window.showQuickPick(candidates.map((item) => ({
+    label: item.title || item.fileName || path.basename(item.filePath),
+    description: item.relativePath || item.fileName || '',
+    detail: item.sourceName || '',
+    item
+  })), {
+    placeHolder: t('选择要关联到事项的文档'),
+    matchOnDescription: true,
+    matchOnDetail: true
+  });
+  return picked ? picked.item : undefined;
+}
+
+function sortTaskDocumentCandidates(left, right) {
+  const leftMarkdown = isMarkdownFile(left.filePath) ? 0 : 1;
+  const rightMarkdown = isMarkdownFile(right.filePath) ? 0 : 1;
+  return (right.updatedAt || 0) - (left.updatedAt || 0)
+    || leftMarkdown - rightMarkdown
+    || String(left.relativePath || left.title || '').localeCompare(String(right.relativePath || right.title || ''));
+}
+
+function getSourceForFilePath(sources, filePath) {
+  return (Array.isArray(sources) ? sources : []).find((source) => source && source.path && isPathInside(filePath, source.path));
+}
+
+function resolveTaskOutputDocumentTargetFromLink(context, index, link, task) {
+  const sources = getWritableKnowledgeSources(context, index);
+  const filePath = String(link && link.filePath || '').trim();
+  if (!filePath) {
+    return undefined;
+  }
+  const source = getSourceForFilePath(sources, filePath);
+  if (!source) {
+    throw new Error(t('选择的笔记目录不在当前工作区或知识源内。'));
+  }
+  const fileName = ensureMarkdownFilePath(sanitizeNotePathSegment(task && task.text || path.basename(filePath, path.extname(filePath))));
+  return {
+    source,
+    filePath: path.join(path.dirname(filePath), fileName)
+  };
+}
+
+function buildTaskLinkFromIndexItem(item, options) {
+  return {
+    role: options && options.role || 'reference',
+    sourceId: item.sourceId || '',
+    sourceName: item.sourceName || '',
+    sourceType: item.sourceType || '',
+    filePath: item.filePath || '',
+    relativePath: item.relativePath || item.fileName || '',
+    title: item.title || item.fileName || '',
+    status: options && options.status || '',
+    createdAt: options && options.createdAt || ''
+  };
+}
+
+function buildTaskFileLink(filePath, source, options) {
+  const safeSource = source && typeof source === 'object' ? source : {};
+  return {
+    role: options && options.role || 'reference',
+    sourceId: safeSource.id || '',
+    sourceName: safeSource.name || '',
+    sourceType: safeSource.type || '',
+    filePath,
+    relativePath: safeSource.path && isPathInside(filePath, safeSource.path)
+      ? normalizePathForLink(path.relative(safeSource.path, filePath))
+      : path.basename(filePath),
+    title: options && options.title || path.basename(filePath, path.extname(filePath)),
+    status: options && options.status || '',
+    createdAt: options && options.createdAt || ''
+  };
+}
+
+function buildTaskOutputDocumentContent(taskRef, outputFilePath, outputSource) {
+  const task = taskRef.task;
+  const title = cleanNoteTitle(task.text) || t('事项产出');
+  const sourceLinks = normalizeTaskLinks(task.links).filter((link) => link.role === 'source' || link.role === 'reference');
+  const related = sourceLinks
+    .map((link) => normalizeFrontmatterPath(link.relativePath || link.filePath))
+    .filter(Boolean);
+  const frontmatter = [
+    `title: ${quoteYaml(title)}`,
+    `leap_task_id: ${quoteYaml(task.id)}`,
+    `leap_task_title: ${quoteYaml(task.text)}`,
+    'leap_task_status: "draft"',
+    `leap_task_quadrant: ${quoteYaml(t(taskRef.quadrantTitle))}`,
+    `leap_task_output_path: ${quoteYaml(buildTaskFileLink(outputFilePath, outputSource, { role: 'output', title }).relativePath)}`
+  ];
+  if (task.dueDate) {
+    frontmatter.push(`leap_task_due: ${quoteYaml(task.dueDate)}`);
+  }
+  if (related.length) {
+    appendYamlList(frontmatter, 'leap_related', uniqueValues(related).slice(0, 8));
+  }
+
+  const lines = [
+    '---',
+    frontmatter.join('\n'),
+    '---',
+    '',
+    `# ${title}`,
+    '',
+    `## ${t('事项')}`,
+    '',
+    `- ${t('象限：')}${t(taskRef.quadrantTitle)}`,
+    `- ${t('状态：')}${task.done ? t('已完成') : t('未完成')}`
+  ];
+  if (task.dueDate) {
+    lines.push(`- ${t('截止日：')}${task.dueDate}`);
+  }
+  if (sourceLinks.length) {
+    const separator = getLanguage() === 'en' ? ', ' : '、';
+    lines.push(`- ${t('来源：')}${sourceLinks.map((link) => link.title || link.relativePath || path.basename(link.filePath || '')).filter(Boolean).join(separator)}`);
+  }
+  lines.push('', `## ${t('产出记录')}`, '');
+  return lines.join('\n');
+}
+
+async function writeTaskOutputDocumentForTask(context, index, taskRef, target) {
+  await fs.mkdir(path.dirname(target.filePath), { recursive: true });
+  const uniquePath = await ensureUniqueNotePath(target.filePath);
+  const content = buildTaskOutputDocumentContent(taskRef, uniquePath, target.source);
+  await fs.writeFile(uniquePath, content + '\n', 'utf8');
+
+  const now = new Date().toISOString();
+  const outputSource = target.source || getSourceForFilePath(getWritableKnowledgeSources(context, index), uniquePath);
+  const outputLink = buildTaskFileLink(uniquePath, outputSource, {
+    role: 'output',
+    title: cleanNoteTitle(taskRef.task.text) || t('事项产出'),
+    status: 'draft',
+    createdAt: now
+  });
+  const baseLinks = normalizeTaskLinks(taskRef.task.links)
+    .filter((link) => link.role !== 'output');
+  const links = upsertTaskLink(baseLinks, outputLink, { defaultCreatedAt: now });
+  await updateQuadrantTask(context, taskRef.quadrantId, taskRef.task.id, { links });
+  return { filePath: uniquePath };
+}
+
+function normalizePathForLink(value) {
+  return String(value || '').replace(/\\/g, '/');
+}
+
+async function maybeOpenDraftOutputDocument(taskRef, context, provider) {
+  const output = getTaskLinkByRole(taskRef.task, 'output');
+  if (!output || output.status !== 'draft' || !output.filePath) {
+    return;
+  }
+  const action = await vscode.window.showInformationMessage(
+    `Leap Home: ${t('事项已完成，是否打开产出文档补充结果？')}`,
+    t('打开产出文档'),
+    t('稍后')
+  );
+  if (action === t('打开产出文档')) {
+    await openFile(output.filePath, context, provider, { line: output.line });
+  }
 }
 
 async function resolveFocusTimerTask(context, request) {

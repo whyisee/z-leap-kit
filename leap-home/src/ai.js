@@ -2,6 +2,7 @@ const https = require('https');
 const vscode = require('vscode');
 const { LANGUAGE_EN, getLanguage, t } = require('./i18n');
 const { QUADRANT_DEFINITIONS } = require('./storage');
+const { normalizeTaskLinks } = require('./taskLinks');
 
 async function classifyQuadrantTask(text, options) {
   const taskText = String(text || '').trim();
@@ -238,6 +239,9 @@ function requestDeepSeekNextActions(config, candidates, context) {
             : '输出语言：中文。summary、encouragement、reason、行动标题、行动理由、按钮文案、笔记标题和笔记内容都使用中文。JSON key、action type、key、sourceType、quadrantId、sourceId、relativePath 和搜索查询语法保持不变。',
           '允许的新建议 action 类型只有 createTask、startFocus、createNote、appendNote、search、openInbox、dismiss。',
           'createTask/startFocus 必须包含 title 和 quadrantId；可选 dueDate 使用 YYYY-MM-DD；startFocus 可选 durationMs，例如 600000 表示 10 分钟。',
+          outputLanguage === LANGUAGE_EN
+            ? 'createTask may optionally include links, sourceDocument, or outputDocument to link an existing document or suggest a task output document. Document paths must come from existingDocuments.relativePath, or use a safe new Markdown relativePath.'
+            : 'createTask 可以可选包含 links、sourceDocument 或 outputDocument，用于关联已有文档或建议产出文档；文档路径必须来自 existingDocuments 的 relativePath，或使用安全的新 Markdown 相对路径。',
           'quadrantId 只能是 importantUrgent、importantNotUrgent、notImportantUrgent、notImportantNotUrgent。',
           'createNote/appendNote 用于直接写入知识库：必须包含 sourceId、relativePath、title、content。sourceId 必须从 knowledgeSources 中选择。',
           'appendNote 应优先选择 existingDocuments 中已有的 relativePath；createNote 可以根据已有目录结构设计新的 Markdown 路径。',
@@ -248,7 +252,9 @@ function requestDeepSeekNextActions(config, candidates, context) {
           'search 必须包含 query。',
           '如果是选择本地候选，可以省略 actions，系统会保留原动作。',
           '只返回严格 JSON 对象，不要 Markdown，不要解释性段落。',
-          'JSON 格式：{"summary":"最近上下文一句话总结","encouragement":"一句具体鼓励","reason":"整体推荐理由","items":[{"key":"候选 key 或 ai:xxx","type":"do-now|plan|review|break","sourceType":"candidate|microtask|insight|encouragement|idea","title":"行动标题","reason":"一句话解释","basedOnKey":"可选，来源候选 key","actions":[{"type":"createTask|startFocus|createNote|appendNote|search|openInbox|dismiss","label":"按钮文案","title":"标题","quadrantId":"importantNotUrgent","dueDate":"2026-06-01","durationMs":600000,"sourceId":"source-id","relativePath":"notes/topic.md","content":"Markdown 内容","query":"搜索词"}]}]}'
+          outputLanguage === LANGUAGE_EN
+            ? 'JSON format: {"summary":"one-sentence context summary","encouragement":"specific encouragement","reason":"overall recommendation reason","items":[{"key":"candidate key or ai:xxx","type":"do-now|plan|review|break","sourceType":"candidate|microtask|insight|encouragement|idea","title":"action title","reason":"one-sentence reason","basedOnKey":"optional source candidate key","actions":[{"type":"createTask|startFocus|createNote|appendNote|search|openInbox|dismiss","label":"button label","title":"title","quadrantId":"importantNotUrgent","dueDate":"2026-06-01","durationMs":600000,"sourceId":"source-id","relativePath":"notes/topic.md","sourceDocument":{"relativePath":"docs/context.md","title":"Context"},"outputDocument":{"relativePath":"notes/output.md","title":"Output"},"content":"Markdown content","query":"search query"}]}]}'
+            : 'JSON 格式：{"summary":"最近上下文一句话总结","encouragement":"一句具体鼓励","reason":"整体推荐理由","items":[{"key":"候选 key 或 ai:xxx","type":"do-now|plan|review|break","sourceType":"candidate|microtask|insight|encouragement|idea","title":"行动标题","reason":"一句话解释","basedOnKey":"可选，来源候选 key","actions":[{"type":"createTask|startFocus|createNote|appendNote|search|openInbox|dismiss","label":"按钮文案","title":"标题","quadrantId":"importantNotUrgent","dueDate":"2026-06-01","durationMs":600000,"sourceId":"source-id","relativePath":"notes/topic.md","sourceDocument":{"relativePath":"docs/context.md","title":"上下文"},"outputDocument":{"relativePath":"notes/output.md","title":"产出"},"content":"Markdown 内容","query":"搜索词"}]}]}'
         ].join('\n')
       },
       {
@@ -495,7 +501,8 @@ function normalizeNextActionAiAction(value) {
     if (!title || !quadrantId) return undefined;
     const dueDate = normalizeOptionalDate(value.dueDate);
     const durationMs = clampNumber(value.durationMs, 0, 4 * 60 * 60 * 1000);
-    return Object.assign({ type, label: label || (type === 'startFocus' ? t('开始专注') : t('加入待办')), title, quadrantId }, dueDate ? { dueDate } : {}, durationMs ? { durationMs } : {});
+    const links = normalizeNextActionTaskLinks(value);
+    return Object.assign({ type, label: label || (type === 'startFocus' ? t('开始专注') : t('加入待办')), title, quadrantId }, dueDate ? { dueDate } : {}, durationMs ? { durationMs } : {}, links.length ? { links } : {});
   }
   if (type === 'search') {
     const query = String(value.query || '').replace(/\s+/g, ' ').trim().slice(0, 180);
@@ -542,6 +549,26 @@ function normalizeOptionalDate(value) {
 
 function normalizeNoteRelativePath(value) {
   return String(value || '').replace(/\\/g, '/').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeNextActionTaskLinks(value) {
+  const raw = [];
+  if (Array.isArray(value.links)) {
+    raw.push(...value.links);
+  }
+  if (value.sourceDocument && typeof value.sourceDocument === 'object') {
+    raw.push(Object.assign({ role: 'source' }, value.sourceDocument));
+  }
+  if (value.outputDocument && typeof value.outputDocument === 'object') {
+    raw.push(Object.assign({ role: 'output', status: 'draft' }, value.outputDocument));
+  }
+  return normalizeTaskLinks(raw.map((link) => Object.assign({}, link, {
+    filePath: '',
+    relativePath: normalizeNoteRelativePath(link.relativePath || link.path || link.filePath),
+    title: String(link.title || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+    sourceId: String(link.sourceId || value.sourceId || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+    sourceName: String(link.sourceName || value.sourceName || '').replace(/\s+/g, ' ').trim().slice(0, 80)
+  })));
 }
 
 function getChoiceContent(response) {

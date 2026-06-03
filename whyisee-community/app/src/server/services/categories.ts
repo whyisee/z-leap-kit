@@ -1,4 +1,4 @@
-import { getDb } from "@server/db/client";
+import { query, queryOne } from "@server/db/client";
 import { categoryTranslations, defaultLang, tagTranslations, type Lang } from "@lib/i18n";
 import type { Category, Tag } from "@lib/types";
 
@@ -20,10 +20,9 @@ interface TagRow {
   topic_count: number;
 }
 
-export function listCategories(lang: Lang = defaultLang): Category[] {
-  const rows = getDb()
-    .prepare(
-      `
+export async function listCategories(lang: Lang = defaultLang): Promise<Category[]> {
+  const rows = await query<CategoryRow>(
+    `
       SELECT
         c.id,
         c.name,
@@ -31,23 +30,21 @@ export function listCategories(lang: Lang = defaultLang): Category[] {
         c.description,
         c.color,
         c.sort_order,
-        COUNT(t.id) AS topic_count
+        COUNT(t.id)::int AS topic_count
       FROM categories c
       LEFT JOIN topics t ON t.category_id = c.id AND t.status = 'published'
-      WHERE c.is_public = 1
-      GROUP BY c.id
+      WHERE c.is_public = TRUE
+      GROUP BY c.id, c.name, c.slug, c.description, c.color, c.sort_order
       ORDER BY c.sort_order ASC, c.id ASC
       `,
-    )
-    .all() as CategoryRow[];
+  );
 
-  return rows.map((row) => mapCategory(row, lang));
+  return rows.map((row: CategoryRow) => mapCategory(row, lang));
 }
 
-export function getCategoryBySlug(slug: string, lang: Lang = defaultLang): Category | undefined {
-  const row = getDb()
-    .prepare(
-      `
+export async function getCategoryBySlug(slug: string, lang: Lang = defaultLang): Promise<Category | undefined> {
+  const row = await queryOne<CategoryRow>(
+    `
       SELECT
         c.id,
         c.name,
@@ -55,58 +52,55 @@ export function getCategoryBySlug(slug: string, lang: Lang = defaultLang): Categ
         c.description,
         c.color,
         c.sort_order,
-        COUNT(t.id) AS topic_count
+        COUNT(t.id)::int AS topic_count
       FROM categories c
       LEFT JOIN topics t ON t.category_id = c.id AND t.status = 'published'
-      WHERE c.slug = ? AND c.is_public = 1
-      GROUP BY c.id
+      WHERE c.slug = $1 AND c.is_public = TRUE
+      GROUP BY c.id, c.name, c.slug, c.description, c.color, c.sort_order
       `,
-    )
-    .get(slug) as CategoryRow | undefined;
+    [slug],
+  );
 
   return row ? mapCategory(row, lang) : undefined;
 }
 
-export function listTags(lang: Lang = defaultLang): Tag[] {
-  const rows = getDb()
-    .prepare(
-      `
+export async function listTags(lang: Lang = defaultLang): Promise<Tag[]> {
+  const rows = await query<TagRow>(
+    `
       SELECT
         tags.id,
         tags.name,
         tags.slug,
         tags.description,
-        COUNT(topics.id) AS topic_count
+        COUNT(topics.id)::int AS topic_count
       FROM tags
       LEFT JOIN topic_tags ON topic_tags.tag_id = tags.id
       LEFT JOIN topics ON topics.id = topic_tags.topic_id AND topics.status = 'published'
-      GROUP BY tags.id
+      GROUP BY tags.id, tags.name, tags.slug, tags.description
       ORDER BY topic_count DESC, tags.name ASC
       `,
-    )
-    .all() as TagRow[];
+  );
 
-  return rows.map((row) => mapTag(row, lang));
+  return rows.map((row: TagRow) => mapTag(row, lang));
 }
 
-export function getTagBySlug(slug: string, lang: Lang = defaultLang): Tag | undefined {
-  const row = getDb()
-    .prepare(
-      `
+export async function getTagBySlug(slug: string, lang: Lang = defaultLang): Promise<Tag | undefined> {
+  const row = await queryOne<TagRow>(
+    `
       SELECT
         tags.id,
         tags.name,
         tags.slug,
         tags.description,
-        COUNT(topics.id) AS topic_count
+        COUNT(topics.id)::int AS topic_count
       FROM tags
       LEFT JOIN topic_tags ON topic_tags.tag_id = tags.id
       LEFT JOIN topics ON topics.id = topic_tags.topic_id AND topics.status = 'published'
-      WHERE tags.slug = ?
-      GROUP BY tags.id
+      WHERE tags.slug = $1
+      GROUP BY tags.id, tags.name, tags.slug, tags.description
       `,
-    )
-    .get(slug) as TagRow | undefined;
+    [slug],
+  );
 
   return row ? mapTag(row, lang) : undefined;
 }

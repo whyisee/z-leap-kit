@@ -1,0 +1,116 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import AdminNav from "@components/AdminNav.astro";
+import AdminCollapsibleController from "@components/AdminCollapsibleController.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { getLangFromAstro } from "@lib/i18n";
+import { listAdminTags } from "@server/services/admin";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/", 303);
+}
+
+const tags = await listAdminTags();
+const copy = lang === "en"
+  ? {
+      title: "Tags",
+      description: "Maintain reusable topic tags.",
+      name: "Name",
+      slug: "Slug",
+      descriptionField: "Description",
+      topics: "topics",
+      create: "New tag",
+      edit: "Edit",
+      update: "Update",
+      saved: "Tag saved.",
+      error: "Tag update failed.",
+    }
+  : {
+      title: "标签管理",
+      description: "维护话题可复用标签。",
+      name: "名称",
+      slug: "Slug",
+      descriptionField: "描述",
+      topics: "话题",
+      create: "新增标签",
+      edit: "编辑",
+      update: "更新",
+      saved: "标签已保存。",
+      error: "标签保存失败。",
+    };
+const saved = Astro.url.searchParams.get("saved") === "1";
+const error = Astro.url.searchParams.get("error") === "1";
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="admin-page tag-admin-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{copy.title}</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.description}</p>
+      </div>
+      <span class="count-pill">{tags.length}</span>
+    </div>
+
+    <AdminNav lang={lang} />
+
+    {saved && <p class="auth-message success">{copy.saved}</p>}
+    {error && <p class="auth-message error">{copy.error}</p>}
+
+    <details class="tag-create-card admin-collapsible-card admin-create-drawer" data-admin-collapsible>
+      <summary class="admin-create-summary">
+        <button class="button primary" type="button" data-collapse-button>+ {copy.create}</button>
+      </summary>
+
+      <div class="admin-create-body">
+        <form class="tag-create-form" method="post" action="/api/admin/tags">
+          <div class="admin-form-head">
+            <strong>{copy.create}</strong>
+            <span>{copy.description}</span>
+          </div>
+          <div class="tag-form-grid">
+            <label>{copy.name}<input name="name" required /></label>
+            <label>{copy.slug}<input name="slug" /></label>
+            <label class="span-two">{copy.descriptionField}<input name="description" /></label>
+          </div>
+          <button class="button primary" type="submit">{copy.create}</button>
+        </form>
+      </div>
+    </details>
+
+    <div class="tag-admin-list">
+      {tags.map((tag) => (
+        <details class="tag-admin-card admin-collapsible-card" data-admin-collapsible>
+          <summary class="tag-card-summary">
+            <span class="tag-card-mark" aria-hidden="true">#</span>
+            <div>
+              <strong>#{tag.name}</strong>
+              <span>/{tag.slug} · {tag.topicCount ?? 0} {copy.topics}</span>
+              <small>{tag.description || "-"}</small>
+            </div>
+            <button class="button secondary compact" type="button" data-collapse-button>{copy.edit}</button>
+          </summary>
+
+          <form class="tag-edit-form" method="post" action={`/api/admin/tags/${tag.id}`}>
+            <input type="hidden" name="redirect" value="/admin/tags" />
+            <label>{copy.name}<input name="name" value={tag.name} required /></label>
+            <label>{copy.slug}<input name="slug" value={tag.slug} /></label>
+            <label class="span-two">{copy.descriptionField}<input name="description" value={tag.description} /></label>
+            <button class="button secondary" type="submit">{copy.update}</button>
+          </form>
+        </details>
+      ))}
+    </div>
+    <AdminCollapsibleController />
+  </section>
+</BaseLayout>

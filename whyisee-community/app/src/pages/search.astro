@@ -1,0 +1,101 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import ForumFrame from "@components/ForumFrame.astro";
+import { getLangFromAstro } from "@lib/i18n";
+import { listCategories, listTags } from "@server/services/categories";
+import { listFeaturedTopics } from "@server/services/topics";
+import { searchCommunity } from "@server/services/search";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const q = Astro.url.searchParams.get("q") || "";
+const categories = await listCategories(lang);
+const tags = await listTags(lang);
+const featuredTopics = await listFeaturedTopics(4, lang);
+const results = await searchCommunity(q, lang, 40);
+const copy = lang === "en"
+  ? {
+      title: "Search",
+      placeholder: "Search topics, replies, categories, tags, and users",
+      submit: "Search",
+      empty: "Enter a keyword to search the community.",
+      noResults: "No matching results.",
+      results: "results",
+    }
+  : {
+      title: "搜索",
+      placeholder: "搜索话题、回复、分类、标签和用户",
+      submit: "搜索",
+      empty: "输入关键词搜索社区内容。",
+      noResults: "没有匹配结果。",
+      results: "条结果",
+    };
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.placeholder}>
+  <ForumFrame categories={categories} tags={tags} featuredTopics={featuredTopics} lang={lang}>
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{copy.title}</p>
+        <h1>{copy.title}</h1>
+      </div>
+      {q && <span class="count-pill">{results.length} {copy.results}</span>}
+    </div>
+
+    <form class="search-page-form" method="get" action="/search" data-auto-search-form>
+      <input type="search" name="q" value={q} placeholder={copy.placeholder} autofocus data-auto-search-input />
+      <button class="button primary" type="submit">{copy.submit}</button>
+    </form>
+
+    {q ? (
+      results.length > 0 ? (
+        <div class="search-result-list">
+          {results.map((item) => (
+            <a class="search-result-row" href={item.href}>
+              <span class="admin-status published">{item.kind}</span>
+              <h2>{item.title}</h2>
+              {item.summary && <p>{item.summary}</p>}
+              <small>{item.meta}</small>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p class="auth-message muted">{copy.noResults}</p>
+      )
+    ) : (
+      <p class="auth-message muted">{copy.empty}</p>
+    )}
+  </ForumFrame>
+</BaseLayout>
+
+<script is:inline>
+  (() => {
+    const form = document.querySelector("[data-auto-search-form]");
+    const input = document.querySelector("[data-auto-search-input]");
+
+    if (!form || !input) {
+      return;
+    }
+
+    const searchDelay = 520;
+    let searchTimer = 0;
+    let lastSubmitted = input.value.trim();
+
+    const submitSearch = () => {
+      const query = input.value.trim();
+
+      if (query === lastSubmitted) {
+        return;
+      }
+
+      lastSubmitted = query;
+      form.requestSubmit();
+    };
+
+    input.addEventListener("input", () => {
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(submitSearch, searchDelay);
+    });
+  })();
+</script>

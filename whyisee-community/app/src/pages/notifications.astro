@@ -1,0 +1,69 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { getSessionFromAstro } from "@lib/auth";
+import { formatRelative } from "@lib/format";
+import { getLangFromAstro } from "@lib/i18n";
+import { listNotifications } from "@server/services/notifications";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+const notifications = await listNotifications(session.userId, 80);
+const unreadCount = notifications.filter((item) => !item.readAt).length;
+const copy = lang === "en"
+  ? {
+      title: "Notifications",
+      description: "Replies, likes, follows, reports, and moderation reminders.",
+      markRead: "Mark all read",
+      empty: "No notifications yet.",
+      unread: "unread",
+    }
+  : {
+      title: "通知",
+      description: "回复、点赞、关注、举报和审核提醒都会集中在这里。",
+      markRead: "全部标记已读",
+      empty: "暂无通知。",
+      unread: "未读",
+    };
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="admin-page narrow-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{copy.title}</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.description}</p>
+      </div>
+      <span class="count-pill">{unreadCount} {copy.unread}</span>
+    </div>
+
+    {notifications.length > 0 ? (
+      <>
+        <form class="admin-actions" method="post" action="/api/notifications/read">
+          <input type="hidden" name="redirect" value="/notifications" />
+          <button class="button secondary" type="submit">{copy.markRead}</button>
+        </form>
+        <div class="notification-list">
+          {notifications.map((item) => (
+            <a class:list={["notification-row", !item.readAt && "is-unread"]} href={item.href}>
+              <div>
+                <strong>{item.title}</strong>
+                {item.body && <p>{item.body}</p>}
+                <span>{item.actorName ? `${item.actorName} · ` : ""}{formatRelative(item.createdAt, lang)}</span>
+              </div>
+            </a>
+          ))}
+        </div>
+      </>
+    ) : (
+      <p class="auth-message muted">{copy.empty}</p>
+    )}
+  </section>
+</BaseLayout>

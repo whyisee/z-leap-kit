@@ -3,6 +3,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
 import ForumFrame from "@components/ForumFrame.astro";
 import TopicCard from "@components/TopicCard.astro";
 import TopicListHeader from "@components/TopicListHeader.astro";
+import { getSessionFromAstro } from "@lib/auth";
 import { getLangFromAstro, t } from "@lib/i18n";
 import { listCategories, listTags } from "@server/services/categories";
 import { listFeaturedTopics, listTopics } from "@server/services/topics";
@@ -10,10 +11,11 @@ import { listFeaturedTopics, listTopics } from "@server/services/topics";
 export const prerender = false;
 
 const lang = getLangFromAstro(Astro);
-const topics = listTopics({ limit: 50, lang });
-const categories = listCategories(lang);
-const tags = listTags(lang);
-const featuredTopics = listFeaturedTopics(4, lang);
+const session = await getSessionFromAstro(Astro);
+const topics = await listTopics({ limit: 50, lang });
+const categories = await listCategories(lang);
+const tags = await listTags(lang);
+const featuredTopics = await listFeaturedTopics(4, lang);
 ---
 
 <BaseLayout title={`${t(lang, "page.latest")} - whyisee.xyz`} description={t(lang, "page.latestDescription")}>
@@ -23,7 +25,10 @@ const featuredTopics = listFeaturedTopics(4, lang);
         <p class="eyebrow">{t(lang, "page.latest")}</p>
         <h1>{t(lang, "page.latest")}</h1>
       </div>
-      <span class="count-pill">{topics.length} {t(lang, "page.items")}</span>
+      <div class="section-actions">
+        {session && <a class="button secondary compact" href="/new-topic">{lang === "en" ? "New topic" : "新建话题"}</a>}
+        <span class="count-pill">{topics.length} {t(lang, "page.items")}</span>
+      </div>
     </div>
     <div class="topic-list">
       <TopicListHeader lang={lang} />

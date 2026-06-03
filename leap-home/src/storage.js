@@ -2,6 +2,7 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
 const { FAVORITES_KEY, LEAP_DATA_DIR, LEAP_STATE_FILE, RECENT_KEY } = require('./constants');
+const { normalizeTaskLinks } = require('./taskLinks');
 const { firstWorkspaceFolder } = require('./utils');
 
 const LEAP_COMPONENT_DATA_DIR = 'components';
@@ -273,7 +274,7 @@ function normalizeQuadrants(value) {
 function normalizeTask(value, index) {
   if (typeof value === 'string') {
     const text = value.trim();
-    return text ? { id: `task-${index || 0}`, text, done: false } : undefined;
+    return text ? { id: `task-${index || 0}`, text, done: false, links: [] } : undefined;
   }
   if (!value || typeof value !== 'object') {
     return undefined;
@@ -291,6 +292,7 @@ function normalizeTask(value, index) {
     source: typeof value.source === 'string' ? value.source : '',
     reason: typeof value.reason === 'string' ? value.reason : '',
     confidence: Number.isFinite(Number(value.confidence)) ? Number(value.confidence) : undefined,
+    links: normalizeTaskLinks(value.links),
     createdAt: typeof value.createdAt === 'string' ? value.createdAt : '',
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : ''
   };

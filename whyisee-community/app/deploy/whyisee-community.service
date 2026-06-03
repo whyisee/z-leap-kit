@@ -7,7 +7,13 @@ Type=simple
 WorkingDirectory=/opt/whyisee-community/app
 Environment=NODE_ENV=production
 Environment=SITE_URL=https://whyisee.xyz
-Environment=WHYISEE_DB_PATH=/var/lib/whyisee/whyisee.sqlite
+Environment=DB_HOST=127.0.0.1
+Environment=DB_PORT=15432
+Environment=DB_NAME=zi
+Environment=DB_USER=postgres
+Environment=DB_PASSWORD=123456
+Environment=DB_SCHEMA=ws
+Environment=PG_DUMP_BIN=pg_dump
 ExecStart=/usr/bin/npm run start
 Restart=always
 RestartSec=5

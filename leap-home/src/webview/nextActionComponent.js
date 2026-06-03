@@ -466,6 +466,8 @@ function getNextActionScript() {
           dueDate: action.dueDate || '',
           source: 'next-action-ai',
           reason: item.reason || tr('AI 做什么推荐生成'),
+          links: Array.isArray(action.links) ? action.links : [],
+          focusQuadrants: true,
           nextAction
         });
         return;

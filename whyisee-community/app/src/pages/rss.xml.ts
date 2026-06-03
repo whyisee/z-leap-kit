@@ -6,10 +6,10 @@ import { listTopics } from "@server/services/topics";
 
 export const prerender = false;
 
-export const GET: APIRoute = ({ request, site }) => {
+export const GET: APIRoute = async ({ request, site }) => {
   const lang = getLangFromRequest(request);
   const baseUrl = site?.toString() || process.env.SITE_URL || "https://whyisee.xyz";
-  const topics = listTopics({ limit: 30, lang });
+  const topics = await listTopics({ limit: 30, lang });
   const items = topics
     .map((topic) => {
       const url = new URL(topicPath(topic), baseUrl).toString();

@@ -1,0 +1,271 @@
+---
+import type { Category, Tag, Topic, TopicStatus, TopicType } from "@lib/types";
+import type { Lang } from "@lib/i18n";
+import MarkdownImageUpload from "@components/MarkdownImageUpload.astro";
+
+interface Props {
+  action: string;
+  categories: Category[];
+  tags: Tag[];
+  lang: Lang;
+  topic?: Topic;
+  submitLabel?: string;
+  cancelHref?: string;
+  error?: boolean;
+  showAdminFields?: boolean;
+  forcedStatus?: TopicStatus;
+}
+
+const {
+  action,
+  categories,
+  tags,
+  lang,
+  topic,
+  submitLabel,
+  cancelHref = "/admin",
+  error = false,
+  showAdminFields = true,
+  forcedStatus,
+} = Astro.props;
+const copy = getCopy(lang);
+const selectedType = topic?.type || "discussion";
+const selectedStatus = forcedStatus || topic?.status || "draft";
+const selectedCategoryId = topic?.category.id || categories[0]?.id;
+const tagValue = topic?.tags.map((tag) => tag.name).join(", ") || "";
+const isPublicTopicForm = !showAdminFields;
+
+const typeOptions: Array<{ value: TopicType; label: string }> = [
+  { value: "discussion", label: copy.typeDiscussion },
+  { value: "question", label: copy.typeQuestion },
+  { value: "article", label: copy.typeArticle },
+  { value: "project", label: copy.typeProject },
+  { value: "resource", label: copy.typeResource },
+  { value: "announcement", label: copy.typeAnnouncement },
+];
+
+const statusOptions: Array<{ value: TopicStatus; label: string }> = [
+  { value: "draft", label: copy.statusDraft },
+  { value: "pending", label: copy.statusPending },
+  { value: "published", label: copy.statusPublished },
+  { value: "hidden", label: copy.statusHidden },
+];
+
+function getCopy(lang: Lang) {
+  if (lang === "en") {
+    return {
+      title: "Title",
+      titlePlaceholder: "A specific question, case study, or project update",
+      slug: "Slug",
+      slugPlaceholder: "auto-generated if empty",
+      slugHelp: "Used in the public URL. Leave empty to generate from title.",
+      summary: "Summary",
+      summaryPlaceholder: "A short description for topic lists and SEO.",
+      summaryHelp: "Optional. Leave it empty and the system will derive one from the body.",
+      optional: "Optional",
+      settings: "Publish settings",
+      category: "Category",
+      type: "Type",
+      status: "Status",
+      tags: "Tags",
+      tagsPlaceholder: "cursor, indie-dev, feedback",
+      tagsHelp: "Separate multiple tags with commas.",
+      body: "Body",
+      bodyPlaceholder: "Write the body here. Markdown and image upload are supported.",
+      pinned: "Pinned",
+      featured: "Featured",
+      save: "Save Topic",
+      cancel: "Cancel",
+      error: "Failed to save. Check title, body, category, and database connection.",
+      statusDraft: "Draft",
+      statusPending: "Pending",
+      statusPublished: "Published",
+      statusHidden: "Hidden",
+      typeDiscussion: "Discussion",
+      typeQuestion: "Question",
+      typeArticle: "Article",
+      typeProject: "Project",
+      typeResource: "Resource",
+      typeAnnouncement: "Announcement",
+    };
+  }
+
+  return {
+    title: "标题",
+    titlePlaceholder: "具体问题、复盘标题或项目更新",
+    slug: "URL Slug",
+    slugPlaceholder: "留空会根据标题自动生成",
+    slugHelp: "用于公开访问 URL。留空自动生成。",
+    summary: "摘要",
+    summaryPlaceholder: "用于话题列表和 SEO 的简短描述。",
+    summaryHelp: "可选。不填时系统会根据正文自动生成一段摘要。",
+    optional: "可选",
+    settings: "发布设置",
+    category: "分类",
+    type: "类型",
+    status: "状态",
+    tags: "标签",
+    tagsPlaceholder: "cursor, 独立开发, 求反馈",
+    tagsHelp: "多个标签用逗号分隔。",
+    body: "正文",
+    bodyPlaceholder: "直接写正文，支持 Markdown 和图片上传。",
+    pinned: "置顶",
+    featured: "精选",
+    save: "保存话题",
+    cancel: "取消",
+    error: "保存失败。请检查标题、正文、分类和数据库连接。",
+    statusDraft: "草稿",
+    statusPending: "待审核",
+    statusPublished: "发布",
+    statusHidden: "隐藏",
+    typeDiscussion: "讨论",
+    typeQuestion: "问题",
+    typeArticle: "文章",
+    typeProject: "项目",
+    typeResource: "资源",
+    typeAnnouncement: "公告",
+  };
+}
+---
+
+{error && <p class="auth-message error">{copy.error}</p>}
+
+<form class:list={["draft-form", "admin-topic-form", isPublicTopicForm && "public-topic-form"]} method="post" action={action}>
+  {showAdminFields ? (
+    <>
+      <div class="form-grid two">
+        <label>
+          {copy.title}
+          <input name="title" type="text" value={topic?.title || ""} placeholder={copy.titlePlaceholder} required />
+        </label>
+        <label>
+          {copy.slug}
+          <input name="slug" type="text" value={topic?.slug || ""} placeholder={copy.slugPlaceholder} />
+          <small>{copy.slugHelp}</small>
+        </label>
+      </div>
+
+      <label>
+        {copy.summary}
+        <textarea name="summary" rows="3" placeholder={copy.summaryPlaceholder}>{topic?.summary || ""}</textarea>
+      </label>
+
+      <div class="form-grid three">
+        <label>
+          {copy.category}
+          <select name="categoryId" required>
+            {categories.map((category) => (
+              <option value={category.id} selected={category.id === selectedCategoryId}>{category.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {copy.type}
+          <select name="type">
+            {typeOptions.map((option) => (
+              <option value={option.value} selected={option.value === selectedType}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {copy.status}
+          <select name="status">
+            {statusOptions.map((option) => (
+              <option value={option.value} selected={option.value === selectedStatus}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <label>
+        {copy.tags}
+        <input name="tags" type="text" value={tagValue} placeholder={copy.tagsPlaceholder} list="admin-topic-tags" />
+        <small>{copy.tagsHelp}</small>
+        <datalist id="admin-topic-tags">
+          {tags.map((tag) => <option value={tag.name} />)}
+        </datalist>
+      </label>
+
+      <label>
+        {copy.body}
+        <textarea name="contentMarkdown" rows="16" placeholder={copy.bodyPlaceholder} required>{topic?.contentMarkdown || ""}</textarea>
+        <MarkdownImageUpload lang={lang} />
+      </label>
+
+      <div class="form-switches">
+        <label class="checkbox-label">
+          <input name="isPinned" type="checkbox" value="1" checked={topic?.isPinned || false} />
+          {copy.pinned}
+        </label>
+        <label class="checkbox-label">
+          <input name="isFeatured" type="checkbox" value="1" checked={topic?.isFeatured || false} />
+          {copy.featured}
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <button class="button primary" type="submit">{submitLabel || copy.save}</button>
+        <a class="button secondary" href={cancelHref}>{copy.cancel}</a>
+      </div>
+    </>
+  ) : (
+    <>
+      <div class="public-topic-editor">
+        <label>
+          {copy.title}
+          <input name="title" type="text" value={topic?.title || ""} placeholder={copy.titlePlaceholder} required />
+        </label>
+
+        <label class="topic-body-label">
+          {copy.body}
+          <textarea name="contentMarkdown" rows="22" placeholder={copy.bodyPlaceholder} required>{topic?.contentMarkdown || ""}</textarea>
+          <MarkdownImageUpload lang={lang} />
+        </label>
+      </div>
+
+      <aside class="public-topic-sidebar" aria-label={copy.settings}>
+        <input name="status" type="hidden" value={selectedStatus} />
+        <div class="public-topic-panel">
+          <p class="public-topic-panel-title">{copy.settings}</p>
+          <label>
+            {copy.category}
+            <select name="categoryId" required>
+              {categories.map((category) => (
+                <option value={category.id} selected={category.id === selectedCategoryId}>{category.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            {copy.type}
+            <select name="type">
+              {typeOptions.map((option) => (
+                <option value={option.value} selected={option.value === selectedType}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            {copy.tags}
+            <input name="tags" type="text" value={tagValue} placeholder={copy.tagsPlaceholder} list="admin-topic-tags" />
+            <small>{copy.tagsHelp}</small>
+            <datalist id="admin-topic-tags">
+              {tags.map((tag) => <option value={tag.name} />)}
+            </datalist>
+          </label>
+          <details class="public-topic-optional">
+            <summary>
+              <span>{copy.summary}</span>
+              <small>{copy.optional}</small>
+            </summary>
+            <textarea name="summary" rows="3" placeholder={copy.summaryPlaceholder} aria-label={copy.summary}>{topic?.summary || ""}</textarea>
+            <small>{copy.summaryHelp}</small>
+          </details>
+        </div>
+
+        <div class="form-actions public-topic-actions">
+          <button class="button primary" type="submit">{submitLabel || copy.save}</button>
+          <a class="button secondary" href={cancelHref}>{copy.cancel}</a>
+        </div>
+      </aside>
+    </>
+  )}
+</form>

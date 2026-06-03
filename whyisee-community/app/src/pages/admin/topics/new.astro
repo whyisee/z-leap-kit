@@ -1,33 +1,4 @@
----
-import BaseLayout from "@layouts/BaseLayout.astro";
-import { getSessionFromAstro } from "@lib/auth";
-import { getLangFromAstro, t } from "@lib/i18n";
-
 export const prerender = false;
 
-const lang = getLangFromAstro(Astro);
-const session = getSessionFromAstro(Astro);
-
-if (!session) {
-  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
-}
+return Astro.redirect("/new-topic", 303);
 ---
-
-<BaseLayout title={`${t(lang, "admin.newTopic")} - whyisee.xyz`} description={t(lang, "admin.newTopicPageDescription")}>
-  <section class="article-page">
-    <p class="eyebrow">{t(lang, "admin.title")}</p>
-    <h1>{t(lang, "admin.newTopic")}</h1>
-    <p>{t(lang, "admin.newTopicDescription")}</p>
-    <form class="draft-form">
-      <label>
-        {t(lang, "admin.titleLabel")}
-        <input type="text" placeholder={t(lang, "admin.titlePlaceholder")} disabled />
-      </label>
-      <label>
-        {t(lang, "admin.bodyLabel")}
-        <textarea rows="10" placeholder={t(lang, "admin.bodyPlaceholder")} disabled></textarea>
-      </label>
-      <button class="button primary" type="button" disabled>{t(lang, "admin.saveDraft")}</button>
-    </form>
-  </section>
-</BaseLayout>

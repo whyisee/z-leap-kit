@@ -1,27 +1,33 @@
-import { closeDb, getDb, getDatabasePath } from "../src/server/db/client.ts";
+import { closeDb, execute, queryOne } from "../src/server/db/client.ts";
+import { getDatabaseLabel } from "../src/server/db/config.ts";
 import { renderMarkdown } from "../src/lib/markdown.ts";
+import { hashPassword } from "../src/lib/password.ts";
 
-const db = getDb();
 const now = new Date().toISOString();
 
 const admin = {
-  username: "whyisee",
+  username: process.env.WHYISEE_ADMIN_USERNAME || "whyisee",
   displayName: "whyisee",
   email: "admin@whyisee.xyz",
+  password: process.env.WHYISEE_ADMIN_PASSWORD || "whyisee",
 };
+const adminPasswordHash = await hashPassword(admin.password);
 
-db.prepare(
+await execute(
   `
-  INSERT INTO users (username, display_name, email, role, status, bio, created_at, updated_at)
-  VALUES (@username, @displayName, @email, 'admin', 'active', 'whyisee.xyz 站长', @now, @now)
+  INSERT INTO users (username, display_name, email, password_hash, role, status, bio, email_verified_at, created_at, updated_at)
+  VALUES ($1, $2, $3, $4, 'admin', 'active', 'whyisee.xyz 站长', $5, $5, $5)
   ON CONFLICT(username) DO UPDATE SET
     display_name = excluded.display_name,
     email = excluded.email,
+    password_hash = excluded.password_hash,
     role = 'admin',
     status = 'active',
+    email_verified_at = excluded.email_verified_at,
     updated_at = excluded.updated_at
   `,
-).run({ ...admin, now });
+  [admin.username, admin.displayName, admin.email, adminPasswordHash, now],
+);
 
 const categories = [
   ["公告", "announcements", "站务公告、更新、规则调整和反馈收集。", "#7fb3ff", 10],
@@ -34,21 +40,19 @@ const categories = [
   ["闲聊", "chat", "灵感、吐槽、轻讨论和社区生活。", "#a6afbd", 80],
 ] as const;
 
-const upsertCategory = db.prepare(
-  `
+const upsertCategorySql = `
   INSERT INTO categories (name, slug, description, color, sort_order, is_public, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+  VALUES ($1, $2, $3, $4, $5, TRUE, $6, $6)
   ON CONFLICT(slug) DO UPDATE SET
     name = excluded.name,
     description = excluded.description,
     color = excluded.color,
     sort_order = excluded.sort_order,
     updated_at = excluded.updated_at
-  `,
-);
+  `;
 
 for (const category of categories) {
-  upsertCategory.run(...category, now, now);
+  await execute(upsertCategorySql, [...category, now]);
 }
 
 const tags = [
@@ -66,21 +70,35 @@ const tags = [
   ["求反馈", "feedback", "项目展示和反馈请求"],
 ] as const;
 
-const upsertTag = db.prepare(
-  `
+const upsertTagSql = `
   INSERT INTO tags (name, slug, description, created_at)
-  VALUES (?, ?, ?, ?)
+  VALUES ($1, $2, $3, $4)
   ON CONFLICT(slug) DO UPDATE SET
     name = excluded.name,
     description = excluded.description
-  `,
-);
+  `;
 
 for (const tag of tags) {
-  upsertTag.run(...tag, now);
+  await execute(upsertTagSql, [...tag, now]);
 }
 
-const adminId = (db.prepare("SELECT id FROM users WHERE username = ?").get(admin.username) as { id: number }).id;
+const adminId = (await queryOne<{ id: number }>("SELECT id FROM users WHERE username = $1", [admin.username]))?.id;
+
+if (!adminId) {
+  throw new Error(`Missing admin user: ${admin.username}`);
+}
+
+await execute(
+  `
+  INSERT INTO invitations (code, role, max_uses, use_count, created_by, created_at)
+  VALUES ($1, 'member', 100, 0, $2, $3)
+  ON CONFLICT(code) DO UPDATE SET
+    role = excluded.role,
+    max_uses = excluded.max_uses,
+    disabled_at = NULL
+  `,
+  [process.env.WHYISEE_DEFAULT_INVITE_CODE || "whyisee-invite", adminId, now],
+);
 
 const topicSeeds = [
   {
@@ -201,25 +219,22 @@ Leap Home 是一个 Cursor 插件，目标是把个人知识库首页放进编�
 
 - Nginx 处理静态资源
 - Node.js 跑服务端页面和 API
-- SQLite 存储内容
-- 后续流量起来再迁移 PostgreSQL 和搜索服务
+- PostgreSQL 存储内容
+- 后续流量起来再补全文搜索和缓存服务
     `,
     pinned: false,
     featured: false,
   },
 ] as const;
 
-const getCategoryId = db.prepare("SELECT id FROM categories WHERE slug = ?");
-const getTagId = db.prepare("SELECT id FROM tags WHERE slug = ?");
-const upsertTopic = db.prepare(
-  `
+const upsertTopicSql = `
   INSERT INTO topics (
     title, slug, summary, content_markdown, content_html, author_id, category_id,
     type, status, is_pinned, is_featured, last_activity_at, published_at, created_at, updated_at
   )
   VALUES (
-    @title, @slug, @summary, @contentMarkdown, @contentHtml, @authorId, @categoryId,
-    @type, 'published', @isPinned, @isFeatured, @now, @now, @now, @now
+    $1, $2, $3, $4, $5, $6, $7,
+    $8, 'published', $9, $10, $11, $11, $11, $11
   )
   ON CONFLICT(slug) DO UPDATE SET
     title = excluded.title,
@@ -232,53 +247,55 @@ const upsertTopic = db.prepare(
     is_pinned = excluded.is_pinned,
     is_featured = excluded.is_featured,
     updated_at = excluded.updated_at
-  `,
-);
-
-const clearTopicTags = db.prepare("DELETE FROM topic_tags WHERE topic_id = ?");
-const insertTopicTag = db.prepare(
-  `
-  INSERT OR IGNORE INTO topic_tags (topic_id, tag_id)
-  VALUES (?, ?)
-  `,
-);
-const getTopicId = db.prepare("SELECT id FROM topics WHERE slug = ?");
+  `;
 
 for (const topic of topicSeeds) {
-  const categoryRow = getCategoryId.get(topic.category) as { id: number } | undefined;
+  const categoryRow = await queryOne<{ id: number }>("SELECT id FROM categories WHERE slug = $1", [topic.category]);
 
   if (!categoryRow) {
     throw new Error(`Missing category: ${topic.category}`);
   }
 
-  upsertTopic.run({
-    title: topic.title,
-    slug: topic.slug,
-    summary: topic.summary,
-    contentMarkdown: topic.markdown.trim(),
-    contentHtml: renderMarkdown(topic.markdown.trim()),
-    authorId: adminId,
-    categoryId: categoryRow.id,
-    type: topic.type,
-    isPinned: topic.pinned ? 1 : 0,
-    isFeatured: topic.featured ? 1 : 0,
+  await execute(upsertTopicSql, [
+    topic.title,
+    topic.slug,
+    topic.summary,
+    topic.markdown.trim(),
+    renderMarkdown(topic.markdown.trim()),
+    adminId,
+    categoryRow.id,
+    topic.type,
+    topic.pinned,
+    topic.featured,
     now,
-  });
+  ]);
 
-  const topicId = (getTopicId.get(topic.slug) as { id: number }).id;
-  clearTopicTags.run(topicId);
+  const topicId = (await queryOne<{ id: number }>("SELECT id FROM topics WHERE slug = $1", [topic.slug]))?.id;
+
+  if (!topicId) {
+    throw new Error(`Missing topic: ${topic.slug}`);
+  }
+
+  await execute("DELETE FROM topic_tags WHERE topic_id = $1", [topicId]);
 
   for (const tag of topic.tags) {
-    const tagRow = getTagId.get(tag) as { id: number } | undefined;
+    const tagRow = await queryOne<{ id: number }>("SELECT id FROM tags WHERE slug = $1", [tag]);
 
     if (!tagRow) {
       throw new Error(`Missing tag: ${tag}`);
     }
 
-    insertTopicTag.run(topicId, tagRow.id);
+    await execute(
+      `
+      INSERT INTO topic_tags (topic_id, tag_id)
+      VALUES ($1, $2)
+      ON CONFLICT DO NOTHING
+      `,
+      [topicId, tagRow.id],
+    );
   }
 }
 
-console.log(`Seed finished: ${getDatabasePath()}`);
+console.log(`Seed finished: ${getDatabaseLabel()}`);
 
-closeDb();
+await closeDb();

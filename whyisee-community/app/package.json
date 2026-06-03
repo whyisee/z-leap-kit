@@ -16,14 +16,14 @@
   "dependencies": {
     "@astrojs/node": "latest",
     "astro": "latest",
-    "better-sqlite3": "latest",
     "hono": "latest",
-    "marked": "latest"
+    "marked": "latest",
+    "pg": "latest"
   },
   "devDependencies": {
     "@astrojs/check": "latest",
-    "@types/better-sqlite3": "latest",
     "@types/node": "latest",
+    "@types/pg": "latest",
     "typescript": "latest"
   }
 }

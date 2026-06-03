@@ -2,6 +2,7 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
 const { getLeapComponentDataPath, QUADRANT_DEFINITIONS } = require('./storage');
+const { normalizeTaskLinks } = require('./taskLinks');
 
 const MAX_RECOMMENDATIONS = 6;
 const MAX_FEEDBACK_ITEMS = 120;
@@ -545,7 +546,8 @@ function normalizeAiPlanAction(value) {
     }
     const dueDate = normalizeDate(value.dueDate);
     const durationMs = clampNumber(value.durationMs, 0, 4 * 60 * 60 * 1000);
-    return Object.assign({ type, label: label || (type === 'startFocus' ? '开始专注' : '加入待办'), title, quadrantId }, dueDate ? { dueDate } : {}, durationMs ? { durationMs } : {});
+    const links = normalizeNextActionTaskLinks(value);
+    return Object.assign({ type, label: label || (type === 'startFocus' ? '开始专注' : '加入待办'), title, quadrantId }, dueDate ? { dueDate } : {}, durationMs ? { durationMs } : {}, links.length ? { links } : {});
   }
   if (type === 'search') {
     const query = cleanInline(value.query).slice(0, 180);
@@ -672,6 +674,26 @@ function cleanText(value) {
 
 function cleanNotePath(value) {
   return String(value || '').replace(/\\/g, '/').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeNextActionTaskLinks(value) {
+  const raw = [];
+  if (Array.isArray(value.links)) {
+    raw.push(...value.links);
+  }
+  if (value.sourceDocument && typeof value.sourceDocument === 'object') {
+    raw.push(Object.assign({ role: 'source' }, value.sourceDocument));
+  }
+  if (value.outputDocument && typeof value.outputDocument === 'object') {
+    raw.push(Object.assign({ role: 'output', status: 'draft' }, value.outputDocument));
+  }
+  return normalizeTaskLinks(raw.map((link) => Object.assign({}, link, {
+    filePath: '',
+    relativePath: cleanNotePath(link.relativePath || link.path || link.filePath).slice(0, 240),
+    title: cleanInline(link.title).slice(0, 160),
+    sourceId: cleanInline(link.sourceId || value.sourceId).slice(0, 160),
+    sourceName: cleanInline(link.sourceName || value.sourceName).slice(0, 80)
+  })));
 }
 
 function cleanInline(value) {

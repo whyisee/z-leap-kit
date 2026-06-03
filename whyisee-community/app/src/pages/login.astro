@@ -1,15 +1,16 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
-import { getAuthConfig, getSessionFromAstro, safeRedirectPath } from "@lib/auth";
+import { getSessionFromAstro, safeRedirectPath } from "@lib/auth";
 import { getLangFromAstro, t } from "@lib/i18n";
 
 export const prerender = false;
 
 const lang = getLangFromAstro(Astro);
-const session = getSessionFromAstro(Astro);
-const redirectTarget = safeRedirectPath(Astro.url.searchParams.get("redirect"), "/admin");
+const session = await getSessionFromAstro(Astro);
+const redirectTarget = safeRedirectPath(Astro.url.searchParams.get("redirect"), "/");
 const hasError = Astro.url.searchParams.get("error") === "1";
-const authConfig = getAuthConfig();
+const signedUp = Astro.url.searchParams.get("signedUp") === "1";
+const reset = Astro.url.searchParams.get("reset") === "1";
 
 if (session) {
   return Astro.redirect(redirectTarget, 303);
@@ -24,8 +25,8 @@ if (session) {
       <p>{t(lang, "auth.loginDescription")}</p>
 
       {hasError && <p class="auth-message error">{t(lang, "auth.loginError")}</p>}
-      {!authConfig.isConfigured && <p class="auth-message error">{t(lang, "auth.loginDisabled")}</p>}
-      {authConfig.usesDevPassword && <p class="auth-message muted">{t(lang, "auth.devHint")}</p>}
+      {signedUp && <p class="auth-message muted">{lang === "en" ? "Account created. You can sign in now." : "账号已创建，现在可以登录。"}</p>}
+      {reset && <p class="auth-message muted">{lang === "en" ? "Password updated. You can sign in now." : "密码已更新，现在可以登录。"}</p>}
 
       <form class="auth-form" method="post" action="/api/login">
         <input type="hidden" name="redirect" value={redirectTarget} />
@@ -37,7 +38,6 @@ if (session) {
             placeholder={t(lang, "auth.usernamePlaceholder")}
             required
             type="text"
-            value={authConfig.usesDevPassword ? authConfig.username : ""}
           />
         </label>
         <label>
@@ -48,10 +48,13 @@ if (session) {
             placeholder={t(lang, "auth.passwordPlaceholder")}
             required
             type="password"
-            value={authConfig.usesDevPassword ? authConfig.password : ""}
           />
         </label>
-        <button class="button primary" disabled={!authConfig.isConfigured} type="submit">{t(lang, "auth.loginAction")}</button>
+        <button class="button primary" type="submit">{t(lang, "auth.loginAction")}</button>
+        <div class="auth-links">
+          <a href="/signup">{lang === "en" ? "Create account" : "注册账号"}</a>
+          <a href="/forgot-password">{lang === "en" ? "Forgot password" : "忘记密码"}</a>
+        </div>
       </form>
     </div>
   </section>

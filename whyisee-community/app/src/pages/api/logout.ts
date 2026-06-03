@@ -1,12 +1,13 @@
 import type { APIRoute } from "astro";
-import { authCookieName, safeRedirectPath } from "@lib/auth";
+import { authCookieName, revokeSession, safeRedirectPath } from "@lib/auth";
 
 export const prerender = false;
 
-export const POST: APIRoute = ({ cookies, redirect, request }) => {
+export const POST: APIRoute = async ({ cookies, redirect, request }) => {
   const url = new URL(request.url);
   const target = safeRedirectPath(url.searchParams.get("redirect"), "/");
 
+  await revokeSession(cookies.get(authCookieName)?.value);
   cookies.delete(authCookieName, {
     path: "/",
   });
@@ -14,9 +15,10 @@ export const POST: APIRoute = ({ cookies, redirect, request }) => {
   return redirect(target, 303);
 };
 
-export const GET: APIRoute = ({ cookies, redirect, url }) => {
+export const GET: APIRoute = async ({ cookies, redirect, url }) => {
   const target = safeRedirectPath(url.searchParams.get("redirect"), "/");
 
+  await revokeSession(cookies.get(authCookieName)?.value);
   cookies.delete(authCookieName, {
     path: "/",
   });

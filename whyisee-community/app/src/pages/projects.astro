@@ -10,10 +10,10 @@ import { listFeaturedTopics, listTopics } from "@server/services/topics";
 export const prerender = false;
 
 const lang = getLangFromAstro(Astro);
-const projects = listTopics({ type: "project", limit: 50, lang });
-const categories = listCategories(lang);
-const tags = listTags(lang);
-const featuredTopics = listFeaturedTopics(4, lang);
+const projects = await listTopics({ type: "project", limit: 50, lang });
+const categories = await listCategories(lang);
+const tags = await listTags(lang);
+const featuredTopics = await listFeaturedTopics(4, lang);
 ---
 
 <BaseLayout title={`${t(lang, "page.projects")} - whyisee.xyz`} description={t(lang, "page.projectsDescription")}>

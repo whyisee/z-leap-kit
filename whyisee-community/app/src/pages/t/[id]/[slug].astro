@@ -1,28 +1,102 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import LeftNav from "@components/LeftNav.astro";
+import MarkdownImageUpload from "@components/MarkdownImageUpload.astro";
 import MarkdownContent from "@components/MarkdownContent.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
 import { categoryPath, tagPath } from "@lib/routes";
-import { formatDate } from "@lib/format";
+import { formatDate, formatRelative } from "@lib/format";
 import { getLangFromAstro, t } from "@lib/i18n";
 import { listCategories, listTags } from "@server/services/categories";
+import { countTargetLikes, getTopicInteractionState, userLikedTarget } from "@server/services/interactions";
+import { listPostsForTopic } from "@server/services/posts";
 import { getTopicById, listRelatedTopics } from "@server/services/topics";
 
 export const prerender = false;
 
 const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
 const id = Number(Astro.params.id || 0);
-const topic = getTopicById(id, lang);
+const topic = await getTopicById(id, lang);
 
 if (!topic) {
   Astro.response.status = 404;
 } else if (Astro.params.slug !== topic.slug) {
-  return Astro.redirect(`/t/${topic.id}/${topic.slug}`, 301);
+  return Astro.redirect(`/t/${topic.id}/${topic.slug}${Astro.url.search}`, 301);
 }
 
-const related = topic ? listRelatedTopics(topic, 4, lang) : [];
-const categories = listCategories(lang);
-const tags = listTags(lang);
+const related = topic ? await listRelatedTopics(topic, 4, lang) : [];
+const posts = topic ? await listPostsForTopic(topic.id) : [];
+const topicInteraction = topic ? await getTopicInteractionState(topic.id, session?.userId) : undefined;
+const postInteractionEntries = await Promise.all(
+  posts.map(async (post) => [
+    post.id,
+    {
+      likeCount: await countTargetLikes("post", post.id),
+      liked: await userLikedTarget("post", post.id, session?.userId),
+    },
+  ] as const),
+);
+const postInteractions = new Map(postInteractionEntries);
+const categories = await listCategories(lang);
+const tags = await listTags(lang);
+const replyError = Astro.url.searchParams.get("replyError") === "1";
+const copy = lang === "en"
+  ? {
+      replies: "Replies",
+      reply: "Reply",
+      replyPlaceholder: "Write a thoughtful reply in Markdown...",
+      submitReply: "Post reply",
+      loginToReply: "Log in to reply",
+      noReplies: "No replies yet. Start the conversation.",
+      replyError: "Reply failed. Please check the content and try again.",
+      editReply: "Edit",
+      like: "Like",
+      liked: "Liked",
+      bookmark: "Bookmark",
+      bookmarked: "Bookmarked",
+      follow: "Follow",
+      following: "Following",
+      report: "Report",
+      aiButton: "AI",
+      aiMenuLabel: "AI tools",
+    }
+  : {
+      replies: "回复",
+      reply: "回复",
+      replyPlaceholder: "使用 Markdown 写一条有信息量的回复...",
+      submitReply: "发布回复",
+      loginToReply: "登录后回复",
+      noReplies: "还没有回复，来开个头。",
+      replyError: "回复失败，请检查内容后重试。",
+      editReply: "编辑",
+      like: "点赞",
+      liked: "已点赞",
+      bookmark: "收藏",
+      bookmarked: "已收藏",
+      follow: "关注",
+      following: "已关注",
+      report: "举报",
+      aiButton: "AI",
+      aiMenuLabel: "AI 工具",
+    };
+const aiActions = lang === "en"
+  ? [
+      ["summarize", "Summarize", "Key points and context"],
+      ["draft-reply", "Draft reply", "A thoughtful reply outline"],
+      ["translate", "Translate", "Chinese and English reading version"],
+      ["extract-actions", "Extract actions", "Tasks, risks, and next steps"],
+      ["find-related", "Find related", "Similar topics and tags"],
+      ["quality-check", "Quality check", "Title, category, and content review"],
+    ]
+  : [
+      ["summarize", "总结话题", "要点、背景和结论"],
+      ["draft-reply", "生成回复", "给出有信息量的回复草稿"],
+      ["translate", "双语翻译", "中文和英文阅读版本"],
+      ["extract-actions", "提炼行动项", "任务、风险和下一步"],
+      ["find-related", "查找相关", "相似话题和标签建议"],
+      ["quality-check", "质量检查", "标题、分类和内容建议"],
+    ];
 ---
 
 <BaseLayout title={`${topic?.title ?? t(lang, "topic.notFound")} - whyisee.xyz`} description={topic?.summary ?? t(lang, "topic.notFound")}>
@@ -33,21 +107,131 @@ const tags = listTags(lang);
       <div class="content-column">
         <article class="topic-page">
           <header class="topic-hero">
-            <div class="topic-meta">
-              <a class="category-pill" href={categoryPath(topic.category.slug)} style={`--pill-color: ${topic.category.color}`}>
-                {topic.category.name}
-              </a>
-              <span>{formatDate(topic.publishedAt, lang)}</span>
-              <span>{topic.viewCount} {t(lang, "topic.views")}</span>
+            <div class="topic-hero-bar">
+              <div class="topic-meta">
+                <a class="category-pill" href={categoryPath(topic.category.slug)} style={`--pill-color: ${topic.category.color}`}>
+                  {topic.category.name}
+                </a>
+                <span>{formatDate(topic.publishedAt, lang)}</span>
+                <span>{topic.viewCount} {t(lang, "topic.views")}</span>
+              </div>
+
+              <div class="topic-ai-menu" data-topic-ai-menu data-topic-id={topic.id}>
+                <button
+                  class="ai-tool-button"
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                  aria-label={copy.aiMenuLabel}
+                  data-topic-ai-button
+                >
+                  <span class="ai-tool-mark" aria-hidden="true">AI</span>
+                  <span>{copy.aiButton}</span>
+                  <span class="ai-tool-chevron" aria-hidden="true">⌄</span>
+                </button>
+                <div class="topic-ai-panel" role="menu" aria-label={copy.aiMenuLabel} data-topic-ai-panel hidden>
+                  {aiActions.map(([id, label, description]) => (
+                    <button class="topic-ai-option" type="button" role="menuitem" data-ai-action={id}>
+                      <strong>{label}</strong>
+                      <span>{description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             <h1>{topic.title}</h1>
             <p>{topic.summary}</p>
             <div class="tag-row">
               {topic.tags.map((tag) => <a href={tagPath(tag.slug)}>#{tag.name}</a>)}
             </div>
+            <div class="topic-action-strip">
+              <form method="post" action="/api/interactions/reaction">
+                <input type="hidden" name="targetType" value="topic" />
+                <input type="hidden" name="targetId" value={topic.id} />
+                <input type="hidden" name="redirect" value={Astro.url.pathname} />
+                <button class:list={["action-button", topicInteraction?.liked && "is-active"]} type="submit">
+                  {topicInteraction?.liked ? copy.liked : copy.like}
+                  <span>{topicInteraction?.likeCount ?? 0}</span>
+                </button>
+              </form>
+              <form method="post" action="/api/interactions/bookmark">
+                <input type="hidden" name="topicId" value={topic.id} />
+                <input type="hidden" name="redirect" value={Astro.url.pathname} />
+                <button class:list={["action-button", topicInteraction?.bookmarked && "is-active"]} type="submit">
+                  {topicInteraction?.bookmarked ? copy.bookmarked : copy.bookmark}
+                </button>
+              </form>
+              <form method="post" action="/api/interactions/follow">
+                <input type="hidden" name="targetType" value="topic" />
+                <input type="hidden" name="targetId" value={topic.id} />
+                <input type="hidden" name="redirect" value={Astro.url.pathname} />
+                <button class:list={["action-button", topicInteraction?.followed && "is-active"]} type="submit">
+                  {topicInteraction?.followed ? copy.following : copy.follow}
+                </button>
+              </form>
+              <a class="action-button" href={`/report?targetType=topic&targetId=${topic.id}&redirect=${encodeURIComponent(Astro.url.pathname)}`}>{copy.report}</a>
+            </div>
           </header>
 
           <MarkdownContent html={topic.contentHtml} />
+
+          <section class="reply-section" aria-labelledby="reply-title">
+            <div class="section-head compact">
+              <div>
+                <p class="eyebrow">{copy.reply}</p>
+                <h2 id="reply-title">{copy.replies}</h2>
+              </div>
+              <span class="count-pill">{posts.length}</span>
+            </div>
+
+            {replyError && <p class="auth-message error">{copy.replyError}</p>}
+
+            {posts.length > 0 ? (
+              <div class="reply-list">
+                {posts.map((post, index) => (
+                  <article class="reply-card" id={`post-${post.id}`}>
+                    <header>
+                      <a class="reply-author" href={`/u/${post.author.username}`}>{post.author.displayName}</a>
+                      <span>#{index + 1}</span>
+                      <span>{formatRelative(post.createdAt, lang)}</span>
+                      {session && (session.userId === post.author.id || isAdmin(session)) && (
+                        <a class="reply-edit-link" href={`/posts/${post.id}/edit`}>{copy.editReply}</a>
+                      )}
+                    </header>
+                    <div class="reply-content" set:html={post.contentHtml} />
+                    <footer class="reply-actions">
+                      <form method="post" action="/api/interactions/reaction">
+                        <input type="hidden" name="targetType" value="post" />
+                        <input type="hidden" name="targetId" value={post.id} />
+                        <input type="hidden" name="redirect" value={`${Astro.url.pathname}#post-${post.id}`} />
+                        <button class:list={["action-button compact", postInteractions.get(post.id)?.liked && "is-active"]} type="submit">
+                          {postInteractions.get(post.id)?.liked ? copy.liked : copy.like}
+                          <span>{postInteractions.get(post.id)?.likeCount ?? 0}</span>
+                        </button>
+                      </form>
+                      <a class="action-button compact" href={`/report?targetType=post&targetId=${post.id}&redirect=${encodeURIComponent(`${Astro.url.pathname}#post-${post.id}`)}`}>{copy.report}</a>
+                    </footer>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p class="auth-message muted">{copy.noReplies}</p>
+            )}
+
+            {session ? (
+              <form class="reply-form" method="post" action={`/api/topics/${topic.id}/posts`}>
+                <input type="hidden" name="redirect" value={Astro.url.pathname} />
+                <label>
+                  {copy.reply}
+                  <textarea name="contentMarkdown" rows="6" placeholder={copy.replyPlaceholder} required></textarea>
+                  <MarkdownImageUpload lang={lang} />
+                </label>
+                <button class="button primary" type="submit">{copy.submitReply}</button>
+              </form>
+            ) : (
+              <a class="button primary" href={`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`}>{copy.loginToReply}</a>
+            )}
+          </section>
         </article>
       </div>
 
@@ -78,3 +262,51 @@ const tags = listTags(lang);
     </section>
   )}
 </BaseLayout>
+
+<script is:inline>
+  (() => {
+    const menu = document.querySelector("[data-topic-ai-menu]");
+    const button = document.querySelector("[data-topic-ai-button]");
+    const panel = document.querySelector("[data-topic-ai-panel]");
+
+    if (!menu || !button || !panel) {
+      return;
+    }
+
+    const setOpen = (open) => {
+      panel.hidden = !open;
+      button.setAttribute("aria-expanded", String(open));
+      menu.dataset.open = open ? "true" : "false";
+    };
+
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setOpen(panel.hidden);
+    });
+
+    panel.querySelectorAll("[data-ai-action]").forEach((option) => {
+      option.addEventListener("click", () => {
+        window.dispatchEvent(new CustomEvent("whyisee:topic-ai-action", {
+          detail: {
+            action: option.dataset.aiAction || "",
+            topicId: menu.dataset.topicId || "",
+          },
+        }));
+        setOpen(false);
+      });
+    });
+
+    document.addEventListener("click", (event) => {
+      if (event.target instanceof Node && !menu.contains(event.target)) {
+        setOpen(false);
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        button.focus();
+      }
+    });
+  })();
+</script>

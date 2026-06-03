@@ -1,30 +1,308 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
-import { getSessionFromAstro } from "@lib/auth";
+import AdminNav from "@components/AdminNav.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
 import { getLangFromAstro, t } from "@lib/i18n";
+import { topicPath } from "@lib/routes";
+import type { Lang } from "@lib/i18n";
+import type { TopicStatus, TopicType } from "@lib/types";
+import { listCategories, listTags } from "@server/services/categories";
+import { listTopics } from "@server/services/topics";
 
 export const prerender = false;
 
 const lang = getLangFromAstro(Astro);
-const session = getSessionFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
 
 if (!session) {
   return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
 }
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/", 303);
+}
+
+const copy = getCopy(lang);
+const selectedStatus = Astro.url.searchParams.get("status") || "all";
+const selectedCategorySlug = Astro.url.searchParams.get("category") || "all";
+const selectedTagSlug = Astro.url.searchParams.get("tag") || "all";
+const selectedType = readTopicType(Astro.url.searchParams.get("type"));
+const keyword = (Astro.url.searchParams.get("q") || "").trim();
+const error = Astro.url.searchParams.get("error") === "1";
+const categories = await listCategories(lang);
+const tags = await listTags(lang);
+const topics = (await listTopics({
+  includeDrafts: true,
+  limit: 200,
+  lang,
+  categorySlug: selectedCategorySlug === "all" ? undefined : selectedCategorySlug,
+  tagSlug: selectedTagSlug === "all" ? undefined : selectedTagSlug,
+  type: selectedType === "all" ? undefined : selectedType,
+  search: keyword || undefined,
+}))
+  .filter((topic) => selectedStatus === "all" || topic.status === selectedStatus);
+
+const statusFilters: Array<{ value: "all" | TopicStatus; label: string }> = [
+  { value: "all", label: copy.all },
+  { value: "draft", label: copy.draft },
+  { value: "pending", label: copy.pending },
+  { value: "published", label: copy.published },
+  { value: "hidden", label: copy.hidden },
+  { value: "deleted", label: copy.deleted },
+];
+
+const typeFilters: Array<{ value: "all" | TopicType; label: string }> = [
+  { value: "all", label: copy.allTypes },
+  { value: "discussion", label: copy.typeDiscussion },
+  { value: "question", label: copy.typeQuestion },
+  { value: "article", label: copy.typeArticle },
+  { value: "project", label: copy.typeProject },
+  { value: "resource", label: copy.typeResource },
+  { value: "announcement", label: copy.typeAnnouncement },
+];
+
+function getCopy(lang: Lang) {
+  if (lang === "en") {
+    return {
+      description: "Publish, edit, pin, feature, hide, and archive community topics.",
+      error: "Operation failed. Please check the database connection and topic status.",
+      statusFilter: "Filter topics by status",
+      categoryFilter: "Category",
+      tagFilter: "Tag",
+      typeFilter: "Type",
+      keywordFilter: "Keyword",
+      keywordPlaceholder: "Title, summary, slug, body",
+      applyFilter: "Apply",
+      all: "All",
+      allCategories: "All categories",
+      allTags: "All tags",
+      allTypes: "All types",
+      draft: "Draft",
+      pending: "Pending",
+      published: "Published",
+      hidden: "Hidden",
+      deleted: "Deleted",
+      pinned: "Pinned",
+      featured: "Featured",
+      noSummary: "No summary yet.",
+      edit: "Edit",
+      view: "View",
+      publish: "Publish",
+      toDraft: "Draft",
+      hide: "Hide",
+      pin: "Pin",
+      unpin: "Unpin",
+      feature: "Feature",
+      unfeature: "Unfeature",
+      delete: "Delete",
+      typeDiscussion: "Discussion",
+      typeQuestion: "Question",
+      typeArticle: "Article",
+      typeProject: "Project",
+      typeResource: "Resource",
+      typeAnnouncement: "Announcement",
+    };
+  }
+
+  return {
+    description: "发布、编辑、置顶、精选、隐藏和归档社区话题。",
+    error: "操作失败，请检查数据库连接和话题状态。",
+    statusFilter: "按状态筛选话题",
+    categoryFilter: "分类",
+    tagFilter: "标签",
+    typeFilter: "类型",
+    keywordFilter: "关键词",
+    keywordPlaceholder: "标题、摘要、Slug、正文",
+    applyFilter: "应用筛选",
+    all: "全部",
+    allCategories: "全部分类",
+    allTags: "全部标签",
+    allTypes: "全部类型",
+    draft: "草稿",
+    pending: "待审核",
+    published: "已发布",
+    hidden: "已隐藏",
+    deleted: "已删除",
+    pinned: "置顶",
+    featured: "精选",
+    noSummary: "暂无摘要。",
+    edit: "编辑",
+    view: "查看",
+    publish: "发布",
+    toDraft: "草稿",
+    hide: "隐藏",
+    pin: "置顶",
+    unpin: "取消置顶",
+    feature: "精选",
+    unfeature: "取消精选",
+    delete: "删除",
+    typeDiscussion: "讨论",
+    typeQuestion: "问题",
+    typeArticle: "文章",
+    typeProject: "项目",
+    typeResource: "资源",
+    typeAnnouncement: "公告",
+  };
+}
+
+function adminFilterHref(status: string) {
+  const params = new URLSearchParams(Astro.url.searchParams);
+  params.set("status", status);
+
+  if (selectedCategorySlug !== "all") {
+    params.set("category", selectedCategorySlug);
+  } else {
+    params.delete("category");
+  }
+
+  if (selectedType !== "all") {
+    params.set("type", selectedType);
+  } else {
+    params.delete("type");
+  }
+
+  if (selectedTagSlug !== "all") {
+    params.set("tag", selectedTagSlug);
+  } else {
+    params.delete("tag");
+  }
+
+  if (keyword) {
+    params.set("q", keyword);
+  } else {
+    params.delete("q");
+  }
+
+  return `/admin?${params.toString()}`;
+}
+
+function readTopicType(value: string | null): "all" | TopicType {
+  if (
+    value === "discussion" ||
+    value === "question" ||
+    value === "article" ||
+    value === "project" ||
+    value === "resource" ||
+    value === "announcement"
+  ) {
+    return value;
+  }
+
+  return "all";
+}
 ---
 
 <BaseLayout title={`${t(lang, "admin.title")} - whyisee.xyz`} description={t(lang, "admin.description")}>
-  <section class="article-page">
-    <p class="eyebrow">{t(lang, "admin.title")}</p>
-    <h1>{t(lang, "admin.title")}</h1>
-    <p>{t(lang, "admin.description")}</p>
+  <section class="admin-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{t(lang, "admin.title")}</p>
+        <h1>{t(lang, "admin.title")}</h1>
+        <p>{copy.description}</p>
+      </div>
+      <span class="count-pill">{topics.length} {t(lang, "page.items")}</span>
+    </div>
     <p class="auth-message muted">{t(lang, "auth.loggedInAs")}：{session.displayName}</p>
-    <div class="admin-actions">
-      <a class="button primary" href="/admin/topics/new">{t(lang, "admin.newTopic")}</a>
-      <a class="button secondary" href="/latest">{t(lang, "admin.backToSite")}</a>
-      <form method="post" action="/api/logout?redirect=/">
-        <button class="button secondary" type="submit">{t(lang, "auth.logout")}</button>
-      </form>
+    {error && <p class="auth-message error">{copy.error}</p>}
+    <AdminNav lang={lang} />
+
+    <form class="admin-filter-form" method="get" action="/admin">
+      <input type="hidden" name="status" value={selectedStatus} />
+      <label>
+        {copy.categoryFilter}
+        <select name="category">
+          <option value="all" selected={selectedCategorySlug === "all"}>{copy.allCategories}</option>
+          {categories.map((category) => (
+            <option value={category.slug} selected={category.slug === selectedCategorySlug}>{category.name}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {copy.tagFilter}
+        <select name="tag">
+          <option value="all" selected={selectedTagSlug === "all"}>{copy.allTags}</option>
+          {tags.map((tag) => (
+            <option value={tag.slug} selected={tag.slug === selectedTagSlug}>#{tag.name}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {copy.typeFilter}
+        <select name="type">
+          {typeFilters.map((item) => (
+            <option value={item.value} selected={item.value === selectedType}>{item.label}</option>
+          ))}
+        </select>
+      </label>
+      <label class="admin-filter-search">
+        {copy.keywordFilter}
+        <input name="q" value={keyword} placeholder={copy.keywordPlaceholder} autocomplete="off" />
+      </label>
+      <button class="button secondary" type="submit">{copy.applyFilter}</button>
+    </form>
+
+    <div class="admin-filter-tabs" aria-label={copy.statusFilter}>
+      {statusFilters.map((item) => (
+        <a class={item.value === selectedStatus ? "is-active" : ""} href={adminFilterHref(item.value)}>
+          {item.label}
+        </a>
+      ))}
+    </div>
+
+    <div class="admin-topic-list">
+      {topics.map((topic) => {
+        const isPublic = topic.status === "published";
+
+        return (
+          <article class="admin-topic-row">
+            <div>
+              <div class="topic-meta">
+                <span class={`admin-status ${topic.status}`}>{copy[topic.status]}</span>
+                <span>{topic.category.name}</span>
+                <span>{topic.type}</span>
+                {topic.isPinned && <span>{copy.pinned}</span>}
+                {topic.isFeatured && <span>{copy.featured}</span>}
+              </div>
+              <h2>{topic.title}</h2>
+              <p>{topic.summary || copy.noSummary}</p>
+            </div>
+            <div class="admin-row-actions">
+              <a class="button secondary" href={`/admin/topics/${topic.id}/edit`}>{copy.edit}</a>
+              {isPublic && <a class="button secondary" href={topicPath(topic)}>{copy.view}</a>}
+              <form method="post" action={`/api/admin/topics/${topic.id}`}>
+                <input type="hidden" name="intent" value="status" />
+                <input type="hidden" name="status" value={isPublic ? "draft" : "published"} />
+                <input type="hidden" name="redirect" value="/admin" />
+                <button class="button secondary" type="submit">{isPublic ? copy.toDraft : copy.publish}</button>
+              </form>
+              <form method="post" action={`/api/admin/topics/${topic.id}`}>
+                <input type="hidden" name="intent" value="status" />
+                <input type="hidden" name="status" value="hidden" />
+                <input type="hidden" name="redirect" value="/admin" />
+                <button class="button secondary" type="submit">{copy.hide}</button>
+              </form>
+              <form method="post" action={`/api/admin/topics/${topic.id}`}>
+                <input type="hidden" name="intent" value="pinned" />
+                <input type="hidden" name="value" value={topic.isPinned ? "0" : "1"} />
+                <input type="hidden" name="redirect" value="/admin" />
+                <button class="button secondary" type="submit">{topic.isPinned ? copy.unpin : copy.pin}</button>
+              </form>
+              <form method="post" action={`/api/admin/topics/${topic.id}`}>
+                <input type="hidden" name="intent" value="featured" />
+                <input type="hidden" name="value" value={topic.isFeatured ? "0" : "1"} />
+                <input type="hidden" name="redirect" value="/admin" />
+                <button class="button secondary" type="submit">{topic.isFeatured ? copy.unfeature : copy.feature}</button>
+              </form>
+              <form method="post" action={`/api/admin/topics/${topic.id}`}>
+                <input type="hidden" name="intent" value="status" />
+                <input type="hidden" name="status" value="deleted" />
+                <input type="hidden" name="redirect" value="/admin" />
+                <button class="button secondary danger" type="submit">{copy.delete}</button>
+              </form>
+            </div>
+          </article>
+        );
+      })}
     </div>
   </section>
 </BaseLayout>

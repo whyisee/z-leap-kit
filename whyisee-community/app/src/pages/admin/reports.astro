@@ -1,0 +1,116 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import AdminNav from "@components/AdminNav.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { formatRelative } from "@lib/format";
+import { getLangFromAstro } from "@lib/i18n";
+import { listReports } from "@server/services/reports";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/", 303);
+}
+
+const status = Astro.url.searchParams.get("status") || "open";
+const reports = await listReports(status, 200);
+const error = Astro.url.searchParams.get("error") === "1";
+const copy = lang === "en"
+  ? {
+      title: "Reports",
+      description: "Review reported topics, replies, and users.",
+      all: "All",
+      open: "Open",
+      accepted: "Accepted",
+      rejected: "Rejected",
+      resolved: "Resolved",
+      empty: "No reports in this status.",
+      error: "Report update failed.",
+      reporter: "Reporter",
+      target: "Target",
+      reason: "Reason",
+      details: "Details",
+      update: "Update",
+    }
+  : {
+      title: "举报后台",
+      description: "处理被举报的话题、回复和用户。",
+      all: "全部",
+      open: "待处理",
+      accepted: "已接受",
+      rejected: "已拒绝",
+      resolved: "已解决",
+      empty: "当前状态下没有举报。",
+      error: "举报状态更新失败。",
+      reporter: "举报人",
+      target: "对象",
+      reason: "原因",
+      details: "说明",
+      update: "更新",
+    };
+
+const filters = ["open", "accepted", "rejected", "resolved", "all"] as const;
+type ReportFilter = typeof filters[number];
+
+function reportStatusLabel(value: string) {
+  return filters.includes(value as ReportFilter) ? copy[value as ReportFilter] : value;
+}
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="admin-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{copy.title}</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.description}</p>
+      </div>
+      <span class="count-pill">{reports.length}</span>
+    </div>
+
+    <AdminNav lang={lang} />
+
+    {error && <p class="auth-message error">{copy.error}</p>}
+
+    <div class="admin-filter-tabs">
+      {filters.map((item) => <a class={item === status ? "is-active" : ""} href={`/admin/reports?status=${item}`}>{reportStatusLabel(item)}</a>)}
+    </div>
+
+    {reports.length > 0 ? (
+      <div class="admin-topic-list">
+        {reports.map((report) => (
+          <article class="admin-topic-row">
+            <div>
+              <div class="topic-meta">
+                <span class={`admin-status ${report.status}`}>{reportStatusLabel(report.status)}</span>
+                <span>{formatRelative(report.createdAt, lang)}</span>
+                <span>{copy.reporter}: {report.reporterName}</span>
+              </div>
+              <h2>{copy.reason}: {report.reason}</h2>
+              <p>{copy.target}: {report.targetType} #{report.targetId}</p>
+              {report.details && <p>{copy.details}: {report.details}</p>}
+            </div>
+            <form class="admin-inline-form" method="post" action={`/api/admin/reports/${report.id}`}>
+              <input type="hidden" name="redirect" value={`/admin/reports?status=${status}`} />
+              <select name="status">
+                {filters.filter((item) => item !== "all").map((item) => (
+                  <option value={item} selected={item === report.status}>{reportStatusLabel(item)}</option>
+                ))}
+              </select>
+              <button class="button secondary" type="submit">{copy.update}</button>
+            </form>
+          </article>
+        ))}
+      </div>
+    ) : (
+      <p class="auth-message muted">{copy.empty}</p>
+    )}
+  </section>
+</BaseLayout>

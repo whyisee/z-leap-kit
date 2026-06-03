@@ -7,12 +7,22 @@ import type { Topic } from "@lib/types";
 interface Props {
   topic: Topic;
   lang: Lang;
+  latestOrder?: number;
 }
 
-const { topic, lang } = Astro.props;
+const { topic, lang, latestOrder = 0 } = Astro.props;
 ---
 
-<article class:list={["topic-card", topic.isPinned && "is-pinned"]}>
+<article
+  class:list={["topic-card", topic.isPinned && "is-pinned"]}
+  data-topic-item
+  data-topic-latest-order={latestOrder}
+  data-topic-replies={topic.replyCount}
+  data-topic-views={topic.viewCount}
+  data-topic-activity={new Date(topic.lastActivityAt).getTime()}
+  data-topic-pinned={topic.isPinned ? "1" : "0"}
+  data-topic-tags={topic.tags.map((tag) => tag.slug).join(" ")}
+>
   <div class="topic-main">
     <h2><a href={topicPath(topic)}>{topic.title}</a></h2>
     <div class="topic-meta">
@@ -29,5 +39,5 @@ const { topic, lang } = Astro.props;
   </div>
   <span class="topic-cell"><strong>{topic.replyCount}</strong></span>
   <span class="topic-cell"><strong>{topic.viewCount}</strong></span>
-  <span class="topic-cell activity">{formatRelative(topic.publishedAt, lang)}</span>
+  <span class="topic-cell activity">{formatRelative(topic.lastActivityAt, lang)}</span>
 </article>

@@ -1,0 +1,50 @@
+---
+import AdminTopicForm from "@components/AdminTopicForm.astro";
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { getSessionFromAstro } from "@lib/auth";
+import { getLangFromAstro } from "@lib/i18n";
+import { listCategories, listTags } from "@server/services/categories";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect("/login?redirect=/new-topic", 303);
+}
+
+const categories = await listCategories(lang);
+const tags = await listTags(lang);
+const error = Astro.url.searchParams.get("error") === "1";
+const copy = lang === "en"
+  ? {
+      title: "New topic",
+      description: "Submit a topic for review. It will be visible after approval.",
+      submit: "Submit for review",
+    }
+  : {
+      title: "新建话题",
+      description: "提交话题后进入审核，通过后公开展示。",
+      submit: "提交审核",
+    };
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="article-page new-topic-page">
+    <p class="eyebrow">{copy.submit}</p>
+    <h1>{copy.title}</h1>
+    <p>{copy.description}</p>
+    <AdminTopicForm
+      action="/api/topics"
+      categories={categories}
+      tags={tags}
+      lang={lang}
+      error={error}
+      submitLabel={copy.submit}
+      cancelHref="/latest"
+      showAdminFields={false}
+      forcedStatus="pending"
+    />
+  </section>
+</BaseLayout>

@@ -1,0 +1,60 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { getSessionFromAstro } from "@lib/auth";
+import { getLangFromAstro } from "@lib/i18n";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+const targetType = Astro.url.searchParams.get("targetType") || "";
+const targetId = Astro.url.searchParams.get("targetId") || "";
+const redirect = Astro.url.searchParams.get("redirect") || "/latest";
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`, 303);
+}
+
+const copy = lang === "en"
+  ? {
+      title: "Report content",
+      description: "Send this item to moderators for review.",
+      reason: "Reason",
+      reasonPlaceholder: "Spam, harassment, illegal content...",
+      details: "Details",
+      detailsPlaceholder: "Add context that helps moderators judge quickly.",
+      submit: "Submit report",
+    }
+  : {
+      title: "举报内容",
+      description: "把这条内容提交给管理员审核。",
+      reason: "举报原因",
+      reasonPlaceholder: "垃圾内容、骚扰、违法内容等...",
+      details: "补充说明",
+      detailsPlaceholder: "补充能帮助管理员快速判断的上下文。",
+      submit: "提交举报",
+    };
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="auth-page">
+    <div class="auth-card">
+      <h1>{copy.title}</h1>
+      <p>{copy.description}</p>
+      <form class="auth-form" method="post" action="/api/reports">
+        <input type="hidden" name="targetType" value={targetType} />
+        <input type="hidden" name="targetId" value={targetId} />
+        <input type="hidden" name="redirect" value={redirect} />
+        <label>
+          {copy.reason}
+          <input name="reason" placeholder={copy.reasonPlaceholder} required />
+        </label>
+        <label>
+          {copy.details}
+          <textarea name="details" rows="5" placeholder={copy.detailsPlaceholder}></textarea>
+        </label>
+        <button class="button primary" type="submit">{copy.submit}</button>
+      </form>
+    </div>
+  </section>
+</BaseLayout>

@@ -1,0 +1,43 @@
+<script is:inline>
+  document.querySelectorAll("[data-admin-collapsible]").forEach((card) => {
+    const summary = card.querySelector("summary");
+
+    if (!(card instanceof HTMLDetailsElement) || !summary) {
+      return;
+    }
+
+    if (card.dataset.adminCollapsibleReady === "1") {
+      return;
+    }
+
+    card.dataset.adminCollapsibleReady = "1";
+
+    const updateButtons = () => {
+      summary.querySelectorAll("[data-collapse-button]").forEach((button) => {
+        button.setAttribute("aria-expanded", String(card.open));
+      });
+    };
+
+    updateButtons();
+
+    summary.addEventListener("click", (event) => {
+      const button = event.target instanceof Element ? event.target.closest("[data-collapse-button]") : null;
+      event.preventDefault();
+
+      if (!button) {
+        return;
+      }
+
+      card.open = !card.open;
+      updateButtons();
+    });
+
+    summary.addEventListener("keydown", (event) => {
+      const isToggleKey = event.key === "Enter" || event.key === " ";
+
+      if (isToggleKey && (!(event.target instanceof Element) || !event.target.closest("[data-collapse-button]"))) {
+        event.preventDefault();
+      }
+    });
+  });
+</script>
