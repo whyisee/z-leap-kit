@@ -16,6 +16,10 @@ export interface AiModelConfig {
   updatedAt: string;
 }
 
+export interface AiModelRuntimeConfig extends AiModelConfig {
+  apiKey: string;
+}
+
 export interface AiModelConfigInput {
   name: string;
   provider: string;
@@ -91,6 +95,33 @@ export async function getDefaultAiModelConfig(): Promise<AiModelConfig | undefin
   );
 
   return row ? mapAiModelConfigRow(row) : undefined;
+}
+
+export async function getDefaultAiModelRuntimeConfig(): Promise<AiModelRuntimeConfig | undefined> {
+  const row = await queryOne<AiModelRuntimeConfigRow>(
+    `
+    SELECT
+      id,
+      name,
+      provider,
+      model,
+      base_url,
+      api_key,
+      api_key <> '' AS api_key_configured,
+      is_default,
+      is_enabled,
+      temperature::text,
+      max_tokens,
+      notes,
+      created_at,
+      updated_at
+    FROM ai_model_configs
+    WHERE is_default = TRUE AND is_enabled = TRUE
+    LIMIT 1
+    `,
+  );
+
+  return row ? mapAiModelRuntimeConfigRow(row) : undefined;
 }
 
 export async function createAiModelConfig(input: AiModelConfigInput) {
@@ -282,6 +313,13 @@ function mapAiModelConfigRow(row: AiModelConfigRow): AiModelConfig {
   };
 }
 
+function mapAiModelRuntimeConfigRow(row: AiModelRuntimeConfigRow): AiModelRuntimeConfig {
+  return {
+    ...mapAiModelConfigRow(row),
+    apiKey: row.api_key,
+  };
+}
+
 interface AiModelConfigRow {
   id: number;
   name: string;
@@ -296,4 +334,8 @@ interface AiModelConfigRow {
   notes: string;
   created_at: string;
   updated_at: string;
+}
+
+interface AiModelRuntimeConfigRow extends AiModelConfigRow {
+  api_key: string;
 }

@@ -1856,6 +1856,204 @@ main > .auth-page::-webkit-scrollbar {
   padding: 8px 0 18px;
 }
 
+.topic-hero-bar {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.topic-hero-bar .topic-meta {
+  min-width: 0;
+}
+
+.topic-ai-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.ai-tool-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  border: 1px solid rgba(138, 180, 248, 0.38);
+  border-radius: 8px;
+  padding: 0 10px 0 8px;
+  background:
+    linear-gradient(135deg, rgba(138, 180, 248, 0.16), rgba(102, 208, 140, 0.06)),
+    rgba(255, 255, 255, 0.035);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.ai-tool-button:hover,
+.topic-ai-menu[data-open="true"] .ai-tool-button {
+  border-color: rgba(138, 180, 248, 0.66);
+  background:
+    linear-gradient(135deg, rgba(138, 180, 248, 0.24), rgba(102, 208, 140, 0.1)),
+    rgba(255, 255, 255, 0.055);
+}
+
+.ai-tool-button:focus-visible,
+.topic-ai-option:focus-visible {
+  outline: 2px solid rgba(138, 180, 248, 0.8);
+  outline-offset: 3px;
+}
+
+.ai-tool-mark {
+  display: inline-grid;
+  min-width: 25px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid rgba(240, 243, 247, 0.2);
+  border-radius: 6px;
+  background: rgba(13, 16, 22, 0.36);
+  color: var(--blue);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.ai-tool-chevron {
+  color: var(--subtle);
+  font-size: 15px;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
+.topic-ai-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  display: grid;
+  width: min(330px, calc(100vw - 80px));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  padding: 6px;
+  background:
+    linear-gradient(135deg, rgba(138, 180, 248, 0.08), transparent 42%),
+    #151a22;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.48),
+    0 0 0 1px rgba(0, 0, 0, 0.24);
+}
+
+.topic-ai-panel[hidden] {
+  display: none;
+}
+
+.topic-ai-option {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.topic-ai-option:hover {
+  background: rgba(138, 180, 248, 0.1);
+  color: var(--text);
+}
+
+.topic-ai-option:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.topic-ai-option strong {
+  color: inherit;
+  font-size: 13px;
+  font-weight: 920;
+  line-height: 1.25;
+}
+
+.topic-ai-option span {
+  overflow-wrap: anywhere;
+  color: var(--subtle);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.topic-ai-result {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(138, 180, 248, 0.22);
+  border-radius: var(--radius);
+  margin: 18px 0 0;
+  padding: 16px;
+  background:
+    linear-gradient(135deg, rgba(138, 180, 248, 0.1), transparent 46%),
+    rgba(255, 255, 255, 0.034);
+}
+
+.topic-ai-result[hidden] {
+  display: none;
+}
+
+.topic-ai-result[data-state="loading"] {
+  border-color: rgba(243, 201, 105, 0.3);
+}
+
+.topic-ai-result[data-state="error"] {
+  border-color: rgba(255, 122, 152, 0.36);
+}
+
+.topic-ai-result-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.topic-ai-result-head h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.topic-ai-result-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.topic-ai-result pre {
+  overflow: auto;
+  max-height: 460px;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(9, 13, 19, 0.62);
+  color: #dce3ed;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.topic-ai-result footer {
+  color: var(--subtle);
+  font-size: 12px;
+  font-weight: 760;
+}
+
 .topic-hero h1 {
   margin: 14px 0;
 }
