@@ -1,6 +1,6 @@
 import net from "node:net";
 import tls from "node:tls";
-import { execute } from "@server/db/client";
+import { execute } from "../db/client.ts";
 
 interface EmailInput {
   to: string;
@@ -118,8 +118,10 @@ async function sendSmtpEmail(input: EmailInput) {
 class SmtpClient {
   private buffer = "";
   private waiters: Array<() => void> = [];
+  private socket: net.Socket | tls.TLSSocket;
 
-  constructor(private socket: net.Socket | tls.TLSSocket) {
+  constructor(socket: net.Socket | tls.TLSSocket) {
+    this.socket = socket;
     socket.setEncoding("utf8");
     socket.on("data", (chunk) => {
       this.buffer += chunk;

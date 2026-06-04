@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT,
   avatar_url TEXT,
   role TEXT NOT NULL DEFAULT 'member',
+  is_bot BOOLEAN NOT NULL DEFAULT FALSE,
   status TEXT NOT NULL DEFAULT 'pending',
   bio TEXT NOT NULL DEFAULT '',
   website_url TEXT,
@@ -62,6 +63,7 @@ CREATE TABLE IF NOT EXISTS topics (
 CREATE TABLE IF NOT EXISTS posts (
   id SERIAL PRIMARY KEY,
   topic_id INTEGER NOT NULL,
+  parent_post_id INTEGER,
   author_id INTEGER NOT NULL,
   content_markdown TEXT NOT NULL,
   content_html TEXT NOT NULL,
@@ -69,6 +71,7 @@ CREATE TABLE IF NOT EXISTS posts (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (topic_id) REFERENCES topics(id),
+  FOREIGN KEY (parent_post_id) REFERENCES posts(id) ON DELETE CASCADE,
   FOREIGN KEY (author_id) REFERENCES users(id)
 );
 
@@ -166,6 +169,16 @@ CREATE TABLE IF NOT EXISTS follows (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS user_blocks (
+  id SERIAL PRIMARY KEY,
+  blocker_id INTEGER NOT NULL,
+  blocked_user_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (blocker_id, blocked_user_id),
+  FOREIGN KEY (blocker_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (blocked_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL,
@@ -181,6 +194,35 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TEXT NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS mentions (
+  id SERIAL PRIMARY KEY,
+  source_type TEXT NOT NULL,
+  source_id INTEGER NOT NULL,
+  mentioned_user_id INTEGER NOT NULL,
+  actor_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (source_type, source_id, mentioned_user_id),
+  FOREIGN KEY (mentioned_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS bot_jobs (
+  id SERIAL PRIMARY KEY,
+  bot_user_id INTEGER NOT NULL,
+  source_type TEXT NOT NULL,
+  source_id INTEGER NOT NULL,
+  actor_id INTEGER NOT NULL,
+  prompt TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'queued',
+  result_post_id INTEGER,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (bot_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (result_post_id) REFERENCES posts(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS reports (
@@ -257,6 +299,7 @@ CREATE INDEX IF NOT EXISTS idx_topics_status_published_at ON topics(status, publ
 CREATE INDEX IF NOT EXISTS idx_topics_category_id ON topics(category_id);
 CREATE INDEX IF NOT EXISTS idx_topics_type ON topics(type);
 CREATE INDEX IF NOT EXISTS idx_posts_topic_id ON posts(topic_id);
+CREATE INDEX IF NOT EXISTS idx_posts_parent_post_id ON posts(parent_post_id);
 CREATE INDEX IF NOT EXISTS idx_topic_tags_tag_id ON topic_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
@@ -265,8 +308,13 @@ CREATE INDEX IF NOT EXISTS idx_reactions_target ON reactions(target_type, target
 CREATE INDEX IF NOT EXISTS idx_bookmarks_user_id ON bookmarks(user_id);
 CREATE INDEX IF NOT EXISTS idx_follows_user_target ON follows(user_id, target_type, target_id);
 CREATE INDEX IF NOT EXISTS idx_follows_target ON follows(target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_user_blocks_blocker ON user_blocks(blocker_id, blocked_user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, read_at);
+CREATE INDEX IF NOT EXISTS idx_mentions_user_created ON mentions(mentioned_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mentions_source ON mentions(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_bot_jobs_status_created ON bot_jobs(status, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_bot_jobs_source ON bot_jobs(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_reports_status_created ON reports(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_page_views_created ON page_views(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_page_views_path_created ON page_views(path, created_at DESC);

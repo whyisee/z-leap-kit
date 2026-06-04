@@ -4,38 +4,108 @@ import ForumFrame from "@components/ForumFrame.astro";
 import { getLangFromAstro } from "@lib/i18n";
 import { listCategories, listTags } from "@server/services/categories";
 import { listFeaturedTopics } from "@server/services/topics";
-import { searchCommunity } from "@server/services/search";
+import { runCommunitySearch, type SearchMode } from "@server/services/search";
 
 export const prerender = false;
 
 const lang = getLangFromAstro(Astro);
 const q = Astro.url.searchParams.get("q") || "";
+const requestedMode = readMode(Astro.url.searchParams.get("mode"));
 const categories = await listCategories(lang);
 const tags = await listTags(lang);
 const featuredTopics = await listFeaturedTopics(4, lang);
-const results = await searchCommunity(q, lang, 40);
+const search = await runCommunitySearch(q, lang, { limit: 40, mode: requestedMode });
+const results = search.results;
 const copy = lang === "en"
   ? {
       title: "Search",
       placeholder: "Search topics, replies, categories, tags, and users",
       submit: "Search",
-      empty: "Enter a keyword to search the community.",
+      aiSubmit: "AI Search",
+      empty: "Enter keywords or directives to search the community.",
       noResults: "No matching results.",
       results: "results",
+      directiveTips: "Directives",
+      translated: "AI translated this into",
+      fallback: "AI search is temporarily unavailable. Showing keyword results instead.",
+      queryPlan: "Search plan",
+      warnings: "Notes",
+      examples: [
+        "seo tag:indie sort:hot within:30d",
+        "type:reply mention:ai after:2026-06-01",
+        "category:SEO has:image sort:latest",
+      ],
+      kindLabels: {
+        topic: "Topic",
+        reply: "Reply",
+        category: "Category",
+        tag: "Tag",
+        user: "User",
+      },
     }
   : {
       title: "搜索",
-      placeholder: "搜索话题、回复、分类、标签和用户",
+      placeholder: "搜索话题、回复、分类、标签和用户，也可以输入搜索指令",
       submit: "搜索",
-      empty: "输入关键词搜索社区内容。",
+      aiSubmit: "AI 搜索",
+      empty: "输入关键词或搜索指令来搜索社区内容。",
       noResults: "没有匹配结果。",
       results: "条结果",
+      directiveTips: "指令示例",
+      translated: "AI 已翻译为",
+      fallback: "AI 搜索暂时不可用，已退回普通搜索。",
+      queryPlan: "搜索条件",
+      warnings: "提示",
+      examples: [
+        "seo tag:独立开发 sort:hot within:30d",
+        "type:reply mention:ai after:2026-06-01",
+        "category:SEO与流量 has:image sort:latest",
+      ],
+      kindLabels: {
+        topic: "话题",
+        reply: "回复",
+        category: "分类",
+        tag: "标签",
+        user: "用户",
+      },
     };
+const planBadges = buildPlanBadges(search.plan);
+
+function readMode(value: string | null): SearchMode {
+  if (value === "ai" || value === "directive") {
+    return value;
+  }
+
+  return "auto";
+}
+
+function buildPlanBadges(plan: Awaited<ReturnType<typeof runCommunitySearch>>["plan"]) {
+  const badges: Array<{ label: string; query: string }> = [];
+
+  for (const keyword of plan.keywords) badges.push({ label: keyword, query: keyword });
+  for (const type of plan.types) badges.push({ label: `type:${type}`, query: `type:${type}` });
+  for (const field of plan.fields) badges.push({ label: `in:${field}`, query: `in:${field}` });
+  for (const category of plan.categoryQueries) badges.push({ label: `category:${category}`, query: `category:${category}` });
+  for (const tag of plan.tagQueries) badges.push({ label: `#${tag}`, query: `tag:${tag}` });
+  for (const author of plan.authorQueries) badges.push({ label: `by:${author}`, query: `author:${author}` });
+  for (const mention of plan.mentionQueries) badges.push({ label: `@${mention}`, query: `mention:${mention}` });
+  if (plan.dateFrom) badges.push({ label: `after:${plan.dateFrom.slice(0, 10)}`, query: `after:${plan.dateFrom.slice(0, 10)}` });
+  if (plan.dateTo) badges.push({ label: `before:${plan.dateTo.slice(0, 10)}`, query: `before:${plan.dateTo.slice(0, 10)}` });
+  if (plan.flags.hasImage) badges.push({ label: "has:image", query: "has:image" });
+  if (plan.flags.hasLink) badges.push({ label: "has:link", query: "has:link" });
+  if (plan.flags.hasReply) badges.push({ label: "has:reply", query: "has:reply" });
+  if (plan.flags.noReply) badges.push({ label: "no:reply", query: "no:reply" });
+  if (plan.flags.isPinned) badges.push({ label: "is:pinned", query: "is:pinned" });
+  if (plan.flags.isFeatured) badges.push({ label: "is:featured", query: "is:featured" });
+  if (plan.sort !== "relevance") badges.push({ label: `sort:${plan.sort}`, query: `sort:${plan.sort}` });
+
+  return badges.slice(0, 12);
+}
 ---
 
 <BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.placeholder}>
   <ForumFrame categories={categories} tags={tags} featuredTopics={featuredTopics} lang={lang}>
-    <div class="section-head">
+    <div class="section-head search-section-head">
       <div>
         <p class="eyebrow">{copy.title}</p>
         <h1>{copy.title}</h1>
@@ -43,17 +113,52 @@ const copy = lang === "en"
       {q && <span class="count-pill">{results.length} {copy.results}</span>}
     </div>
 
-    <form class="search-page-form" method="get" action="/search" data-auto-search-form>
+    <form class="search-page-form smart-search-form" method="get" action="/search" data-auto-search-form>
+      <input type="hidden" name="mode" value={search.mode} data-search-mode-input />
       <input type="search" name="q" value={q} placeholder={copy.placeholder} autofocus data-auto-search-input />
-      <button class="button primary" type="submit">{copy.submit}</button>
+      <div class="smart-search-actions">
+        <button class="button primary" type="submit" data-normal-search-submit>{copy.submit}</button>
+        <button class="button secondary search-ai-button" type="button" data-ai-search-submit>{copy.aiSubmit}</button>
+      </div>
     </form>
+
+    <div class="search-directive-bar" aria-label={copy.directiveTips}>
+      <span>{copy.directiveTips}</span>
+      {copy.examples.map((example) => (
+        <button type="button" data-search-example={example}>{example}</button>
+      ))}
+    </div>
+
+    {q && (search.ai || search.fallback || planBadges.length > 0 || search.warnings.length > 0 || search.notes.length > 0) && (
+      <div class="search-plan-panel">
+        {search.ai && (
+          <p>
+            <strong>{copy.translated}</strong>
+            <code>{search.ai.directiveQuery}</code>
+          </p>
+        )}
+        {search.fallback && <p class="search-warning-text">{copy.fallback}</p>}
+        {planBadges.length > 0 && (
+          <div class="search-plan-chips" aria-label={copy.queryPlan}>
+            <span>{copy.queryPlan}</span>
+            {planBadges.map((badge) => <a href={`/search?q=${encodeURIComponent(badge.query)}&mode=directive`}>{badge.label}</a>)}
+          </div>
+        )}
+        {(search.warnings.length > 0 || search.notes.length > 0) && (
+          <div class="search-plan-notes">
+            <span>{copy.warnings}</span>
+            {[...search.notes, ...search.warnings].map((note) => <small>{note}</small>)}
+          </div>
+        )}
+      </div>
+    )}
 
     {q ? (
       results.length > 0 ? (
         <div class="search-result-list">
           {results.map((item) => (
             <a class="search-result-row" href={item.href}>
-              <span class="admin-status published">{item.kind}</span>
+              <span class="admin-status published">{copy.kindLabels[item.kind]}</span>
               <h2>{item.title}</h2>
               {item.summary && <p>{item.summary}</p>}
               <small>{item.meta}</small>
@@ -73,19 +178,23 @@ const copy = lang === "en"
   (() => {
     const form = document.querySelector("[data-auto-search-form]");
     const input = document.querySelector("[data-auto-search-input]");
+    const modeInput = document.querySelector("[data-search-mode-input]");
+    const aiButton = document.querySelector("[data-ai-search-submit]");
+    const normalButton = document.querySelector("[data-normal-search-submit]");
+    const examples = document.querySelectorAll("[data-search-example]");
 
-    if (!form || !input) {
+    if (!form || !input || !modeInput) {
       return;
     }
 
-    const searchDelay = 520;
+    const searchDelay = 560;
     let searchTimer = 0;
     let lastSubmitted = input.value.trim();
 
     const submitSearch = () => {
       const query = input.value.trim();
 
-      if (query === lastSubmitted) {
+      if (query === lastSubmitted && modeInput.value !== "ai") {
         return;
       }
 
@@ -94,8 +203,32 @@ const copy = lang === "en"
     };
 
     input.addEventListener("input", () => {
+      modeInput.value = "directive";
       window.clearTimeout(searchTimer);
       searchTimer = window.setTimeout(submitSearch, searchDelay);
+    });
+
+    normalButton?.addEventListener("click", () => {
+      modeInput.value = "directive";
+    });
+
+    aiButton?.addEventListener("click", () => {
+      if (!input.value.trim()) {
+        input.focus();
+        return;
+      }
+
+      modeInput.value = "ai";
+      form.requestSubmit();
+    });
+
+    examples.forEach((button) => {
+      button.addEventListener("click", () => {
+        input.value = button.dataset.searchExample || "";
+        modeInput.value = "directive";
+        lastSubmitted = "";
+        form.requestSubmit();
+      });
     });
   })();
 </script>

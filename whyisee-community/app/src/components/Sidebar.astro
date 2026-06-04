@@ -1,5 +1,6 @@
 ---
 import { t, type Lang } from "@lib/i18n";
+import { topicPath } from "@lib/routes";
 import type { Topic } from "@lib/types";
 
 interface Props {
@@ -20,7 +21,7 @@ const { featuredTopics = [], lang } = Astro.props;
     <section class="side-panel">
       <h2>{t(lang, "sidebar.featured")}</h2>
       <div class="compact-list">
-        {featuredTopics.map((topic) => <a href={`/t/${topic.id}/${topic.slug}`}>{topic.title}</a>)}
+        {featuredTopics.map((topic) => <a href={topicPath(topic)}>{topic.title}</a>)}
       </div>
     </section>
   )}

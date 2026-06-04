@@ -184,7 +184,7 @@ function buildTopicContext(input: TopicAiInput) {
       truncate(post.contentMarkdown, 900),
     ].join("\n");
   });
-  const related = input.related.map((item) => `- ${item.title} (/t/${item.id}/${item.slug})`).join("\n") || "- none";
+  const related = input.related.map((item) => `- ${item.title} (/t/${item.id})`).join("\n") || "- none";
 
   return [
     "Topic context:",

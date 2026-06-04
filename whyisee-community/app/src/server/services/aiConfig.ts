@@ -1,4 +1,4 @@
-import { query, queryOne, withTransaction } from "@server/db/client";
+import { query, queryOne, withTransaction } from "../db/client.ts";
 
 export interface AiModelConfig {
   id: number;

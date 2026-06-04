@@ -197,6 +197,105 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_ai_model_configs_provider ON ai_model_configs(provider, is_enabled);
     `,
   },
+  {
+    version: "006_mentions_and_bots",
+    sql: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_bot BOOLEAN NOT NULL DEFAULT FALSE;
+
+      CREATE TABLE IF NOT EXISTS mentions (
+        id SERIAL PRIMARY KEY,
+        source_type TEXT NOT NULL,
+        source_id INTEGER NOT NULL,
+        mentioned_user_id INTEGER NOT NULL,
+        actor_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (source_type, source_id, mentioned_user_id),
+        FOREIGN KEY (mentioned_user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS bot_jobs (
+        id SERIAL PRIMARY KEY,
+        bot_user_id INTEGER NOT NULL,
+        source_type TEXT NOT NULL,
+        source_id INTEGER NOT NULL,
+        actor_id INTEGER NOT NULL,
+        prompt TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'queued',
+        result_post_id INTEGER,
+        error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (bot_user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (result_post_id) REFERENCES posts(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_mentions_user_created ON mentions(mentioned_user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_mentions_source ON mentions(source_type, source_id);
+      CREATE INDEX IF NOT EXISTS idx_bot_jobs_status_created ON bot_jobs(status, created_at ASC);
+      CREATE INDEX IF NOT EXISTS idx_bot_jobs_source ON bot_jobs(source_type, source_id);
+
+      INSERT INTO users (username, display_name, email, password_hash, role, is_bot, status, bio, email_verified_at, created_at, updated_at)
+      VALUES
+        ('ai', 'AI 助手', NULL, NULL, 'member', TRUE, 'active', '通用社区助手，可以总结讨论、整理观点和回答明确问题。', CURRENT_TIMESTAMP::text, CURRENT_TIMESTAMP::text, CURRENT_TIMESTAMP::text),
+        ('seo', 'SEO 助手', NULL, NULL, 'member', TRUE, 'active', '帮助优化标题、摘要、关键词和标签。', CURRENT_TIMESTAMP::text, CURRENT_TIMESTAMP::text, CURRENT_TIMESTAMP::text),
+        ('writer', '写作助手', NULL, NULL, 'member', TRUE, 'active', '帮助扩写、润色、去 AI 味和整理表达。', CURRENT_TIMESTAMP::text, CURRENT_TIMESTAMP::text, CURRENT_TIMESTAMP::text),
+        ('mod', '审核助手', NULL, NULL, 'member', TRUE, 'active', '辅助管理员判断广告、低质内容和审核风险。', CURRENT_TIMESTAMP::text, CURRENT_TIMESTAMP::text, CURRENT_TIMESTAMP::text)
+      ON CONFLICT(username) DO UPDATE SET
+        display_name = excluded.display_name,
+        is_bot = TRUE,
+        status = 'active',
+        bio = excluded.bio,
+        updated_at = excluded.updated_at;
+    `,
+  },
+  {
+    version: "007_nested_post_replies",
+    sql: `
+      ALTER TABLE posts ADD COLUMN IF NOT EXISTS parent_post_id INTEGER;
+
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'posts_parent_post_id_fkey'
+        ) THEN
+          ALTER TABLE posts
+            ADD CONSTRAINT posts_parent_post_id_fkey
+            FOREIGN KEY (parent_post_id) REFERENCES posts(id) ON DELETE CASCADE;
+        END IF;
+      END $$;
+
+      CREATE INDEX IF NOT EXISTS idx_posts_parent_post_id ON posts(parent_post_id);
+
+      UPDATE posts
+      SET parent_post_id = COALESCE(source_posts.parent_post_id, source_posts.id)
+      FROM bot_jobs
+      INNER JOIN posts AS source_posts ON source_posts.id = bot_jobs.source_id
+      WHERE bot_jobs.source_type = 'post'
+        AND bot_jobs.result_post_id = posts.id
+        AND posts.parent_post_id IS NULL
+        AND posts.id <> source_posts.id;
+    `,
+  },
+  {
+    version: "008_user_blocks",
+    sql: `
+      CREATE TABLE IF NOT EXISTS user_blocks (
+        id SERIAL PRIMARY KEY,
+        blocker_id INTEGER NOT NULL,
+        blocked_user_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (blocker_id, blocked_user_id),
+        FOREIGN KEY (blocker_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (blocked_user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_user_blocks_blocker ON user_blocks(blocker_id, blocked_user_id);
+    `,
+  },
 ];
 
 for (const migration of migrations) {

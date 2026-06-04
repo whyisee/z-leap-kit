@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { getSessionFromAstro, safeRedirectPath } from "@lib/auth";
-import { createPost } from "@server/services/posts";
+import { createPost, topicHref } from "@server/services/posts";
 
 export const prerender = false;
 
@@ -8,7 +8,7 @@ export const POST: APIRoute = async (context) => {
   const session = await getSessionFromAstro(context);
   const topicId = Number(context.params.id || 0);
   const formData = await context.request.formData();
-  const redirectPath = safeRedirectPath(formData.get("redirect"), `/t/${topicId}/reply-error`);
+  const redirectPath = safeRedirectPath(formData.get("redirect"), `/t/${topicId}`);
 
   if (!session) {
     return context.redirect(`/login?redirect=${encodeURIComponent(redirectPath)}`, 303);
@@ -19,15 +19,17 @@ export const POST: APIRoute = async (context) => {
   }
 
   try {
+    const parentPostId = Number(formData.get("parentPostId") || 0);
     const result = await createPost({
       topicId,
+      parentPostId: Number.isFinite(parentPostId) && parentPostId > 0 ? parentPostId : undefined,
       authorId: session.userId,
       contentMarkdown: String(formData.get("contentMarkdown") || ""),
     });
 
-    return context.redirect(`/t/${result.topicId}/${result.topicSlug}#post-${result.postId}`, 303);
+    return context.redirect(topicHref(result.topicId, result.topicSlug, `post-${result.postId}`), 303);
   } catch (error) {
     console.error("Failed to create reply", error);
-    return context.redirect(`/t/${topicId}/reply-error?replyError=1`, 303);
+    return context.redirect(`/t/${topicId}?replyError=1`, 303);
   }
 };

@@ -17,6 +17,12 @@ if (!session) {
 const categories = await listCategories(lang);
 const tags = await listTags(lang);
 const error = Astro.url.searchParams.get("error") === "1";
+const requestedCategorySlug = Astro.url.searchParams.get("category") || "";
+const requestedTagSlug = Astro.url.searchParams.get("tag") || "";
+const defaultCategorySlug = categories.some((category) => category.slug === requestedCategorySlug)
+  ? requestedCategorySlug
+  : undefined;
+const defaultTagSlugs = tags.some((tag) => tag.slug === requestedTagSlug) ? [requestedTagSlug] : [];
 const copy = lang === "en"
   ? {
       title: "New topic",
@@ -32,9 +38,6 @@ const copy = lang === "en"
 
 <BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
   <section class="article-page new-topic-page">
-    <p class="eyebrow">{copy.submit}</p>
-    <h1>{copy.title}</h1>
-    <p>{copy.description}</p>
     <AdminTopicForm
       action="/api/topics"
       categories={categories}
@@ -45,6 +48,8 @@ const copy = lang === "en"
       cancelHref="/latest"
       showAdminFields={false}
       forcedStatus="pending"
+      defaultCategorySlug={defaultCategorySlug}
+      defaultTagSlugs={defaultTagSlugs}
     />
   </section>
 </BaseLayout>

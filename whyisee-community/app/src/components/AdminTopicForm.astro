@@ -2,6 +2,7 @@
 import type { Category, Tag, Topic, TopicStatus, TopicType } from "@lib/types";
 import type { Lang } from "@lib/i18n";
 import MarkdownImageUpload from "@components/MarkdownImageUpload.astro";
+import MentionAutocomplete from "@components/MentionAutocomplete.astro";
 
 interface Props {
   action: string;
@@ -14,6 +15,8 @@ interface Props {
   error?: boolean;
   showAdminFields?: boolean;
   forcedStatus?: TopicStatus;
+  defaultCategorySlug?: string;
+  defaultTagSlugs?: string[];
 }
 
 const {
@@ -27,12 +30,20 @@ const {
   error = false,
   showAdminFields = true,
   forcedStatus,
+  defaultCategorySlug,
+  defaultTagSlugs = [],
 } = Astro.props;
 const copy = getCopy(lang);
 const selectedType = topic?.type || "discussion";
 const selectedStatus = forcedStatus || topic?.status || "draft";
-const selectedCategoryId = topic?.category.id || categories[0]?.id;
-const tagValue = topic?.tags.map((tag) => tag.name).join(", ") || "";
+const defaultCategory = categories.find((category) => category.slug === defaultCategorySlug);
+const selectedCategoryId = topic?.category.id || defaultCategory?.id || categories[0]?.id;
+const defaultTagNames = defaultTagSlugs
+  .map((slug) => tags.find((tag) => tag.slug === slug)?.name)
+  .filter(Boolean);
+const tagValue = topic?.tags.map((tag) => tag.name).join(", ") || defaultTagNames.join(", ");
+const selectedTagNames = normalizeTagValue(tagValue);
+const selectedTagNameSet = new Set(selectedTagNames.map((name) => name.toLowerCase()));
 const isPublicTopicForm = !showAdminFields;
 
 const typeOptions: Array<{ value: TopicType; label: string }> = [
@@ -69,7 +80,7 @@ function getCopy(lang: Lang) {
       status: "Status",
       tags: "Tags",
       tagsPlaceholder: "cursor, indie-dev, feedback",
-      tagsHelp: "Separate multiple tags with commas.",
+      tagsHelp: "Select multiple tags, or type a custom tag and press Enter.",
       body: "Body",
       bodyPlaceholder: "Write the body here. Markdown and image upload are supported.",
       pinned: "Pinned",
@@ -87,6 +98,29 @@ function getCopy(lang: Lang) {
       typeProject: "Project",
       typeResource: "Resource",
       typeAnnouncement: "Announcement",
+      aiWriting: "AI writing",
+      aiOutline: "Generate outline",
+      aiContinue: "Continue body",
+      aiTitle: "Generate titles",
+      aiPolish: "Polish content",
+      aiHumanize: "Remove AI tone",
+      aiSummary: "Generate summary",
+      aiRecommend: "Recommend settings",
+      aiLoading: "AI is writing...",
+      aiEmpty: "Add a title or body before using AI.",
+      aiError: "AI request failed. Please try again later.",
+      aiLoginRequired: "Please log in before using AI tools.",
+      aiNotConfigured: "AI model is not configured yet.",
+      aiKeyMissing: "The default AI model is missing an API key.",
+      aiTimeout: "AI request timed out. Try again with a shorter draft.",
+      aiApplyTitle: "Use title",
+      aiApplySummary: "Use summary",
+      aiReplaceBody: "Replace body",
+      aiAppendBody: "Append to body",
+      aiApplyMeta: "Apply settings",
+      aiCopy: "Copy",
+      aiCopied: "Copied",
+      aiClose: "Close",
     };
   }
 
@@ -106,7 +140,7 @@ function getCopy(lang: Lang) {
     status: "状态",
     tags: "标签",
     tagsPlaceholder: "cursor, 独立开发, 求反馈",
-    tagsHelp: "多个标签用逗号分隔。",
+    tagsHelp: "可多选标签，也可以输入自定义标签后回车添加。",
     body: "正文",
     bodyPlaceholder: "直接写正文，支持 Markdown 和图片上传。",
     pinned: "置顶",
@@ -124,13 +158,55 @@ function getCopy(lang: Lang) {
     typeProject: "项目",
     typeResource: "资源",
     typeAnnouncement: "公告",
+    aiWriting: "AI 写作",
+    aiOutline: "生成大纲",
+    aiContinue: "续写正文",
+    aiTitle: "生成标题",
+    aiPolish: "润色内容",
+    aiHumanize: "去 AI 味",
+    aiSummary: "生成摘要",
+    aiRecommend: "推荐分类标签",
+    aiLoading: "AI 正在写...",
+    aiEmpty: "先写一点标题或正文，再使用 AI。",
+    aiError: "AI 请求失败，请稍后再试。",
+    aiLoginRequired: "请先登录后再使用 AI 工具。",
+    aiNotConfigured: "还没有配置 AI 模型。",
+    aiKeyMissing: "默认 AI 模型缺少 API Key。",
+    aiTimeout: "AI 请求超时，可以换一个较短的草稿再试。",
+    aiApplyTitle: "使用标题",
+    aiApplySummary: "使用摘要",
+    aiReplaceBody: "替换正文",
+    aiAppendBody: "追加到正文",
+    aiApplyMeta: "应用设置",
+    aiCopy: "复制",
+    aiCopied: "已复制",
+    aiClose: "关闭",
   };
+}
+
+function normalizeTagValue(value: string) {
+  const seen = new Set<string>();
+  const names: string[] = [];
+
+  for (const item of value.split(/[,，\n]/)) {
+    const name = item.trim();
+    const key = name.toLowerCase();
+
+    if (!name || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    names.push(name);
+  }
+
+  return names;
 }
 ---
 
 {error && <p class="auth-message error">{copy.error}</p>}
 
-<form class:list={["draft-form", "admin-topic-form", isPublicTopicForm && "public-topic-form"]} method="post" action={action}>
+<form class:list={["draft-form", "admin-topic-form", isPublicTopicForm && "public-topic-form"]} method="post" action={action} data-topic-form>
   {showAdminFields ? (
     <>
       <div class="form-grid two">
@@ -177,14 +253,26 @@ function getCopy(lang: Lang) {
         </label>
       </div>
 
-      <label>
-        {copy.tags}
-        <input name="tags" type="text" value={tagValue} placeholder={copy.tagsPlaceholder} list="admin-topic-tags" />
+      <div class="form-field tag-picker-field" data-tag-picker>
+        <span class="form-label">{copy.tags}</span>
+        <input name="tags" type="hidden" value={tagValue} data-tag-picker-value />
+        <div class="tag-picker-selected" data-tag-picker-selected hidden></div>
+        <div class="tag-picker-list" aria-label={copy.tags}>
+          {tags.map((tag) => (
+            <button
+              class:list={["tag-picker-chip", selectedTagNameSet.has(tag.name.toLowerCase()) && "is-selected"]}
+              type="button"
+              aria-pressed={selectedTagNameSet.has(tag.name.toLowerCase()) ? "true" : "false"}
+              data-tag-picker-chip
+              data-tag-name={tag.name}
+            >
+              #{tag.name}
+            </button>
+          ))}
+        </div>
+        <input class="tag-picker-custom" type="text" placeholder={copy.tagsPlaceholder} data-tag-picker-custom />
         <small>{copy.tagsHelp}</small>
-        <datalist id="admin-topic-tags">
-          {tags.map((tag) => <option value={tag.name} />)}
-        </datalist>
-      </label>
+      </div>
 
       <label>
         {copy.body}
@@ -211,6 +299,58 @@ function getCopy(lang: Lang) {
   ) : (
     <>
       <div class="public-topic-editor">
+        <div
+          class="writing-ai-box"
+          data-writing-ai
+          data-loading={copy.aiLoading}
+          data-empty={copy.aiEmpty}
+          data-error={copy.aiError}
+          data-login-required={copy.aiLoginRequired}
+          data-not-configured={copy.aiNotConfigured}
+          data-key-missing={copy.aiKeyMissing}
+          data-timeout={copy.aiTimeout}
+          data-copied={copy.aiCopied}
+          data-copy={copy.aiCopy}
+        >
+          <div class="writing-ai-toolbar">
+            <button
+              class="writing-ai-button"
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              data-writing-ai-button
+            >
+              <span class="writing-ai-mark" aria-hidden="true">AI</span>
+              <span>{copy.aiWriting}</span>
+              <span class="writing-ai-chevron" aria-hidden="true">⌄</span>
+            </button>
+            <div class="writing-ai-menu" role="menu" data-writing-ai-menu hidden>
+              <button type="button" role="menuitem" data-writing-ai-action="outline">{copy.aiOutline}</button>
+              <button type="button" role="menuitem" data-writing-ai-action="continue">{copy.aiContinue}</button>
+              <button type="button" role="menuitem" data-writing-ai-action="polish">{copy.aiPolish}</button>
+              <button type="button" role="menuitem" data-writing-ai-action="humanize">{copy.aiHumanize}</button>
+              <button type="button" role="menuitem" data-writing-ai-action="title">{copy.aiTitle}</button>
+              <button type="button" role="menuitem" data-writing-ai-action="summary">{copy.aiSummary}</button>
+              <button type="button" role="menuitem" data-writing-ai-action="recommend">{copy.aiRecommend}</button>
+            </div>
+          </div>
+          <section class="writing-ai-result" data-writing-ai-result hidden>
+            <header>
+              <h2 data-writing-ai-title>{copy.aiWriting}</h2>
+              <button class="action-button compact" type="button" data-writing-ai-close>{copy.aiClose}</button>
+            </header>
+            <pre data-writing-ai-output></pre>
+            <div class="writing-ai-title-list" data-writing-ai-title-list hidden></div>
+            <div class="writing-ai-result-actions">
+              <button class="action-button compact" type="button" data-writing-ai-apply-summary hidden>{copy.aiApplySummary}</button>
+              <button class="action-button compact" type="button" data-writing-ai-replace-body hidden>{copy.aiReplaceBody}</button>
+              <button class="action-button compact" type="button" data-writing-ai-append-body hidden>{copy.aiAppendBody}</button>
+              <button class="action-button compact" type="button" data-writing-ai-apply-meta hidden>{copy.aiApplyMeta}</button>
+              <button class="action-button compact" type="button" data-writing-ai-copy>{copy.aiCopy}</button>
+            </div>
+          </section>
+        </div>
+
         <label>
           {copy.title}
           <input name="title" type="text" value={topic?.title || ""} placeholder={copy.titlePlaceholder} required />
@@ -243,14 +383,26 @@ function getCopy(lang: Lang) {
               ))}
             </select>
           </label>
-          <label>
-            {copy.tags}
-            <input name="tags" type="text" value={tagValue} placeholder={copy.tagsPlaceholder} list="admin-topic-tags" />
+          <div class="form-field tag-picker-field" data-tag-picker>
+            <span class="form-label">{copy.tags}</span>
+            <input name="tags" type="hidden" value={tagValue} data-tag-picker-value />
+            <div class="tag-picker-selected" data-tag-picker-selected hidden></div>
+            <div class="tag-picker-list" aria-label={copy.tags}>
+              {tags.map((tag) => (
+                <button
+                  class:list={["tag-picker-chip", selectedTagNameSet.has(tag.name.toLowerCase()) && "is-selected"]}
+                  type="button"
+                  aria-pressed={selectedTagNameSet.has(tag.name.toLowerCase()) ? "true" : "false"}
+                  data-tag-picker-chip
+                  data-tag-name={tag.name}
+                >
+                  #{tag.name}
+                </button>
+              ))}
+            </div>
+            <input class="tag-picker-custom" type="text" placeholder={copy.tagsPlaceholder} data-tag-picker-custom />
             <small>{copy.tagsHelp}</small>
-            <datalist id="admin-topic-tags">
-              {tags.map((tag) => <option value={tag.name} />)}
-            </datalist>
-          </label>
+          </div>
           <details class="public-topic-optional">
             <summary>
               <span>{copy.summary}</span>
@@ -269,3 +421,374 @@ function getCopy(lang: Lang) {
     </>
   )}
 </form>
+
+<MentionAutocomplete lang={lang} />
+
+<script is:inline>
+  (() => {
+    const splitTags = (value) => value
+      .split(/[,，\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const normalize = (value) => value.trim().toLowerCase();
+
+    document.querySelectorAll("[data-tag-picker]").forEach((picker) => {
+      const valueInput = picker.querySelector("[data-tag-picker-value]");
+      const selectedBox = picker.querySelector("[data-tag-picker-selected]");
+      const customInput = picker.querySelector("[data-tag-picker-custom]");
+      const chips = Array.from(picker.querySelectorAll("[data-tag-picker-chip]"));
+
+      if (!(valueInput instanceof HTMLInputElement)) {
+        return;
+      }
+
+      let selected = [];
+
+      const addTag = (value) => {
+        const tag = value.trim();
+
+        if (!tag) {
+          return;
+        }
+
+        const key = normalize(tag);
+
+        if (selected.some((item) => normalize(item) === key)) {
+          return;
+        }
+
+        selected.push(tag);
+      };
+
+      const removeTag = (value) => {
+        const key = normalize(value);
+        selected = selected.filter((item) => normalize(item) !== key);
+      };
+
+      const renderSelected = () => {
+        if (!selectedBox) {
+          return;
+        }
+
+        selectedBox.replaceChildren();
+        selectedBox.hidden = selected.length === 0;
+
+        selected.forEach((tag) => {
+          const button = document.createElement("button");
+          button.className = "tag-picker-selected-chip";
+          button.type = "button";
+          button.textContent = `#${tag} ×`;
+          button.addEventListener("click", () => {
+            removeTag(tag);
+            sync();
+          });
+          selectedBox.append(button);
+        });
+      };
+
+      const sync = () => {
+        const selectedKeys = new Set(selected.map(normalize));
+        valueInput.value = selected.join(", ");
+
+        chips.forEach((chip) => {
+          const active = selectedKeys.has(normalize(chip.dataset.tagName || ""));
+          chip.classList.toggle("is-selected", active);
+          chip.setAttribute("aria-pressed", String(active));
+        });
+
+        renderSelected();
+      };
+
+      selected = [];
+      splitTags(valueInput.value).forEach(addTag);
+      sync();
+
+      chips.forEach((chip) => {
+        chip.addEventListener("click", () => {
+          const tag = chip.dataset.tagName || "";
+          const active = selected.some((item) => normalize(item) === normalize(tag));
+
+          if (active) {
+            removeTag(tag);
+          } else {
+            addTag(tag);
+          }
+
+          sync();
+        });
+      });
+
+      if (customInput instanceof HTMLInputElement) {
+        const commitCustom = () => {
+          splitTags(customInput.value).forEach(addTag);
+          customInput.value = "";
+          sync();
+        };
+
+        customInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === "," || event.key === "，") {
+            event.preventDefault();
+            commitCustom();
+          }
+        });
+
+        customInput.addEventListener("blur", commitCustom);
+      }
+
+      picker.addEventListener("whyisee:set-tags", (event) => {
+        selected = [];
+        const tags = Array.isArray(event.detail?.tags) ? event.detail.tags : [];
+        tags.forEach(addTag);
+        sync();
+      });
+    });
+  })();
+
+  (() => {
+    const root = document.querySelector("[data-writing-ai]");
+
+    if (!root) {
+      return;
+    }
+
+    const form = root.closest("[data-topic-form]");
+    const button = root.querySelector("[data-writing-ai-button]");
+    const menu = root.querySelector("[data-writing-ai-menu]");
+    const result = root.querySelector("[data-writing-ai-result]");
+    const resultTitle = root.querySelector("[data-writing-ai-title]");
+    const output = root.querySelector("[data-writing-ai-output]");
+    const titleList = root.querySelector("[data-writing-ai-title-list]");
+    const closeButton = root.querySelector("[data-writing-ai-close]");
+    const copyButton = root.querySelector("[data-writing-ai-copy]");
+    const applySummaryButton = root.querySelector("[data-writing-ai-apply-summary]");
+    const replaceBodyButton = root.querySelector("[data-writing-ai-replace-body]");
+    const appendBodyButton = root.querySelector("[data-writing-ai-append-body]");
+    const applyMetaButton = root.querySelector("[data-writing-ai-apply-meta]");
+
+    if (!form || !button || !menu || !result || !resultTitle || !output || !titleList || !closeButton || !copyButton) {
+      return;
+    }
+
+    const titleInput = form.querySelector("input[name='title']");
+    const bodyInput = form.querySelector("textarea[name='contentMarkdown']");
+    const summaryInput = form.querySelector("textarea[name='summary']");
+    const categorySelect = form.querySelector("select[name='categoryId']");
+    const typeSelect = form.querySelector("select[name='type']");
+    const tagsInput = form.querySelector("input[name='tags']");
+    const tagPicker = form.querySelector("[data-tag-picker]");
+    const actions = Array.from(menu.querySelectorAll("[data-writing-ai-action]"));
+    let activeController;
+    let latestData = {};
+
+    const setMenuOpen = (open) => {
+      menu.hidden = !open;
+      button.setAttribute("aria-expanded", String(open));
+      root.dataset.open = open ? "true" : "false";
+    };
+
+    const readDraft = () => ({
+      title: titleInput?.value || "",
+      contentMarkdown: bodyInput?.value || "",
+      summary: summaryInput?.value || "",
+      categoryId: Number(categorySelect?.value || 0),
+      type: typeSelect?.value || "discussion",
+      tags: tagsInput?.value || "",
+    });
+
+    const setActionsDisabled = (disabled) => {
+      actions.forEach((item) => {
+        item.disabled = disabled;
+      });
+    };
+
+    const showResult = (title, state, text) => {
+      result.hidden = false;
+      result.dataset.state = state;
+      resultTitle.textContent = title;
+      output.textContent = text;
+      titleList.hidden = true;
+      titleList.replaceChildren();
+      [applySummaryButton, replaceBodyButton, appendBodyButton, applyMetaButton].forEach((item) => {
+        if (item) item.hidden = true;
+      });
+      result.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    };
+
+    const showError = (title, code) => {
+      const message = errorMessage(code);
+      showResult(title, "error", message);
+    };
+
+    const showLoading = (title) => {
+      showResult(title, "loading", root.dataset.loading || "AI is writing...");
+      setActionsDisabled(true);
+    };
+
+    const renderResult = (title, data) => {
+      latestData = data || {};
+      showResult(title, "ready", data.outputMarkdown || "");
+
+      if (Array.isArray(data.titles) && data.titles.length) {
+        titleList.hidden = false;
+        data.titles.forEach((item) => {
+          const option = document.createElement("button");
+          option.className = "writing-ai-title-option";
+          option.type = "button";
+          option.textContent = item;
+          option.addEventListener("click", () => {
+            if (titleInput) {
+              titleInput.value = item;
+              titleInput.focus();
+            }
+          });
+          titleList.append(option);
+        });
+      }
+
+      if (data.summary && applySummaryButton) {
+        applySummaryButton.hidden = false;
+      }
+
+      if (data.body && replaceBodyButton && appendBodyButton) {
+        replaceBodyButton.hidden = false;
+        appendBodyButton.hidden = false;
+      }
+
+      if ((data.categoryId || data.type || Array.isArray(data.tags)) && applyMetaButton) {
+        applyMetaButton.hidden = false;
+      }
+    };
+
+    const runAction = async (action, title) => {
+      const draft = readDraft();
+
+      if (!draft.title.trim() && !draft.contentMarkdown.trim()) {
+        showResult(title, "error", root.dataset.empty || "Add a title or body before using AI.");
+        return;
+      }
+
+      activeController?.abort();
+      activeController = new AbortController();
+      showLoading(title);
+
+      try {
+        const response = await fetch("/api/ai/writing", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action, ...draft }),
+          signal: activeController.signal,
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          showError(title, data.error);
+          return;
+        }
+
+        renderResult(title, data);
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          showError(title, "ai_failed");
+        }
+      } finally {
+        setActionsDisabled(false);
+      }
+    };
+
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setMenuOpen(menu.hidden);
+    });
+
+    actions.forEach((actionButton) => {
+      actionButton.addEventListener("click", () => {
+        setMenuOpen(false);
+        runAction(actionButton.dataset.writingAiAction || "", actionButton.textContent?.trim() || "AI");
+      });
+    });
+
+    closeButton.addEventListener("click", () => {
+      result.hidden = true;
+    });
+
+    copyButton.addEventListener("click", async () => {
+      const text = output.textContent || "";
+
+      if (!text) {
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(text);
+        copyButton.textContent = root.dataset.copied || "Copied";
+        window.setTimeout(() => {
+          copyButton.textContent = root.dataset.copy || "Copy";
+        }, 1400);
+      } catch {
+        copyButton.textContent = root.dataset.copy || "Copy";
+      }
+    });
+
+    applySummaryButton?.addEventListener("click", () => {
+      if (summaryInput && latestData.summary) {
+        summaryInput.value = latestData.summary;
+        const details = summaryInput.closest("details");
+        if (details) details.open = true;
+        summaryInput.focus();
+      }
+    });
+
+    replaceBodyButton?.addEventListener("click", () => {
+      if (bodyInput && latestData.body) {
+        bodyInput.value = latestData.body;
+        bodyInput.focus();
+      }
+    });
+
+    appendBodyButton?.addEventListener("click", () => {
+      if (bodyInput && latestData.body) {
+        bodyInput.value = `${bodyInput.value.trim()}\n\n${latestData.body}`.trim();
+        bodyInput.focus();
+      }
+    });
+
+    applyMetaButton?.addEventListener("click", () => {
+      if (categorySelect && latestData.categoryId) {
+        categorySelect.value = String(latestData.categoryId);
+      }
+
+      if (typeSelect && latestData.type) {
+        typeSelect.value = latestData.type;
+      }
+
+      if (tagPicker && Array.isArray(latestData.tags)) {
+        tagPicker.dispatchEvent(new CustomEvent("whyisee:set-tags", {
+          detail: { tags: latestData.tags },
+        }));
+      }
+    });
+
+    document.addEventListener("click", (event) => {
+      if (event.target instanceof Node && !root.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    });
+
+    function errorMessage(code) {
+      if (code === "login_required") return root.dataset.loginRequired || "";
+      if (code === "ai_not_configured") return root.dataset.notConfigured || "";
+      if (code === "ai_key_missing") return root.dataset.keyMissing || "";
+      if (code === "ai_timeout") return root.dataset.timeout || "";
+      if (code === "empty_draft") return root.dataset.empty || "";
+      return root.dataset.error || "";
+    }
+  })();
+</script>

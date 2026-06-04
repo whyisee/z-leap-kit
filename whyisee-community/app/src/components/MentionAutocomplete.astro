@@ -1,0 +1,369 @@
+---
+import type { Lang } from "@lib/i18n";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const copy = lang === "en"
+  ? {
+      bot: "Bot",
+      empty: "No users found",
+    }
+  : {
+      bot: "机器人",
+      empty: "没有找到用户",
+    };
+---
+
+<script define:vars={{ copy }} is:inline>
+  (() => {
+    if (window.__whyiseeMentionAutocomplete === "1") {
+      return;
+    }
+
+    window.__whyiseeMentionAutocomplete = "1";
+
+    const menu = document.createElement("div");
+    menu.className = "mention-autocomplete";
+    menu.hidden = true;
+    document.body.append(menu);
+
+    let activeTextarea = null;
+    let activeTrigger = null;
+    let activeAnchor = null;
+    let insertMode = "replace";
+    let items = [];
+    let selectedIndex = 0;
+    let requestId = 0;
+    let defaultItems = null;
+    let defaultItemsPromise = null;
+
+    const bindTextareas = () => {
+      document.querySelectorAll('textarea[name="contentMarkdown"]').forEach((textarea) => {
+        if (textarea.dataset.mentionAutocomplete === "1") {
+          return;
+        }
+
+        textarea.dataset.mentionAutocomplete = "1";
+        textarea.setAttribute("autocomplete", "off");
+        textarea.addEventListener("input", () => refresh(textarea));
+        textarea.addEventListener("click", () => refresh(textarea));
+        textarea.addEventListener("keyup", (event) => {
+          if (!["ArrowUp", "ArrowDown", "Enter", "Escape"].includes(event.key)) {
+            refresh(textarea);
+          }
+        });
+        textarea.addEventListener("keydown", (event) => {
+          if (menu.hidden || textarea !== activeTextarea) {
+            return;
+          }
+
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            selectedIndex = items.length ? (selectedIndex + 1) % items.length : 0;
+            render();
+          }
+
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            selectedIndex = items.length ? (selectedIndex - 1 + items.length) % items.length : 0;
+            render();
+          }
+
+          if (event.key === "Enter" && items[selectedIndex]) {
+            event.preventDefault();
+            insertMention(items[selectedIndex]);
+          }
+
+          if (event.key === "Escape") {
+            event.preventDefault();
+            hide();
+          }
+        });
+      });
+    };
+
+    const refresh = async (textarea) => {
+      const trigger = readTrigger(textarea);
+
+      if (!trigger) {
+        hide();
+        return;
+      }
+
+      activeTextarea = textarea;
+      activeTrigger = trigger;
+      activeAnchor = null;
+      insertMode = "replace";
+      const currentRequest = ++requestId;
+
+      if (!trigger.query && defaultItems) {
+        items = defaultItems;
+        selectedIndex = 0;
+        render();
+        return;
+      }
+
+      try {
+        const nextItems = await loadItems(trigger.query);
+
+        if (currentRequest !== requestId) {
+          return;
+        }
+
+        items = nextItems;
+        selectedIndex = 0;
+        render();
+      } catch {
+        items = [];
+        render();
+      }
+    };
+
+    const loadItems = async (query) => {
+      if (!query) {
+        defaultItemsPromise ||= fetchItems("");
+        defaultItems = await defaultItemsPromise;
+        return defaultItems;
+      }
+
+      return fetchItems(query);
+    };
+
+    const fetchItems = async (query) => {
+      const response = await fetch(`/api/mentions/search?q=${encodeURIComponent(query)}`);
+      const payload = await response.json().catch(() => ({}));
+      return Array.isArray(payload.users) ? payload.users : [];
+    };
+
+    const readTrigger = (textarea) => {
+      const position = textarea.selectionStart ?? textarea.value.length;
+      const before = textarea.value.slice(0, position);
+      const match = before.match(/(^|[\s([{])@([a-zA-Z0-9_-]{0,32})$/);
+
+      if (!match) {
+        return null;
+      }
+
+      return {
+        query: match[2],
+        start: position - match[2].length - 1,
+        end: position,
+      };
+    };
+
+    const render = () => {
+      menu.replaceChildren();
+      menu.hidden = false;
+
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.className = "mention-autocomplete-empty";
+        empty.textContent = copy.empty;
+        menu.append(empty);
+        positionMenu(activeAnchor || activeTextarea);
+        return;
+      }
+
+      items.forEach((item, index) => {
+        const button = document.createElement("button");
+        button.className = "mention-autocomplete-option";
+        button.type = "button";
+        button.dataset.active = index === selectedIndex ? "true" : "false";
+        button.innerHTML = `
+          <span class="mention-autocomplete-name">
+            <strong>@${escapeHtml(item.username)}</strong>
+            <span>${escapeHtml(item.displayName || item.username)}</span>
+          </span>
+          ${item.isBot ? `<span class="mention-autocomplete-badge">${copy.bot}</span>` : ""}
+        `;
+        let chosen = false;
+        const choose = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          if (chosen) {
+            return;
+          }
+
+          chosen = true;
+          insertMention(item);
+        };
+        button.addEventListener("pointerdown", choose);
+        button.addEventListener("click", choose);
+        menu.append(button);
+      });
+
+      positionMenu(activeAnchor || activeTextarea);
+    };
+
+    const insertMention = (item) => {
+      if (!activeTextarea) {
+        return;
+      }
+
+      const insertion = `@${item.username} `;
+      let nextPosition = 0;
+
+      if (insertMode === "append" || !activeTrigger) {
+        const hasFocus = document.activeElement === activeTextarea;
+        const start = hasFocus ? activeTextarea.selectionStart ?? activeTextarea.value.length : activeTextarea.value.length;
+        const end = hasFocus ? activeTextarea.selectionEnd ?? start : start;
+        const before = activeTextarea.value.slice(0, start);
+        const after = activeTextarea.value.slice(end);
+        const prefix = before && !/\s$/.test(before) ? " " : "";
+        const value = `${prefix}${insertion}`;
+
+        activeTextarea.value = `${before}${value}${after}`;
+        nextPosition = before.length + value.length;
+      } else {
+        const before = activeTextarea.value.slice(0, activeTrigger.start);
+        const after = activeTextarea.value.slice(activeTrigger.end);
+
+        activeTextarea.value = `${before}${insertion}${after}`;
+        nextPosition = before.length + insertion.length;
+      }
+
+      activeTextarea.focus({ preventScroll: true });
+      activeTextarea.selectionStart = nextPosition;
+      activeTextarea.selectionEnd = nextPosition;
+      activeTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+      window.dispatchEvent(new CustomEvent("whyisee:mention-inserted", {
+        detail: {
+          username: item.username,
+        },
+      }));
+      hide();
+    };
+
+    const positionMenu = (target) => {
+      if (!target) {
+        return;
+      }
+
+      const rect = target.getBoundingClientRect();
+      const width = Math.min(280, window.innerWidth - 24);
+      const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
+      const menuHeight = Math.min(Math.max(menu.offsetHeight || 180, 120), 246);
+      const below = rect.bottom + 8;
+      const above = rect.top - menuHeight - 8;
+      const top = below + menuHeight > window.innerHeight - 12 && above >= 12
+        ? above
+        : Math.min(below, window.innerHeight - menuHeight - 12);
+
+      menu.style.width = `${width}px`;
+      menu.style.left = `${left}px`;
+      menu.style.top = `${Math.max(12, top)}px`;
+    };
+
+    const hide = () => {
+      menu.hidden = true;
+      activeTextarea = null;
+      activeTrigger = null;
+      activeAnchor = null;
+      insertMode = "replace";
+      items = [];
+      selectedIndex = 0;
+    };
+
+    const escapeHtml = (value) => String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+    document.addEventListener("click", (event) => {
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+
+      if (event.target !== activeTextarea && !menu.contains(event.target) && !event.target.closest("[data-reply-composer]")) {
+        hide();
+      }
+    });
+
+    bindTextareas();
+    document.addEventListener("DOMContentLoaded", bindTextareas);
+    document.addEventListener("focusin", (event) => {
+      if (event.target instanceof HTMLTextAreaElement && event.target.name === "contentMarkdown") {
+        bindTextareas();
+      }
+    });
+
+    window.addEventListener("whyisee:mention-open", (event) => {
+      bindTextareas();
+      const textarea = event.detail?.textarea;
+
+      if (!(textarea instanceof HTMLTextAreaElement)) {
+        return;
+      }
+
+      if (event.detail?.mode === "append") {
+        const anchor = event.detail?.anchor;
+        const currentRequest = ++requestId;
+
+        activeTextarea = textarea;
+        activeTrigger = null;
+        activeAnchor = anchor instanceof Element ? anchor : textarea;
+        insertMode = "append";
+        selectedIndex = 0;
+
+        if (defaultItems) {
+          items = defaultItems;
+          render();
+          return;
+        }
+
+        void loadItems("")
+          .then((nextItems) => {
+            if (currentRequest !== requestId) {
+              return;
+            }
+
+            items = nextItems;
+            selectedIndex = 0;
+            render();
+          })
+          .catch(() => {
+            if (currentRequest !== requestId) {
+              return;
+            }
+
+            items = [];
+            render();
+          });
+        return;
+      }
+
+      activeTextarea = textarea;
+      activeTrigger = readTrigger(textarea);
+      activeAnchor = null;
+      insertMode = "replace";
+
+      if (!activeTrigger) {
+        return;
+      }
+
+      void refresh(textarea);
+    });
+
+    const warmDefaultItems = () => {
+      defaultItemsPromise ||= fetchItems("");
+      defaultItemsPromise
+        .then((nextItems) => {
+          defaultItems = nextItems;
+        })
+        .catch(() => {
+          defaultItems = [];
+        });
+    };
+
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(warmDefaultItems);
+    } else {
+      window.setTimeout(warmDefaultItems, 400);
+    }
+  })();
+</script>

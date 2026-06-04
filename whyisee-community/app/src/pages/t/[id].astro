@@ -1,0 +1,1244 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import LeftNav from "@components/LeftNav.astro";
+import MarkdownImageUpload from "@components/MarkdownImageUpload.astro";
+import MarkdownContent from "@components/MarkdownContent.astro";
+import MentionAutocomplete from "@components/MentionAutocomplete.astro";
+import { getSessionFromAstro } from "@lib/auth";
+import { categoryPath, tagPath, topicPath } from "@lib/routes";
+import { formatDate, formatRelative } from "@lib/format";
+import { getLangFromAstro, t } from "@lib/i18n";
+import { enhanceMarkdownHtml } from "@lib/markdown";
+import { listCategories, listTags } from "@server/services/categories";
+import { countTargetLikes, getTopicInteractionState, userLikedTarget } from "@server/services/interactions";
+import { listPostsForTopic } from "@server/services/posts";
+import { getTopicById, listRelatedTopics } from "@server/services/topics";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+const id = Number(Astro.params.id || 0);
+const topic = await getTopicById(id, lang);
+
+const topicUrl = `${Astro.url.origin}${Astro.url.pathname}`;
+
+if (!topic) {
+  Astro.response.status = 404;
+}
+
+const related = topic ? await listRelatedTopics(topic, 4, lang) : [];
+const posts = topic ? await listPostsForTopic(topic.id, session?.userId) : [];
+const topicInteraction = topic ? await getTopicInteractionState(topic.id, session?.userId) : undefined;
+const postInteractionEntries = await Promise.all(
+  posts.map(async (post) => [
+    post.id,
+    {
+      likeCount: await countTargetLikes("post", post.id),
+      liked: await userLikedTarget("post", post.id, session?.userId),
+    },
+  ] as const),
+);
+const postInteractions = new Map(postInteractionEntries);
+const avatarInitial = (value: string | undefined, fallback = "W") => {
+  const initial = value?.trim().slice(0, 1);
+  return initial ? initial.toUpperCase() : fallback;
+};
+const currentUserInitial = avatarInitial(session?.displayName || session?.username);
+const allReplyItems = posts.map((post) => {
+  const interaction = postInteractions.get(post.id);
+  const createdAtMs = Date.parse(post.createdAt);
+
+  return {
+    post,
+    authorInitial: avatarInitial(post.author.displayName || post.author.username),
+    contentHtml: enhanceMarkdownHtml(post.contentHtml),
+    likeCount: interaction?.likeCount ?? 0,
+    liked: interaction?.liked ?? false,
+    createdAtMs: Number.isNaN(createdAtMs) ? 0 : createdAtMs,
+  };
+});
+type ReplyItem = (typeof allReplyItems)[number];
+const postIds = new Set(posts.map((post) => post.id));
+const childRepliesByParentId = new Map<number, ReplyItem[]>();
+const replyItems: ReplyItem[] = [];
+
+for (const item of allReplyItems) {
+  const parentPostId = item.post.parentPostId;
+
+  if (parentPostId && postIds.has(parentPostId)) {
+    const children = childRepliesByParentId.get(parentPostId) || [];
+    children.push(item);
+    childRepliesByParentId.set(parentPostId, children);
+  } else if (!parentPostId) {
+    replyItems.push(item);
+  }
+}
+
+replyItems.sort((a, b) => b.likeCount - a.likeCount || b.createdAtMs - a.createdAtMs || b.post.id - a.post.id);
+childRepliesByParentId.forEach((children) => {
+  children.sort((a, b) => b.likeCount - a.likeCount || b.createdAtMs - a.createdAtMs || b.post.id - a.post.id);
+});
+const categories = await listCategories(lang);
+const tags = await listTags(lang);
+const replyError = Astro.url.searchParams.get("replyError") === "1";
+const copy = lang === "en"
+  ? {
+      comments: "Comments",
+      replies: "Replies",
+      reply: "Reply",
+      replyPlaceholder: "Add a thoughtful comment...",
+      submitReply: "Post reply",
+      loginToReply: "Log in to reply",
+      noReplies: "No replies yet. Start the conversation.",
+      replyError: "Reply failed. Please check the content and try again.",
+      sortHot: "Hot",
+      sortLatest: "Latest",
+      uploadImage: "Upload image",
+      mentionUser: "Mention user or bot",
+      emoji: "Emoji",
+      replyToComment: "Reply",
+      cancelReply: "Cancel",
+      inlineReplyPlaceholder: "Reply to this comment...",
+      showNestedReplies: "View replies",
+      hideNestedReplies: "Hide replies",
+      moreActions: "More actions",
+      copyCommentLink: "Copy comment link",
+      copiedCommentLink: "Copied",
+      blockUser: "Block user",
+      editReply: "Edit",
+      like: "Like",
+      liked: "Liked",
+      bookmark: "Bookmark",
+      bookmarked: "Bookmarked",
+      follow: "Follow",
+      following: "Following",
+      report: "Report",
+      aiButton: "AI",
+      aiMenuLabel: "AI tools",
+      aiLoading: "AI is thinking...",
+      aiError: "AI request failed. Please try again later.",
+      aiLoginRequired: "Please log in before using AI tools.",
+      aiNotConfigured: "AI model is not configured yet. Ask an admin to configure it in AI Settings.",
+      aiKeyMissing: "The default AI model is missing an API key.",
+      aiTimeout: "AI request timed out. Try again with a shorter topic.",
+      aiCopy: "Copy",
+      aiCopied: "Copied",
+      aiClose: "Close",
+      aiResultMeta: "Generated by",
+    }
+  : {
+      comments: "评论",
+      replies: "回复",
+      reply: "回复",
+      replyPlaceholder: "你渴望拥有力量吗？评论让力量更强大",
+      submitReply: "发布",
+      loginToReply: "登录后回复",
+      noReplies: "还没有回复，来开个头。",
+      replyError: "回复失败，请检查内容后重试。",
+      sortHot: "最热",
+      sortLatest: "最新",
+      uploadImage: "上传图片",
+      mentionUser: "@ 用户或机器人",
+      emoji: "表情包",
+      replyToComment: "回复",
+      cancelReply: "取消",
+      inlineReplyPlaceholder: "回复这条评论...",
+      showNestedReplies: "查看回复",
+      hideNestedReplies: "收起回复",
+      moreActions: "更多操作",
+      copyCommentLink: "复制评论链接",
+      copiedCommentLink: "已复制",
+      blockUser: "加入黑名单",
+      editReply: "编辑",
+      like: "点赞",
+      liked: "已点赞",
+      bookmark: "收藏",
+      bookmarked: "已收藏",
+      follow: "关注",
+      following: "已关注",
+      report: "举报",
+      aiButton: "AI",
+      aiMenuLabel: "AI 工具",
+      aiLoading: "AI 正在思考...",
+      aiError: "AI 请求失败，请稍后再试。",
+      aiLoginRequired: "请先登录后再使用 AI 工具。",
+      aiNotConfigured: "还没有配置 AI 模型，请先到 AI 配置里设置默认模型。",
+      aiKeyMissing: "默认 AI 模型缺少 API Key。",
+      aiTimeout: "AI 请求超时，可以换一个较短的话题再试。",
+      aiCopy: "复制",
+      aiCopied: "已复制",
+      aiClose: "关闭",
+      aiResultMeta: "生成模型",
+    };
+const aiActions = lang === "en"
+  ? [
+      ["summarize", "Summarize", "Key points and context"],
+      ["draft-reply", "Draft reply", "A thoughtful reply outline"],
+      ["translate", "Translate", "Chinese and English reading version"],
+      ["extract-actions", "Extract actions", "Tasks, risks, and next steps"],
+      ["find-related", "Find related", "Similar topics and tags"],
+      ["quality-check", "Quality check", "Title, category, and content review"],
+    ]
+  : [
+      ["summarize", "总结话题", "要点、背景和结论"],
+      ["draft-reply", "生成回复", "给出有信息量的回复草稿"],
+      ["translate", "双语翻译", "中文和英文阅读版本"],
+      ["extract-actions", "提炼行动项", "任务、风险和下一步"],
+      ["find-related", "查找相关", "相似话题和标签建议"],
+      ["quality-check", "质量检查", "标题、分类和内容建议"],
+    ];
+---
+
+<BaseLayout title={`${topic?.title ?? t(lang, "topic.notFound")} - whyisee.xyz`} description={topic?.summary ?? t(lang, "topic.notFound")}>
+  {topic ? (
+    <section class="page-grid topic-layout">
+      <LeftNav categories={categories} tags={tags} lang={lang} activeCategorySlug={topic.category.slug} />
+
+      <div class="content-column">
+        <article class="topic-page">
+          <header class="topic-hero">
+            <div class="topic-hero-bar">
+              <div class="topic-meta">
+                <a class="category-pill" href={categoryPath(topic.category.slug)} style={`--pill-color: ${topic.category.color}`}>
+                  {topic.category.name}
+                </a>
+                <span>{formatDate(topic.publishedAt, lang)}</span>
+                <span>{topic.viewCount} {t(lang, "topic.views")}</span>
+              </div>
+
+              <div class="topic-ai-menu" data-topic-ai-menu data-topic-id={topic.id}>
+                <button
+                  class="ai-tool-button"
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                  aria-label={copy.aiMenuLabel}
+                  data-topic-ai-button
+                >
+                  <span class="ai-tool-mark" aria-hidden="true">AI</span>
+                  <span>{copy.aiButton}</span>
+                  <span class="ai-tool-chevron" aria-hidden="true">⌄</span>
+                </button>
+                <div class="topic-ai-panel" role="menu" aria-label={copy.aiMenuLabel} data-topic-ai-panel hidden>
+                  {aiActions.map(([id, label, description]) => (
+                    <button class="topic-ai-option" type="button" role="menuitem" data-ai-action={id}>
+                      <strong>{label}</strong>
+                      <span>{description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <h1>{topic.title}</h1>
+            <p>{topic.summary}</p>
+            <div class="tag-row">
+              {topic.tags.map((tag) => <a href={tagPath(tag.slug)}>#{tag.name}</a>)}
+            </div>
+            <div class="topic-action-strip">
+              <form method="post" action="/api/interactions/reaction">
+                <input type="hidden" name="targetType" value="topic" />
+                <input type="hidden" name="targetId" value={topic.id} />
+                <input type="hidden" name="redirect" value={Astro.url.pathname} />
+                <button class:list={["action-button", topicInteraction?.liked && "is-active"]} type="submit">
+                  {topicInteraction?.liked ? copy.liked : copy.like}
+                  <span>{topicInteraction?.likeCount ?? 0}</span>
+                </button>
+              </form>
+              <form method="post" action="/api/interactions/bookmark">
+                <input type="hidden" name="topicId" value={topic.id} />
+                <input type="hidden" name="redirect" value={Astro.url.pathname} />
+                <button class:list={["action-button", topicInteraction?.bookmarked && "is-active"]} type="submit">
+                  {topicInteraction?.bookmarked ? copy.bookmarked : copy.bookmark}
+                </button>
+              </form>
+              <form method="post" action="/api/interactions/follow">
+                <input type="hidden" name="targetType" value="topic" />
+                <input type="hidden" name="targetId" value={topic.id} />
+                <input type="hidden" name="redirect" value={Astro.url.pathname} />
+                <button class:list={["action-button", topicInteraction?.followed && "is-active"]} type="submit">
+                  {topicInteraction?.followed ? copy.following : copy.follow}
+                </button>
+              </form>
+              <a class="action-button" href={`/report?targetType=topic&targetId=${topic.id}&redirect=${encodeURIComponent(Astro.url.pathname)}`}>{copy.report}</a>
+            </div>
+          </header>
+
+          <section
+            class="topic-ai-result"
+            data-topic-ai-result
+            data-loading={copy.aiLoading}
+            data-error={copy.aiError}
+            data-login-required={copy.aiLoginRequired}
+            data-not-configured={copy.aiNotConfigured}
+            data-key-missing={copy.aiKeyMissing}
+            data-timeout={copy.aiTimeout}
+            data-copy={copy.aiCopy}
+            data-copied={copy.aiCopied}
+            data-result-meta={copy.aiResultMeta}
+            hidden
+          >
+            <header class="topic-ai-result-head">
+              <div>
+                <p class="eyebrow">{copy.aiButton}</p>
+                <h2 data-topic-ai-title>{copy.aiMenuLabel}</h2>
+              </div>
+              <div class="topic-ai-result-actions">
+                <button class="action-button compact" type="button" data-topic-ai-copy>{copy.aiCopy}</button>
+                <button class="action-button compact" type="button" data-topic-ai-close>{copy.aiClose}</button>
+              </div>
+            </header>
+            <pre data-topic-ai-output></pre>
+            <footer data-topic-ai-meta hidden></footer>
+          </section>
+
+          <MarkdownContent html={topic.contentHtml} />
+
+          <section class="reply-section" aria-labelledby="reply-title">
+            <div class="reply-head">
+              <div class="reply-title-row">
+                <h2 id="reply-title">{copy.comments}</h2>
+                <span class="reply-count">{posts.length}</span>
+              </div>
+              <div class="reply-sort" role="group" aria-label={copy.comments}>
+                <button class="reply-sort-button is-active" type="button" data-reply-sort="hot" aria-pressed="true">
+                  {copy.sortHot}
+                </button>
+                <span aria-hidden="true">|</span>
+                <button class="reply-sort-button" type="button" data-reply-sort="latest" aria-pressed="false">
+                  {copy.sortLatest}
+                </button>
+              </div>
+            </div>
+
+            {replyError && <p class="auth-message error">{copy.replyError}</p>}
+
+            {session ? (
+              <form class="reply-form reply-composer" method="post" action={`/api/topics/${topic.id}/posts`} data-reply-composer>
+                <input type="hidden" name="redirect" value={Astro.url.pathname} />
+                <div class="reply-avatar reply-composer-avatar" aria-hidden="true">{currentUserInitial}</div>
+                <div class="reply-composer-main">
+                  <label class="reply-composer-field">
+                    <span class="sr-only">{copy.reply}</span>
+                    <div class="reply-composer-input-shell">
+                      <div class="reply-mention-backdrop" aria-hidden="true" data-reply-mention-backdrop></div>
+                      <textarea
+                        name="contentMarkdown"
+                        rows="1"
+                        placeholder={copy.replyPlaceholder}
+                        required
+                        data-reply-composer-input
+                      ></textarea>
+                    </div>
+                  </label>
+                  <div class="reply-composer-tools" data-reply-composer-tools>
+                    <div class="reply-composer-tool-group">
+                      <MarkdownImageUpload lang={lang} variant="icon" />
+                      <button class="reply-tool-button" type="button" aria-label={copy.mentionUser} title={copy.mentionUser} data-reply-insert-mention>
+                        <span aria-hidden="true">@</span>
+                      </button>
+                      <div class="reply-emoji-tool">
+                        <button
+                          class="reply-tool-button"
+                          type="button"
+                          aria-label={copy.emoji}
+                          title={copy.emoji}
+                          aria-expanded="false"
+                          aria-controls="reply-emoji-panel"
+                          data-reply-emoji-button
+                        >
+                          <span class="reply-tool-smile-icon" aria-hidden="true"></span>
+                        </button>
+                        <div class="reply-emoji-panel" id="reply-emoji-panel" data-reply-emoji-panel hidden>
+                          {["🙂", "😂", "👍", "🎉", "🤔", "😭", "❤️", "🔥"].map((emoji) => (
+                            <button class="reply-emoji-option" type="button" data-reply-emoji={emoji} aria-label={emoji}>
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <MentionAutocomplete lang={lang} />
+                    </div>
+                    <button class="button primary reply-submit-button" type="submit">{copy.submitReply}</button>
+                  </div>
+                </div>
+              </form>
+            ) : (
+              <a class="button primary reply-login-button" href={`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`}>{copy.loginToReply}</a>
+            )}
+
+            {posts.length > 0 ? (
+              <div class="reply-list" data-reply-list>
+                {replyItems.map(({ post, authorInitial, contentHtml, likeCount, liked, createdAtMs }, index) => {
+                  const childReplies = childRepliesByParentId.get(post.id) || [];
+                  const featuredChildReply = childReplies[0];
+                  const remainingChildReplies = childReplies.slice(1);
+                  const childListId = `post-${post.id}-replies`;
+                  const openLabel = lang === "en"
+                    ? `${childReplies.length} replies, view all`
+                    : `共${childReplies.length}条回复，点击查看`;
+
+                  return (
+                    <article
+                      class="reply-card"
+                      id={`post-${post.id}`}
+                      data-reply-card
+                      data-reply-created={createdAtMs}
+                      data-reply-likes={likeCount}
+                      data-reply-id={post.id}
+                    >
+                      <div class="reply-avatar" aria-hidden="true">{authorInitial}</div>
+                      <div class="reply-card-main">
+                        <header>
+                          <a class="reply-author" href={`/u/${post.author.username}`}>{post.author.displayName}</a>
+                          <span class="reply-floor">#{index + 1}</span>
+                        </header>
+                        <div class="reply-content" set:html={contentHtml} />
+                        <footer class="reply-actions">
+                          <span class="reply-action-time">{formatRelative(post.createdAt, lang)}</span>
+                          <form method="post" action="/api/interactions/reaction">
+                            <input type="hidden" name="targetType" value="post" />
+                            <input type="hidden" name="targetId" value={post.id} />
+                            <input type="hidden" name="redirect" value={`${Astro.url.pathname}#post-${post.id}`} />
+                            <button class:list={["action-button compact", liked && "is-active"]} type="submit">
+                              {liked ? copy.liked : copy.like}
+                              <span>{likeCount}</span>
+                            </button>
+                          </form>
+                          {session && (
+                            <button class="action-button compact" type="button" data-inline-reply-open>
+                              {copy.replyToComment}
+                            </button>
+                          )}
+                          <div class="reply-more" data-reply-more>
+                            <button class="reply-more-button" type="button" aria-label={copy.moreActions} aria-expanded="false" data-reply-more-button>
+                              <span aria-hidden="true">⋯</span>
+                            </button>
+                            <div class="reply-more-panel" data-reply-more-panel hidden>
+                              <button type="button" data-copy-comment-link data-comment-url={`${topicUrl}#post-${post.id}`} data-copied-label={copy.copiedCommentLink}>
+                                {copy.copyCommentLink}
+                              </button>
+                              {session && session.userId !== post.author.id && (
+                                <form method="post" action="/api/interactions/block-user">
+                                  <input type="hidden" name="blockedUserId" value={post.author.id} />
+                                  <input type="hidden" name="redirect" value={Astro.url.pathname} />
+                                  <button type="submit">{copy.blockUser}</button>
+                                </form>
+                              )}
+                              <a href={`/report?targetType=post&targetId=${post.id}&redirect=${encodeURIComponent(`${Astro.url.pathname}#post-${post.id}`)}`}>{copy.report}</a>
+                            </div>
+                          </div>
+                        </footer>
+
+                        {session && (
+                          <form class="reply-inline-form" method="post" action={`/api/topics/${topic.id}/posts`} data-inline-reply-form hidden>
+                            <input type="hidden" name="parentPostId" value={post.id} />
+                            <input type="hidden" name="redirect" value={`${Astro.url.pathname}#post-${post.id}`} />
+                            <textarea
+                              name="contentMarkdown"
+                              rows="2"
+                              placeholder={`${copy.inlineReplyPlaceholder} @${post.author.username}`}
+                              required
+                              data-inline-reply-input
+                            ></textarea>
+                            <div class="reply-inline-actions">
+                              <button class="action-button compact" type="button" data-inline-reply-cancel>{copy.cancelReply}</button>
+                              <button class="button primary compact" type="submit">{copy.submitReply}</button>
+                            </div>
+                          </form>
+                        )}
+
+                        {childReplies.length > 0 && (
+                          <section class="reply-thread" data-reply-thread>
+                            {featuredChildReply && (
+                              <article class="reply-child-card is-featured" id={`post-${featuredChildReply.post.id}`}>
+                                <div class="reply-avatar reply-child-avatar" aria-hidden="true">{featuredChildReply.authorInitial}</div>
+                                <div class="reply-child-main">
+                                  <header>
+                                    <a class="reply-author" href={`/u/${featuredChildReply.post.author.username}`}>{featuredChildReply.post.author.displayName}</a>
+                                  </header>
+                                  <div class="reply-content reply-child-content" set:html={featuredChildReply.contentHtml} />
+                                  <footer class="reply-actions reply-child-actions">
+                                    <span class="reply-action-time">{formatRelative(featuredChildReply.post.createdAt, lang)}</span>
+                                    <form method="post" action="/api/interactions/reaction">
+                                      <input type="hidden" name="targetType" value="post" />
+                                      <input type="hidden" name="targetId" value={featuredChildReply.post.id} />
+                                      <input type="hidden" name="redirect" value={`${Astro.url.pathname}#post-${featuredChildReply.post.id}`} />
+                                      <button class:list={["action-button compact", featuredChildReply.liked && "is-active"]} type="submit">
+                                        {featuredChildReply.liked ? copy.liked : copy.like}
+                                        <span>{featuredChildReply.likeCount}</span>
+                                      </button>
+                                    </form>
+                                    {session && (
+                                      <button class="action-button compact" type="button" data-inline-reply-open>
+                                        {copy.replyToComment}
+                                      </button>
+                                    )}
+                                    <div class="reply-more" data-reply-more>
+                                      <button class="reply-more-button" type="button" aria-label={copy.moreActions} aria-expanded="false" data-reply-more-button>
+                                        <span aria-hidden="true">⋯</span>
+                                      </button>
+                                      <div class="reply-more-panel" data-reply-more-panel hidden>
+                                        <button type="button" data-copy-comment-link data-comment-url={`${topicUrl}#post-${featuredChildReply.post.id}`} data-copied-label={copy.copiedCommentLink}>
+                                          {copy.copyCommentLink}
+                                        </button>
+                                        {session && session.userId !== featuredChildReply.post.author.id && (
+                                          <form method="post" action="/api/interactions/block-user">
+                                            <input type="hidden" name="blockedUserId" value={featuredChildReply.post.author.id} />
+                                            <input type="hidden" name="redirect" value={Astro.url.pathname} />
+                                            <button type="submit">{copy.blockUser}</button>
+                                          </form>
+                                        )}
+                                        <a href={`/report?targetType=post&targetId=${featuredChildReply.post.id}&redirect=${encodeURIComponent(`${Astro.url.pathname}#post-${featuredChildReply.post.id}`)}`}>{copy.report}</a>
+                                      </div>
+                                    </div>
+                                  </footer>
+                                  {session && (
+                                    <form class="reply-inline-form" method="post" action={`/api/topics/${topic.id}/posts`} data-inline-reply-form hidden>
+                                      <input type="hidden" name="parentPostId" value={featuredChildReply.post.id} />
+                                      <input type="hidden" name="redirect" value={`${Astro.url.pathname}#post-${featuredChildReply.post.id}`} />
+                                      <textarea
+                                        name="contentMarkdown"
+                                        rows="2"
+                                        placeholder={`${copy.inlineReplyPlaceholder} @${featuredChildReply.post.author.username}`}
+                                        required
+                                        data-inline-reply-input
+                                      ></textarea>
+                                      <div class="reply-inline-actions">
+                                        <button class="action-button compact" type="button" data-inline-reply-cancel>{copy.cancelReply}</button>
+                                        <button class="button primary compact" type="submit">{copy.submitReply}</button>
+                                      </div>
+                                    </form>
+                                  )}
+                                </div>
+                              </article>
+                            )}
+
+                            {remainingChildReplies.length > 0 && (
+                              <>
+                                <button
+                                  class="reply-thread-toggle"
+                                  type="button"
+                                  aria-expanded="false"
+                                  aria-controls={childListId}
+                                  data-reply-thread-toggle
+                                  data-open-label={openLabel}
+                                  data-close-label={copy.hideNestedReplies}
+                                >
+                                  {openLabel}
+                                </button>
+                                <div class="reply-child-list" id={childListId} data-reply-child-list hidden>
+                                  {remainingChildReplies.map((child) => (
+                                    <article class="reply-child-card" id={`post-${child.post.id}`}>
+                                  <div class="reply-avatar reply-child-avatar" aria-hidden="true">{child.authorInitial}</div>
+                                  <div class="reply-child-main">
+                                    <header>
+                                      <a class="reply-author" href={`/u/${child.post.author.username}`}>{child.post.author.displayName}</a>
+                                    </header>
+                                    <div class="reply-content reply-child-content" set:html={child.contentHtml} />
+                                    <footer class="reply-actions reply-child-actions">
+                                      <span class="reply-action-time">{formatRelative(child.post.createdAt, lang)}</span>
+                                      <form method="post" action="/api/interactions/reaction">
+                                        <input type="hidden" name="targetType" value="post" />
+                                        <input type="hidden" name="targetId" value={child.post.id} />
+                                        <input type="hidden" name="redirect" value={`${Astro.url.pathname}#post-${child.post.id}`} />
+                                        <button class:list={["action-button compact", child.liked && "is-active"]} type="submit">
+                                          {child.liked ? copy.liked : copy.like}
+                                          <span>{child.likeCount}</span>
+                                        </button>
+                                      </form>
+                                      {session && (
+                                        <button class="action-button compact" type="button" data-inline-reply-open>
+                                          {copy.replyToComment}
+                                        </button>
+                                      )}
+                                      <div class="reply-more" data-reply-more>
+                                        <button class="reply-more-button" type="button" aria-label={copy.moreActions} aria-expanded="false" data-reply-more-button>
+                                          <span aria-hidden="true">⋯</span>
+                                        </button>
+                                        <div class="reply-more-panel" data-reply-more-panel hidden>
+                                          <button type="button" data-copy-comment-link data-comment-url={`${topicUrl}#post-${child.post.id}`} data-copied-label={copy.copiedCommentLink}>
+                                            {copy.copyCommentLink}
+                                          </button>
+                                          {session && session.userId !== child.post.author.id && (
+                                            <form method="post" action="/api/interactions/block-user">
+                                              <input type="hidden" name="blockedUserId" value={child.post.author.id} />
+                                              <input type="hidden" name="redirect" value={Astro.url.pathname} />
+                                              <button type="submit">{copy.blockUser}</button>
+                                            </form>
+                                          )}
+                                          <a href={`/report?targetType=post&targetId=${child.post.id}&redirect=${encodeURIComponent(`${Astro.url.pathname}#post-${child.post.id}`)}`}>{copy.report}</a>
+                                        </div>
+                                      </div>
+                                    </footer>
+                                    {session && (
+                                      <form class="reply-inline-form" method="post" action={`/api/topics/${topic.id}/posts`} data-inline-reply-form hidden>
+                                        <input type="hidden" name="parentPostId" value={child.post.id} />
+                                        <input type="hidden" name="redirect" value={`${Astro.url.pathname}#post-${child.post.id}`} />
+                                        <textarea
+                                          name="contentMarkdown"
+                                          rows="2"
+                                          placeholder={`${copy.inlineReplyPlaceholder} @${child.post.author.username}`}
+                                          required
+                                          data-inline-reply-input
+                                        ></textarea>
+                                        <div class="reply-inline-actions">
+                                          <button class="action-button compact" type="button" data-inline-reply-cancel>{copy.cancelReply}</button>
+                                          <button class="button primary compact" type="submit">{copy.submitReply}</button>
+                                        </div>
+                                      </form>
+                                    )}
+                                  </div>
+                                </article>
+                              ))}
+                                </div>
+                              </>
+                            )}
+                          </section>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <p class="auth-message muted">{copy.noReplies}</p>
+            )}
+          </section>
+        </article>
+      </div>
+
+      <aside class="sidebar">
+        <section class="side-panel">
+          <h2>{t(lang, "topic.info")}</h2>
+          <div class="topic-side-meta">
+            <span>{t(lang, "topic.replies")} <strong>{topic.replyCount}</strong></span>
+            <span>{t(lang, "topic.views")} <strong>{topic.viewCount}</strong></span>
+            <span>{t(lang, "topic.published")} <strong>{formatDate(topic.publishedAt, lang)}</strong></span>
+          </div>
+        </section>
+
+        {related.length > 0 && (
+          <section class="side-panel">
+            <h2>{t(lang, "topic.related")}</h2>
+            <div class="compact-list">
+              {related.map((item) => <a href={topicPath(item)}>{item.title}</a>)}
+            </div>
+          </section>
+        )}
+      </aside>
+    </section>
+  ) : (
+    <section class="article-page">
+      <h1>{t(lang, "topic.notFound")}</h1>
+      <p>{t(lang, "topic.notFoundDescription")}</p>
+    </section>
+  )}
+</BaseLayout>
+
+<script is:inline>
+  (() => {
+    const menu = document.querySelector("[data-topic-ai-menu]");
+    const button = document.querySelector("[data-topic-ai-button]");
+    const menuPanel = document.querySelector("[data-topic-ai-panel]");
+    const resultPanel = document.querySelector("[data-topic-ai-result]");
+    const resultTitle = document.querySelector("[data-topic-ai-title]");
+    const resultOutput = document.querySelector("[data-topic-ai-output]");
+    const resultMeta = document.querySelector("[data-topic-ai-meta]");
+    const copyButton = document.querySelector("[data-topic-ai-copy]");
+    const closeButton = document.querySelector("[data-topic-ai-close]");
+
+    if (!menu || !button || !menuPanel || !resultPanel || !resultTitle || !resultOutput || !copyButton || !closeButton) {
+      return;
+    }
+
+    const setOpen = (open) => {
+      menuPanel.hidden = !open;
+      button.setAttribute("aria-expanded", String(open));
+      menu.dataset.open = open ? "true" : "false";
+    };
+    const options = Array.from(menuPanel.querySelectorAll("[data-ai-action]"));
+    let pendingController;
+
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setOpen(menuPanel.hidden);
+    });
+
+    options.forEach((option) => {
+      option.addEventListener("click", async () => {
+        const action = option.dataset.aiAction || "";
+        const title = option.querySelector("strong")?.textContent?.trim() || "AI";
+
+        window.dispatchEvent(new CustomEvent("whyisee:topic-ai-action", {
+          detail: {
+            action,
+            topicId: menu.dataset.topicId || "",
+          },
+        }));
+        setOpen(false);
+        await runTopicAiAction(action, title);
+      });
+    });
+
+    closeButton.addEventListener("click", () => {
+      resultPanel.hidden = true;
+    });
+
+    copyButton.addEventListener("click", async () => {
+      const text = resultOutput.textContent || "";
+
+      if (!text) {
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(text);
+        copyButton.textContent = resultPanel.dataset.copied || "Copied";
+        setTimeout(() => {
+          copyButton.textContent = resultPanel.dataset.copy || "Copy";
+        }, 1400);
+      } catch {
+        copyButton.textContent = resultPanel.dataset.copy || "Copy";
+      }
+    });
+
+    async function runTopicAiAction(action, title) {
+      pendingController?.abort();
+      pendingController = new AbortController();
+      setLoading(title);
+
+      try {
+        const response = await fetch("/api/ai/topic", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            topicId: Number(menu.dataset.topicId || 0),
+            action,
+          }),
+          signal: pendingController.signal,
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          setError(title, errorMessage(data.error));
+          return;
+        }
+
+        resultOutput.textContent = data.outputMarkdown || "";
+
+        if (resultMeta) {
+          const model = [data.configName, data.model].filter(Boolean).join(" · ");
+          resultMeta.textContent = model ? `${resultPanel.dataset.resultMeta || "Generated by"} ${model}` : "";
+          resultMeta.hidden = !model;
+        }
+
+        resultPanel.dataset.state = "ready";
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          setError(title, resultPanel.dataset.error || "AI request failed.");
+        }
+      } finally {
+        options.forEach((item) => {
+          item.disabled = false;
+        });
+      }
+    }
+
+    function setLoading(title) {
+      resultPanel.hidden = false;
+      resultPanel.dataset.state = "loading";
+      resultTitle.textContent = title;
+      resultOutput.textContent = resultPanel.dataset.loading || "AI is thinking...";
+      copyButton.textContent = resultPanel.dataset.copy || "Copy";
+
+      if (resultMeta) {
+        resultMeta.hidden = true;
+        resultMeta.textContent = "";
+      }
+
+      options.forEach((item) => {
+        item.disabled = true;
+      });
+      resultPanel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+
+    function setError(title, message) {
+      resultPanel.hidden = false;
+      resultPanel.dataset.state = "error";
+      resultTitle.textContent = title;
+      resultOutput.textContent = message;
+
+      if (resultMeta) {
+        resultMeta.hidden = true;
+        resultMeta.textContent = "";
+      }
+    }
+
+    function errorMessage(code) {
+      if (code === "login_required") return resultPanel.dataset.loginRequired || "";
+      if (code === "ai_not_configured") return resultPanel.dataset.notConfigured || "";
+      if (code === "ai_key_missing") return resultPanel.dataset.keyMissing || "";
+      if (code === "ai_timeout") return resultPanel.dataset.timeout || "";
+      return resultPanel.dataset.error || "";
+    }
+
+    document.addEventListener("click", (event) => {
+      if (event.target instanceof Node && !menu.contains(event.target)) {
+        setOpen(false);
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        button.focus();
+      }
+    });
+  })();
+</script>
+
+<script is:inline>
+  (() => {
+    const composer = document.querySelector("[data-reply-composer]");
+    const textarea = document.querySelector("[data-reply-composer-input]");
+    let scheduleReplyComposerUpdate = () => {};
+
+    if (composer && textarea) {
+      const section = composer.closest(".reply-section");
+      const scrollRoot = composer.closest(".content-column, .plain-page, .article-page, .admin-page, .auth-page");
+      const mentionBackdrop = composer.querySelector("[data-reply-mention-backdrop]");
+      const mentionButton = composer.querySelector("[data-reply-insert-mention]");
+      const emojiButton = composer.querySelector("[data-reply-emoji-button]");
+      const emojiPanel = composer.querySelector("[data-reply-emoji-panel]");
+      const marker = document.createElement("div");
+      const flowSpacer = document.createElement("div");
+      const bottomSpacer = document.createElement("div");
+      let floatingFrame = 0;
+
+      marker.className = "reply-composer-marker";
+      marker.setAttribute("aria-hidden", "true");
+      flowSpacer.className = "reply-composer-spacer";
+      flowSpacer.setAttribute("aria-hidden", "true");
+      bottomSpacer.className = "reply-composer-bottom-spacer";
+      bottomSpacer.setAttribute("aria-hidden", "true");
+      composer.before(marker);
+      composer.after(flowSpacer);
+      section?.append(bottomSpacer);
+
+      const expand = () => {
+        composer.classList.add("is-expanded");
+        resizeTextarea();
+        syncMentionBackdrop();
+        scheduleFloatingUpdate();
+      };
+
+      const resizeTextarea = () => {
+        textarea.style.height = "auto";
+        textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 48), 220)}px`;
+      };
+
+      const escapeHtml = (value) => String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+
+      const highlightMentions = (value) => {
+        const escaped = escapeHtml(value);
+
+        return escaped.replace(/(^|[^a-zA-Z0-9_@./-])(@[a-zA-Z0-9][a-zA-Z0-9_-]{1,31})\b/g, (_match, prefix, mention) => {
+          return `${prefix}<span class="reply-mention-token">${mention}</span>`;
+        });
+      };
+
+      const syncMentionBackdrop = () => {
+        if (!mentionBackdrop) {
+          return;
+        }
+
+        mentionBackdrop.innerHTML = textarea.value ? highlightMentions(textarea.value) : "";
+        mentionBackdrop.scrollTop = textarea.scrollTop;
+        mentionBackdrop.scrollLeft = textarea.scrollLeft;
+      };
+
+      const hideEmojiPanel = () => {
+        if (!emojiPanel || !emojiButton) {
+          return;
+        }
+
+        emojiPanel.hidden = true;
+        emojiButton.setAttribute("aria-expanded", "false");
+      };
+
+      const collapse = () => {
+        hideEmojiPanel();
+        composer.classList.remove("is-expanded");
+        textarea.style.height = "";
+        syncMentionBackdrop();
+        scheduleFloatingUpdate();
+      };
+
+      const collapseIfOutside = () => {
+        if (composer.contains(document.activeElement)) {
+          return;
+        }
+
+        collapse();
+      };
+
+      const insertAtCursor = (text, dispatchInput = true) => {
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        const before = textarea.value.slice(0, start);
+        const after = textarea.value.slice(end);
+        const nextValue = `${before}${text}${after}`;
+        const nextPosition = before.length + text.length;
+
+        textarea.value = nextValue;
+        textarea.focus();
+        textarea.selectionStart = nextPosition;
+        textarea.selectionEnd = nextPosition;
+        if (dispatchInput) {
+          textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        syncMentionBackdrop();
+      };
+
+      const openMentionPicker = () => {
+        expand();
+        hideEmojiPanel();
+        window.dispatchEvent(new CustomEvent("whyisee:mention-open", {
+          detail: {
+            textarea,
+            anchor: mentionButton,
+            mode: "append",
+          },
+        }));
+        syncMentionBackdrop();
+      };
+
+      const updateFloatingComposer = () => {
+        if (!section) {
+          return;
+        }
+
+        const scrollRootRect = scrollRoot?.getBoundingClientRect();
+        const sectionRect = section.getBoundingClientRect();
+        const markerRect = marker.getBoundingClientRect();
+        const viewportBottom = scrollRootRect?.bottom || window.visualViewport?.height || window.innerHeight;
+        const viewportTop = scrollRootRect?.top || 0;
+        const shouldFloat = markerRect.top < viewportTop && sectionRect.bottom > viewportTop + 48;
+
+        if (!shouldFloat) {
+          composer.classList.remove("is-floating");
+          composer.style.left = "";
+          composer.style.width = "";
+          composer.style.bottom = "";
+          flowSpacer.style.height = "0px";
+          bottomSpacer.style.height = "0px";
+          return;
+        }
+
+        const width = Math.max(280, Math.min(sectionRect.width, window.innerWidth - 24));
+        const left = Math.min(Math.max(12, sectionRect.left), window.innerWidth - width - 12);
+        const bottom = Math.max(0, window.innerHeight - viewportBottom);
+
+        composer.classList.add("is-floating");
+        composer.style.left = `${left}px`;
+        composer.style.width = `${width}px`;
+        composer.style.bottom = `${bottom}px`;
+        flowSpacer.style.height = `${composer.offsetHeight}px`;
+        bottomSpacer.style.height = `${composer.offsetHeight + 18}px`;
+      };
+
+      const scheduleFloatingUpdate = () => {
+        if (floatingFrame) {
+          cancelAnimationFrame(floatingFrame);
+        }
+
+        floatingFrame = requestAnimationFrame(() => {
+          floatingFrame = 0;
+          updateFloatingComposer();
+        });
+      };
+      scheduleReplyComposerUpdate = scheduleFloatingUpdate;
+
+      textarea.addEventListener("focus", expand);
+      textarea.addEventListener("click", expand);
+      textarea.addEventListener("input", () => {
+        expand();
+        resizeTextarea();
+        syncMentionBackdrop();
+      });
+
+      textarea.addEventListener("blur", () => {
+        window.setTimeout(collapseIfOutside, 0);
+      });
+
+      textarea.addEventListener("scroll", syncMentionBackdrop);
+
+      let mentionOpenedFromPointer = false;
+
+      mentionButton?.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        mentionOpenedFromPointer = true;
+        openMentionPicker();
+      });
+      mentionButton?.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (mentionOpenedFromPointer) {
+          mentionOpenedFromPointer = false;
+          return;
+        }
+
+        openMentionPicker();
+      });
+
+      emojiButton?.addEventListener("click", () => {
+        expand();
+
+        if (!emojiPanel) {
+          return;
+        }
+
+        const nextOpen = emojiPanel.hidden;
+        emojiPanel.hidden = !nextOpen;
+        emojiButton.setAttribute("aria-expanded", String(nextOpen));
+      });
+
+      emojiPanel?.querySelectorAll("[data-reply-emoji]").forEach((button) => {
+        button.addEventListener("click", () => {
+          insertAtCursor(button.dataset.replyEmoji || "");
+          hideEmojiPanel();
+        });
+      });
+
+      document.addEventListener("pointerdown", (event) => {
+        if (!(event.target instanceof Node)) {
+          return;
+        }
+
+        if (composer.contains(event.target) || event.target.closest?.(".mention-autocomplete")) {
+          return;
+        }
+
+        if (!composer.contains(event.target)) {
+          window.setTimeout(collapseIfOutside, 0);
+        }
+      });
+
+      scrollRoot?.addEventListener("scroll", scheduleFloatingUpdate, { passive: true });
+      window.addEventListener("scroll", scheduleFloatingUpdate, { passive: true });
+      window.addEventListener("resize", scheduleFloatingUpdate);
+      window.addEventListener("whyisee:mention-inserted", () => {
+        expand();
+        syncMentionBackdrop();
+      });
+      syncMentionBackdrop();
+      scheduleFloatingUpdate();
+    }
+
+    const setThreadOpen = (thread, open) => {
+      const button = thread.querySelector("[data-reply-thread-toggle]");
+      const list = thread.querySelector("[data-reply-child-list]");
+
+      if (!button || !list) {
+        return;
+      }
+
+      if (open) {
+        list.removeAttribute("hidden");
+      } else {
+        list.setAttribute("hidden", "");
+      }
+      button.setAttribute("aria-expanded", String(open));
+      button.textContent = open
+        ? button.dataset.closeLabel || button.textContent || ""
+        : button.dataset.openLabel || button.textContent || "";
+      scheduleReplyComposerUpdate();
+    };
+
+    document.querySelectorAll("[data-reply-thread]").forEach((thread) => {
+      const button = thread.querySelector("[data-reply-thread-toggle]");
+
+      button?.addEventListener("click", () => {
+        const list = thread.querySelector("[data-reply-child-list]");
+        setThreadOpen(thread, Boolean(list?.hasAttribute("hidden")));
+      });
+    });
+
+    const revealHashReply = () => {
+      if (!window.location.hash) {
+        return;
+      }
+
+      const target = document.getElementById(window.location.hash.slice(1));
+      const thread = target?.closest?.("[data-reply-thread]");
+
+      if (thread) {
+        setThreadOpen(thread, true);
+      }
+    };
+
+    revealHashReply();
+    window.addEventListener("hashchange", revealHashReply);
+
+    document.querySelectorAll("[data-inline-reply-open]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const scope = button.closest(".reply-card-main, .reply-child-main");
+        const form = scope?.querySelector("[data-inline-reply-form]");
+        const input = form?.querySelector("[data-inline-reply-input]");
+
+        if (!form || !(input instanceof HTMLTextAreaElement)) {
+          return;
+        }
+
+        document.querySelectorAll("[data-inline-reply-form]").forEach((item) => {
+          if (item !== form) {
+            item.setAttribute("hidden", "");
+          }
+        });
+
+        form.removeAttribute("hidden");
+        input.focus({ preventScroll: true });
+        scheduleReplyComposerUpdate();
+      });
+    });
+
+    document.querySelectorAll("[data-inline-reply-cancel]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const form = button.closest("[data-inline-reply-form]");
+
+        if (form) {
+          form.setAttribute("hidden", "");
+          scheduleReplyComposerUpdate();
+        }
+      });
+    });
+
+    const closeReplyMorePanels = (except) => {
+      document.querySelectorAll("[data-reply-more]").forEach((wrapper) => {
+        if (except && wrapper === except) {
+          return;
+        }
+
+        const panel = wrapper.querySelector("[data-reply-more-panel]");
+        const button = wrapper.querySelector("[data-reply-more-button]");
+
+        panel?.setAttribute("hidden", "");
+        button?.setAttribute("aria-expanded", "false");
+      });
+    };
+
+    document.querySelectorAll("[data-reply-more-button]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const wrapper = button.closest("[data-reply-more]");
+        const panel = wrapper?.querySelector("[data-reply-more-panel]");
+
+        if (!wrapper || !panel) {
+          return;
+        }
+
+        const nextOpen = panel.hasAttribute("hidden");
+        closeReplyMorePanels(nextOpen ? wrapper : undefined);
+
+        if (nextOpen) {
+          panel.removeAttribute("hidden");
+        } else {
+          panel.setAttribute("hidden", "");
+        }
+
+        button.setAttribute("aria-expanded", String(nextOpen));
+      });
+    });
+
+    document.querySelectorAll("[data-copy-comment-link]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const url = button.dataset.commentUrl || "";
+        const originalText = button.textContent || "";
+
+        if (!url) {
+          return;
+        }
+
+        try {
+          await navigator.clipboard.writeText(url);
+          button.textContent = button.dataset.copiedLabel || originalText;
+          window.setTimeout(() => {
+            button.textContent = originalText;
+          }, 1400);
+        } catch {
+          button.textContent = originalText;
+        }
+      });
+    });
+
+    document.addEventListener("click", (event) => {
+      if (event.target instanceof Element && event.target.closest("[data-reply-more]")) {
+        return;
+      }
+
+      closeReplyMorePanels();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeReplyMorePanels();
+      }
+    });
+
+    const list = document.querySelector("[data-reply-list]");
+    const sortButtons = Array.from(document.querySelectorAll("[data-reply-sort]"));
+
+    if (!list || sortButtons.length === 0) {
+      return;
+    }
+
+    const readNumber = (card, key) => Number(card.dataset[key] || 0);
+
+    const applySort = (mode) => {
+      const cards = Array.from(list.querySelectorAll("[data-reply-card]"));
+
+      cards.sort((a, b) => {
+        const aCreated = readNumber(a, "replyCreated");
+        const bCreated = readNumber(b, "replyCreated");
+        const aId = readNumber(a, "replyId");
+        const bId = readNumber(b, "replyId");
+
+        if (mode === "latest") {
+          return bCreated - aCreated || bId - aId;
+        }
+
+        return readNumber(b, "replyLikes") - readNumber(a, "replyLikes") || bCreated - aCreated || bId - aId;
+      });
+
+      cards.forEach((card, index) => {
+        const floor = card.querySelector(".reply-floor");
+
+        if (floor) {
+          floor.textContent = `#${index + 1}`;
+        }
+      });
+      list.replaceChildren(...cards);
+
+      sortButtons.forEach((button) => {
+        const active = button.dataset.replySort === mode;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+    };
+
+    sortButtons.forEach((button) => {
+      button.addEventListener("click", () => applySort(button.dataset.replySort || "hot"));
+    });
+  })();
+</script>

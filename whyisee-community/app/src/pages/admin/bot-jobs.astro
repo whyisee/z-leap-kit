@@ -1,0 +1,114 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import AdminNav from "@components/AdminNav.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { formatRelative } from "@lib/format";
+import { getLangFromAstro } from "@lib/i18n";
+import { listBotJobs } from "@server/services/botJobs";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/", 303);
+}
+
+const status = Astro.url.searchParams.get("status") || "all";
+const jobs = await listBotJobs(status, 200);
+const processed = Astro.url.searchParams.get("processed") === "1";
+const error = Astro.url.searchParams.get("error") === "1";
+const copy = lang === "en"
+  ? {
+      title: "Bot Jobs",
+      description: "Review and process queued robot mention tasks.",
+      all: "All",
+      queued: "Queued",
+      running: "Running",
+      succeeded: "Succeeded",
+      failed: "Failed",
+      process: "Process next",
+      empty: "No bot jobs in this status.",
+      processed: "Processed one queued job.",
+      error: "Bot job processing failed.",
+      actor: "Actor",
+      source: "Source",
+      result: "Result",
+      updated: "Updated",
+    }
+  : {
+      title: "机器人任务",
+      description: "查看和处理 @ 机器人触发的异步任务。",
+      all: "全部",
+      queued: "待处理",
+      running: "处理中",
+      succeeded: "已完成",
+      failed: "失败",
+      process: "处理下一条",
+      empty: "当前状态下没有机器人任务。",
+      processed: "已处理一条队列任务。",
+      error: "机器人任务处理失败。",
+      actor: "触发人",
+      source: "来源",
+      result: "结果",
+      updated: "更新",
+    };
+
+const filters = ["all", "queued", "running", "succeeded", "failed"] as const;
+type BotJobFilter = typeof filters[number];
+
+function label(value: string) {
+  return filters.includes(value as BotJobFilter) ? copy[value as BotJobFilter] : value;
+}
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="admin-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{copy.title}</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.description}</p>
+      </div>
+      <span class="count-pill">{jobs.length}</span>
+    </div>
+
+    <AdminNav lang={lang} />
+
+    {processed && <p class="auth-message muted">{copy.processed}</p>}
+    {error && <p class="auth-message error">{copy.error}</p>}
+
+    <div class="admin-filter-tabs">
+      {filters.map((item) => <a class={item === status ? "is-active" : ""} href={`/admin/bot-jobs?status=${item}`}>{label(item)}</a>)}
+    </div>
+
+    <form class="admin-actions" method="post" action="/api/admin/bot-jobs/process">
+      <input type="hidden" name="redirect" value={`/admin/bot-jobs?status=${status}`} />
+      <button class="button secondary" type="submit">{copy.process}</button>
+    </form>
+
+    {jobs.length > 0 ? (
+      <div class="admin-table">
+        {jobs.map((job) => (
+          <article class="admin-table-row">
+            <div>
+              <strong>@{job.botUsername} · {label(job.status)}</strong>
+              <span>{copy.actor}: @{job.actorUsername} · {copy.source}: {job.sourceType} #{job.sourceId}</span>
+              <small>{copy.updated}: {formatRelative(job.updatedAt, lang)} · {formatRelative(job.createdAt, lang)}</small>
+              {job.prompt && <p>{job.prompt}</p>}
+              {job.resultPostId && <p>{copy.result}: post #{job.resultPostId}</p>}
+              {job.error && <p class="auth-message error">{job.error}</p>}
+            </div>
+          </article>
+        ))}
+      </div>
+    ) : (
+      <p class="auth-message muted">{copy.empty}</p>
+    )}
+  </section>
+</BaseLayout>

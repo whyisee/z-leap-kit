@@ -1,5 +1,5 @@
-import { sendEmail } from "./mailer";
-import { execute, query, queryOne } from "@server/db/client";
+import { sendEmail } from "./mailer.ts";
+import { execute, query, queryOne } from "../db/client.ts";
 
 export interface NotificationItem {
   id: number;

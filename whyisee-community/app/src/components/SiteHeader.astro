@@ -15,18 +15,36 @@ const session = await getSessionFromAstro(Astro);
 const loginHref = `/login?redirect=${encodeURIComponent(redirectPath)}`;
 const unreadNotifications = session ? await countUnreadNotifications(session.userId) : 0;
 const searchLabel = lang === "en" ? "Search" : "搜索";
+const newTopicLabel = lang === "en" ? "New topic" : "新建话题";
+const newTopicHref = buildNewTopicHref(Astro.url);
 const searchValue = Astro.url.pathname === "/search" ? Astro.url.searchParams.get("q") || "" : "";
 const searchOpen = Astro.url.pathname === "/search";
 const searchCopy = lang === "en"
   ? {
       loading: "Searching...",
+      aiLoading: "AI is translating and searching...",
+      aiSearching: "Searching with AI directives...",
       noResults: "No matching results.",
       error: "Search failed. Try again later.",
+      aiSearch: "AI Search",
+      hint: "Use directives like tag:seo, type:reply, mention:ai, or let AI translate natural language.",
+      translated: "AI translated",
+      plan: "Search",
+      usedDirective: "Using",
+      examples: ["tag:seo sort:hot", "type:reply mention:ai", "has:image sort:latest"],
     }
   : {
       loading: "搜索中...",
+      aiLoading: "AI 正在理解并搜索...",
+      aiSearching: "正在使用 AI 指令搜索...",
       noResults: "没有匹配结果。",
       error: "搜索失败，稍后再试。",
+      aiSearch: "AI 搜索",
+      hint: "支持 tag:seo、type:reply、mention:ai 等指令，也可以让 AI 把自然语言转成搜索条件。",
+      translated: "AI 已翻译",
+      plan: "搜索条件",
+      usedDirective: "使用指令",
+      examples: ["tag:seo sort:hot", "type:reply mention:ai", "has:image sort:latest"],
     };
 const notificationLabel = lang === "en" ? "Notifications" : "通知";
 const menuCopy = lang === "en"
@@ -50,6 +68,32 @@ const menuCopy = lang === "en"
     };
 const avatarLabel = session ? `${session.displayName || session.username}` : t(lang, "header.login");
 const avatarInitial = session ? (session.displayName || session.username).trim().slice(0, 1).toUpperCase() : "";
+
+function buildNewTopicHref(url: URL) {
+  const parts = url.pathname.split("/").filter(Boolean);
+  const params = new URLSearchParams();
+
+  if (parts[0] === "c" && parts[1]) {
+    params.set("category", parts[1]);
+
+    const tag = url.searchParams.get("tag");
+    if (tag) {
+      params.set("tag", tag);
+    }
+  }
+
+  if (parts[0] === "tag" && parts[1]) {
+    params.set("tag", parts[1]);
+
+    const category = url.searchParams.get("category");
+    if (category) {
+      params.set("category", category);
+    }
+  }
+
+  const query = params.toString();
+  return `/new-topic${query ? `?${query}` : ""}`;
+}
 ---
 
 <header class="site-header">
@@ -80,6 +124,10 @@ const avatarInitial = session ? (session.displayName || session.username).trim()
   </div>
 
   <div class="header-actions">
+    <a class="header-icon-button new-topic-button" href={newTopicHref} aria-label={newTopicLabel} title={newTopicLabel}>
+      <span class="new-topic-icon" aria-hidden="true"></span>
+    </a>
+
     <form
       class:list={["header-search", searchOpen && "is-open"]}
       method="get"
@@ -87,8 +135,14 @@ const avatarInitial = session ? (session.displayName || session.username).trim()
       data-header-search
       data-search-lang={lang}
       data-search-loading={searchCopy.loading}
+      data-search-ai-loading={searchCopy.aiLoading}
+      data-search-ai-searching={searchCopy.aiSearching}
       data-search-empty={searchCopy.noResults}
       data-search-error={searchCopy.error}
+      data-search-hint={searchCopy.hint}
+      data-search-translated={searchCopy.translated}
+      data-search-plan={searchCopy.plan}
+      data-search-used-directive={searchCopy.usedDirective}
     >
       <button
         class="header-icon-button search-toggle"
@@ -109,6 +163,15 @@ const avatarInitial = session ? (session.displayName || session.username).trim()
         data-search-input
       />
       <div class="header-search-panel" data-search-panel hidden>
+        <div class="header-search-tools">
+          <button class="header-search-ai-button" type="button" data-header-ai-search>{searchCopy.aiSearch}</button>
+          <div class="header-search-examples" aria-label={lang === "en" ? "Search examples" : "搜索示例"}>
+            {searchCopy.examples.map((example) => (
+              <button type="button" data-header-search-example={example}>{example}</button>
+            ))}
+          </div>
+        </div>
+        <div class="header-search-plan" data-header-search-plan hidden></div>
         <div class="header-search-state" data-search-state hidden></div>
         <div class="header-search-results" data-search-results></div>
       </div>
@@ -237,17 +300,26 @@ const avatarInitial = session ? (session.displayName || session.username).trim()
     const button = document.querySelector("[data-search-toggle]");
     const input = document.querySelector("[data-search-input]");
     const panel = document.querySelector("[data-search-panel]");
+    const aiButton = document.querySelector("[data-header-ai-search]");
+    const plan = document.querySelector("[data-header-search-plan]");
     const state = document.querySelector("[data-search-state]");
     const results = document.querySelector("[data-search-results]");
+    const examples = document.querySelectorAll("[data-header-search-example]");
 
-    if (!form || !button || !input || !panel || !state || !results) {
+    if (!form || !button || !input || !panel || !aiButton || !plan || !state || !results) {
       return;
     }
 
     const labels = {
       loading: form.dataset.searchLoading || "Searching...",
+      aiLoading: form.dataset.searchAiLoading || "AI is searching...",
+      aiSearching: form.dataset.searchAiSearching || "Searching with AI directives...",
       empty: form.dataset.searchEmpty || "No matching results.",
       error: form.dataset.searchError || "Search failed.",
+      hint: form.dataset.searchHint || "",
+      translated: form.dataset.searchTranslated || "AI translated",
+      plan: form.dataset.searchPlan || "Search",
+      usedDirective: form.dataset.searchUsedDirective || "Using",
     };
     const kindLabels = form.dataset.searchLang === "en"
       ? {
@@ -267,11 +339,12 @@ const avatarInitial = session ? (session.displayName || session.username).trim()
     const searchDelay = 280;
     let searchTimer = 0;
     let lastQuery = "";
+    let lastMode = "directive";
     let activeController = null;
     let resultItems = [];
     let activeIndex = -1;
 
-    const setOpen = (open) => {
+    const setOpen = (open, focusInput = true) => {
       form.classList.toggle("is-open", open);
       button.setAttribute("aria-expanded", String(open));
       input.tabIndex = open ? 0 : -1;
@@ -281,8 +354,11 @@ const avatarInitial = session ? (session.displayName || session.username).trim()
         form.classList.remove("has-results");
       }
 
-      if (open) {
+      if (open && focusInput) {
         requestAnimationFrame(() => input.focus());
+        if (!input.value.trim()) {
+          showHelp();
+        }
       }
     };
 
@@ -304,6 +380,12 @@ const avatarInitial = session ? (session.displayName || session.username).trim()
       activeIndex = -1;
     };
 
+    const clearPlan = () => {
+      plan.hidden = true;
+      delete plan.dataset.source;
+      plan.replaceChildren();
+    };
+
     const showState = (message) => {
       clearResults();
       state.hidden = false;
@@ -311,9 +393,73 @@ const avatarInitial = session ? (session.displayName || session.username).trim()
       setPanelOpen(true);
     };
 
+    const showHelp = () => {
+      clearResults();
+      clearPlan();
+      state.hidden = false;
+      state.textContent = labels.hint;
+      setPanelOpen(true);
+    };
+
     const hidePanel = () => {
       setPanelOpen(false);
       setActive(-1);
+    };
+
+    const renderPlan = (data, mode) => {
+      clearPlan();
+
+      const normalizedQuery = data?.ai?.directiveQuery || data?.plan?.normalizedQuery || "";
+      const notes = Array.isArray(data?.plan?.notes) ? data.plan.notes : [];
+      const warnings = Array.isArray(data?.plan?.warnings) ? data.plan.warnings : [];
+
+      if (!normalizedQuery && !notes.length && !warnings.length) {
+        return;
+      }
+
+      const title = document.createElement("strong");
+      title.textContent = mode === "ai" && data?.ai ? labels.translated : labels.plan;
+      plan.append(title);
+
+      if (normalizedQuery) {
+        const code = document.createElement("code");
+        code.textContent = normalizedQuery;
+        plan.append(code);
+      }
+
+      [...notes, ...warnings].slice(0, 2).forEach((item) => {
+        const note = document.createElement("span");
+        note.textContent = item;
+        plan.append(note);
+      });
+
+      plan.hidden = false;
+    };
+
+    const renderAiDirective = (translation) => {
+      clearPlan();
+
+      const directiveQuery = translation?.directiveQuery || translation?.plan?.normalizedQuery || "";
+
+      if (!directiveQuery) {
+        return "";
+      }
+
+      plan.dataset.source = "ai";
+
+      const title = document.createElement("strong");
+      title.textContent = labels.translated;
+
+      const code = document.createElement("code");
+      code.textContent = directiveQuery;
+
+      const note = document.createElement("span");
+      note.textContent = labels.usedDirective;
+
+      plan.append(title, note, code);
+      plan.hidden = false;
+
+      return directiveQuery;
     };
 
     const renderResult = (item) => {
@@ -364,23 +510,26 @@ const avatarInitial = session ? (session.displayName || session.username).trim()
       setPanelOpen(true);
     };
 
-    const runSearch = async () => {
+    const runSearch = async (mode = "directive") => {
       const query = input.value.trim();
 
       if (!query) {
         lastQuery = "";
+        lastMode = mode;
         clearResults();
-        setPanelOpen(false);
+        showHelp();
         return;
       }
 
-      if (query === lastQuery && resultItems.length) {
+      if (query === lastQuery && mode === lastMode && resultItems.length) {
         setPanelOpen(true);
         return;
       }
 
       lastQuery = query;
-      showState(labels.loading);
+      lastMode = mode;
+      clearPlan();
+      showState(mode === "ai" ? labels.aiLoading : labels.loading);
 
       if (activeController) {
         activeController.abort();
@@ -393,6 +542,7 @@ const avatarInitial = session ? (session.displayName || session.username).trim()
         url.searchParams.set("q", query);
         url.searchParams.set("limit", "8");
         url.searchParams.set("lang", form.dataset.searchLang || "zh");
+        url.searchParams.set("mode", mode);
 
         const response = await fetch(url, {
           headers: { accept: "application/json" },
@@ -409,12 +559,90 @@ const avatarInitial = session ? (session.displayName || session.username).trim()
           return;
         }
 
+        renderPlan(data, mode);
         renderResults(Array.isArray(data.results) ? data.results : []);
       } catch (error) {
         if (error?.name === "AbortError") {
           return;
         }
 
+        showState(labels.error);
+      }
+    };
+
+    const runAiSearch = async () => {
+      const originalQuery = input.value.trim();
+
+      if (!originalQuery) {
+        input.focus();
+        showHelp();
+        return;
+      }
+
+      window.clearTimeout(searchTimer);
+      lastQuery = originalQuery;
+      lastMode = "ai";
+      clearPlan();
+      showState(labels.aiLoading);
+
+      if (activeController) {
+        activeController.abort();
+      }
+
+      activeController = new AbortController();
+
+      try {
+        const translateResponse = await fetch("/api/search/translate", {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ q: originalQuery }),
+          signal: activeController.signal,
+        });
+
+        if (!translateResponse.ok) {
+          throw new Error(`AI translate failed: ${translateResponse.status}`);
+        }
+
+        const translation = await translateResponse.json();
+
+        if (input.value.trim() !== originalQuery) {
+          return;
+        }
+
+        const directiveQuery = renderAiDirective(translation);
+        showState(labels.aiSearching);
+
+        const url = new URL("/api/search", window.location.origin);
+        url.searchParams.set("q", directiveQuery || originalQuery);
+        url.searchParams.set("limit", "8");
+        url.searchParams.set("lang", form.dataset.searchLang || "zh");
+        url.searchParams.set("mode", "directive");
+
+        const searchResponse = await fetch(url, {
+          headers: { accept: "application/json" },
+          signal: activeController.signal,
+        });
+
+        if (!searchResponse.ok) {
+          throw new Error(`Search failed: ${searchResponse.status}`);
+        }
+
+        const data = await searchResponse.json();
+
+        if (input.value.trim() !== originalQuery) {
+          return;
+        }
+
+        renderResults(Array.isArray(data.results) ? data.results : []);
+      } catch (error) {
+        if (error?.name === "AbortError") {
+          return;
+        }
+
+        clearPlan();
         showState(labels.error);
       }
     };
@@ -442,13 +670,37 @@ const avatarInitial = session ? (session.displayName || session.username).trim()
 
     input.addEventListener("input", () => {
       setOpen(true);
+      clearPlan();
       scheduleSearch();
     });
 
     input.addEventListener("focus", () => {
       if (input.value.trim()) {
         runSearch();
+      } else {
+        showHelp();
       }
+    });
+
+    aiButton.addEventListener("click", () => {
+      if (!input.value.trim()) {
+        input.focus();
+        showHelp();
+        return;
+      }
+
+      setOpen(true, false);
+      runAiSearch();
+    });
+
+    examples.forEach((example) => {
+      example.addEventListener("click", () => {
+        input.value = example.dataset.headerSearchExample || "";
+        lastQuery = "";
+        window.clearTimeout(searchTimer);
+        setOpen(true);
+        runSearch("directive");
+      });
     });
 
     input.addEventListener("keydown", (event) => {
@@ -486,7 +738,7 @@ const avatarInitial = session ? (session.displayName || session.username).trim()
         return;
       }
 
-      runSearch();
+      runSearch("directive");
     });
 
     document.addEventListener("click", (event) => {

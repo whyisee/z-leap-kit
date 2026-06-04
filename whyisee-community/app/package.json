@@ -11,7 +11,8 @@
     "migrate": "node --experimental-strip-types scripts/migrate.ts",
     "seed": "node --experimental-strip-types scripts/seed.ts",
     "db:init": "npm run migrate && npm run seed",
-    "backup:db": "node --experimental-strip-types scripts/backup-db.ts"
+    "backup:db": "node --experimental-strip-types scripts/backup-db.ts",
+    "bot:worker": "node --experimental-strip-types scripts/bot-worker.ts"
   },
   "dependencies": {
     "@astrojs/node": "latest",

@@ -21,6 +21,7 @@ const { topic, lang, latestOrder = 0 } = Astro.props;
   data-topic-views={topic.viewCount}
   data-topic-activity={new Date(topic.lastActivityAt).getTime()}
   data-topic-pinned={topic.isPinned ? "1" : "0"}
+  data-topic-category={topic.category.slug}
   data-topic-tags={topic.tags.map((tag) => tag.slug).join(" ")}
 >
   <div class="topic-main">

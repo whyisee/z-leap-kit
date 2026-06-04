@@ -3,6 +3,7 @@ import { categoryTranslations, defaultLang, tagTranslations, topicTranslations, 
 import { renderMarkdown } from "@lib/markdown";
 import { slugify } from "@lib/slug";
 import type { Category, Tag, Topic, TopicListOptions, TopicStatus, TopicType } from "@lib/types";
+import { syncMentions } from "./mentions";
 
 interface TopicRow {
   id: number;
@@ -163,7 +164,7 @@ export async function createTopic(input: TopicWriteInput): Promise<number> {
     throw new Error("Topic body is required.");
   }
 
-  return withTransaction(async (client) => {
+  const created = await withTransaction(async (client) => {
     const slug = await getUniqueTopicSlug(input.slug || title, undefined, client);
     const result = await client.query<{ id: number }>(
       `
@@ -198,8 +199,22 @@ export async function createTopic(input: TopicWriteInput): Promise<number> {
     }
 
     await syncTopicTags(client, topicId, input.tags, now);
-    return topicId;
+    return { topicId, slug };
   });
+
+  if (input.status === "published") {
+    await syncMentions({
+      sourceType: "topic",
+      sourceId: created.topicId,
+      actorId: input.authorId,
+      markdown: contentMarkdown,
+      title,
+      body: title,
+      href: topicHref(created.topicId, created.slug),
+    });
+  }
+
+  return created.topicId;
 }
 
 export async function updateTopic(id: number, input: TopicWriteInput): Promise<void> {
@@ -215,7 +230,7 @@ export async function updateTopic(id: number, input: TopicWriteInput): Promise<v
     throw new Error("Topic body is required.");
   }
 
-  await withTransaction(async (client) => {
+  const updated = await withTransaction(async (client) => {
     const slug = await getUniqueTopicSlug(input.slug || title, id, client);
 
     await client.query(
@@ -257,7 +272,20 @@ export async function updateTopic(id: number, input: TopicWriteInput): Promise<v
     );
 
     await syncTopicTags(client, id, input.tags, now);
+    return { slug };
   });
+
+  if (input.status === "published") {
+    await syncMentions({
+      sourceType: "topic",
+      sourceId: id,
+      actorId: input.authorId,
+      markdown: contentMarkdown,
+      title,
+      body: title,
+      href: topicHref(id, updated.slug),
+    });
+  }
 }
 
 export async function updateTopicAdminState(
@@ -290,6 +318,28 @@ export async function updateTopicAdminState(
   values.push(id);
 
   await query(`UPDATE topics SET ${sets.join(", ")} WHERE id = $${values.length}`, values);
+
+  if (patch.status === "published") {
+    const topic = await queryOne<{
+      id: number;
+      slug: string;
+      title: string;
+      content_markdown: string;
+      author_id: number;
+    }>("SELECT id, slug, title, content_markdown, author_id FROM topics WHERE id = $1 LIMIT 1", [id]);
+
+    if (topic) {
+      await syncMentions({
+        sourceType: "topic",
+        sourceId: topic.id,
+        actorId: topic.author_id,
+        markdown: topic.content_markdown,
+        title: topic.title,
+        body: topic.title,
+        href: topicHref(topic.id, topic.slug),
+      });
+    }
+  }
 }
 
 const topicSelectSql = `
@@ -460,4 +510,8 @@ function normalizeTagNames(values: string[]) {
   }
 
   return tags.slice(0, 12);
+}
+
+function topicHref(topicId: number, _topicSlug: string) {
+  return `/t/${topicId}`;
 }

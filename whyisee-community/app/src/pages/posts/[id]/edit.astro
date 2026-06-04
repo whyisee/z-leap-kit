@@ -1,8 +1,10 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import MarkdownImageUpload from "@components/MarkdownImageUpload.astro";
+import MentionAutocomplete from "@components/MentionAutocomplete.astro";
 import { getSessionFromAstro, isAdmin } from "@lib/auth";
 import { getLangFromAstro } from "@lib/i18n";
+import { topicPath } from "@lib/routes";
 import { getPostForEdit } from "@server/services/posts";
 
 export const prerender = false;
@@ -56,10 +58,11 @@ const copy = lang === "en"
           {copy.body}
           <textarea name="contentMarkdown" rows="10" required>{post.contentMarkdown}</textarea>
           <MarkdownImageUpload lang={lang} />
+          <MentionAutocomplete lang={lang} />
         </label>
         <div class="form-actions">
           <button class="button primary" type="submit">{copy.save}</button>
-          <a class="button secondary" href={`/t/${post.topicId}/${post.topicSlug}#post-${post.id}`}>{copy.cancel}</a>
+          <a class="button secondary" href={`${topicPath({ id: post.topicId, slug: post.topicSlug })}#post-${post.id}`}>{copy.cancel}</a>
         </div>
       </form>
       <form class="danger-zone" method="post" action={`/api/posts/${post.id}`}>

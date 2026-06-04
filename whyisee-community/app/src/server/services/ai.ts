@@ -1,4 +1,4 @@
-import { getDefaultAiModelRuntimeConfig, type AiModelRuntimeConfig } from "./aiConfig";
+import { getDefaultAiModelRuntimeConfig, type AiModelRuntimeConfig } from "./aiConfig.ts";
 
 export interface AiGenerateInput {
   system: string;

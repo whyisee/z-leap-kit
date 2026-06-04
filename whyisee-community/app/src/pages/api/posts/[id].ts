@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { getSessionFromAstro, isAdmin } from "@lib/auth";
-import { softDeletePost, updatePost } from "@server/services/posts";
+import { softDeletePost, topicHref, updatePost } from "@server/services/posts";
 
 export const prerender = false;
 
@@ -23,7 +23,7 @@ export const POST: APIRoute = async (context) => {
         isAdmin: isAdmin(session),
       });
 
-      return context.redirect(`/t/${deleted.topicId}/${deleted.topicSlug}`, 303);
+      return context.redirect(topicHref(deleted.topicId, deleted.topicSlug), 303);
     }
 
     const post = await updatePost({
@@ -33,7 +33,7 @@ export const POST: APIRoute = async (context) => {
       contentMarkdown: String(formData.get("contentMarkdown") || ""),
     });
 
-    return context.redirect(`/t/${post.topicId}/${post.topicSlug}#post-${post.id}`, 303);
+    return context.redirect(topicHref(post.topicId, post.topicSlug, `post-${post.id}`), 303);
   } catch (error) {
     console.error("Failed to update reply", error);
     return context.redirect(`/posts/${id}/edit?error=1`, 303);

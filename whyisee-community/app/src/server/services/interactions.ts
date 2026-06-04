@@ -156,6 +156,21 @@ export async function toggleFollow(userId: number, targetType: TargetType, targe
   return true;
 }
 
+export async function blockUser(blockerId: number, blockedUserId: number) {
+  if (blockerId === blockedUserId) {
+    throw new Error("Cannot block yourself.");
+  }
+
+  await execute(
+    `
+    INSERT INTO user_blocks (blocker_id, blocked_user_id, created_at)
+    VALUES ($1, $2, $3)
+    ON CONFLICT DO NOTHING
+    `,
+    [blockerId, blockedUserId, new Date().toISOString()],
+  );
+}
+
 export async function notifyTopicFollowers(topicId: number, actorId: number, title: string, body: string, href: string) {
   const followers = await query<{ user_id: number }>(
     "SELECT user_id FROM follows WHERE target_type = 'topic' AND target_id = $1 AND user_id <> $2",
@@ -177,10 +192,10 @@ export async function notifyTopicFollowers(topicId: number, actorId: number, tit
 }
 
 async function notifyTargetOwner(targetType: "topic" | "post", targetId: number, actorId: number, type: string) {
-  const row = await queryOne<{ owner_id: number; href: string; title: string }>(
+  const row = await queryOne<{ owner_id: number; topic_id: number; topic_slug: string; post_id: number | null; title: string }>(
     targetType === "topic"
-      ? "SELECT author_id AS owner_id, '/t/' || id || '/' || slug AS href, title FROM topics WHERE id = $1 LIMIT 1"
-      : "SELECT posts.author_id AS owner_id, '/t/' || topics.id || '/' || topics.slug || '#post-' || posts.id AS href, topics.title FROM posts INNER JOIN topics ON topics.id = posts.topic_id WHERE posts.id = $1 LIMIT 1",
+      ? "SELECT author_id AS owner_id, id AS topic_id, slug AS topic_slug, NULL::int AS post_id, title FROM topics WHERE id = $1 LIMIT 1"
+      : "SELECT posts.author_id AS owner_id, topics.id AS topic_id, topics.slug AS topic_slug, posts.id AS post_id, topics.title FROM posts INNER JOIN topics ON topics.id = posts.topic_id WHERE posts.id = $1 LIMIT 1",
     [targetId],
   );
 
@@ -196,6 +211,10 @@ async function notifyTargetOwner(targetType: "topic" | "post", targetId: number,
     targetId,
     title: "有人点赞了你的内容",
     body: row.title,
-    href: row.href,
+    href: topicHref(row.topic_id, row.topic_slug, row.post_id ? `post-${row.post_id}` : undefined),
   });
+}
+
+function topicHref(topicId: number, _topicSlug: string, hash?: string) {
+  return `/t/${topicId}${hash ? `#${encodeURIComponent(hash)}` : ""}`;
 }

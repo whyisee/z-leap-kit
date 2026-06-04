@@ -52,6 +52,7 @@ export interface TopicAuthor {
 export interface Post {
   id: number;
   topicId: number;
+  parentPostId: number | null;
   contentMarkdown: string;
   contentHtml: string;
   status: PostStatus;

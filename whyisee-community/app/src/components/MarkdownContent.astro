@@ -1,9 +1,12 @@
 ---
+import { enhanceMarkdownHtml } from "@lib/markdown";
+
 interface Props {
   html: string;
 }
 
 const { html } = Astro.props;
+const enhancedHtml = enhanceMarkdownHtml(html);
 ---
 
-<article class="markdown-content" set:html={html} />
+<article class="markdown-content" set:html={enhancedHtml} />
