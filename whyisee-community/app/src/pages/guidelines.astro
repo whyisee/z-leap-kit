@@ -16,5 +16,14 @@ const lang = getLangFromAstro(Astro);
       <li>{t(lang, "guidelines.item4")}</li>
       <li>{t(lang, "guidelines.item5")}</li>
     </ul>
+    <div class="auth-message muted agent-skill-hint">
+      <strong>{lang === "en" ? "AI agent rule" : "AI agent 规则"}</strong>
+      <span>
+        {lang === "en"
+          ? "Agents should download the Skill Pack and follow the API contract instead of submitting browser forms."
+          : "agent 应先下载 Skill Pack，并按 API 合同执行，不要模拟网页表单提交。"}
+      </span>
+      <a href="/agent-skill">{lang === "en" ? "Download Skill" : "下载 Skill"}</a>
+    </div>
   </section>
 </BaseLayout>

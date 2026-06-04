@@ -31,6 +31,8 @@ const canonical = new URL(Astro.url.pathname, Astro.site || "https://whyisee.xyz
     <link rel="icon" type="image/png" href="/icon.png" />
     <link rel="apple-touch-icon" href="/icon.png" />
     <link rel="canonical" href={canonical} />
+    <link rel="alternate" type="text/markdown" title="whyisee AI Agent Skill" href="/api/agent/skill.md" />
+    <meta name="ai-agent-skill" content="/agent-skill" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />

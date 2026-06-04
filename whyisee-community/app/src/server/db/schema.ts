@@ -295,6 +295,90 @@ CREATE TABLE IF NOT EXISTS ai_model_configs (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS agent_profiles (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',
+  default_scopes TEXT NOT NULL DEFAULT '[]',
+  rate_limit_per_hour INTEGER NOT NULL DEFAULT 60,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_tokens (
+  id SERIAL PRIMARY KEY,
+  agent_profile_id INTEGER NOT NULL,
+  token_prefix TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  scopes TEXT NOT NULL DEFAULT '[]',
+  expires_at TEXT,
+  last_used_at TEXT,
+  revoked_at TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (agent_profile_id) REFERENCES agent_profiles(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_action_logs (
+  id SERIAL PRIMARY KEY,
+  agent_profile_id INTEGER NOT NULL,
+  token_id INTEGER,
+  action TEXT NOT NULL,
+  resource_type TEXT NOT NULL DEFAULT '',
+  resource_id INTEGER,
+  status TEXT NOT NULL,
+  request_summary TEXT NOT NULL DEFAULT '',
+  response_summary TEXT NOT NULL DEFAULT '',
+  ip_address TEXT,
+  user_agent TEXT,
+  idempotency_key TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (agent_profile_id) REFERENCES agent_profiles(id) ON DELETE CASCADE,
+  FOREIGN KEY (token_id) REFERENCES agent_tokens(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS content_runs (
+  id SERIAL PRIMARY KEY,
+  run_key TEXT NOT NULL,
+  agent_profile_id INTEGER NOT NULL,
+  skill_version TEXT NOT NULL DEFAULT '',
+  task TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running',
+  input_summary TEXT NOT NULL DEFAULT '',
+  output_summary TEXT NOT NULL DEFAULT '',
+  quality_score INTEGER,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  completed_at TEXT,
+  UNIQUE (agent_profile_id, run_key),
+  FOREIGN KEY (agent_profile_id) REFERENCES agent_profiles(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS content_run_items (
+  id SERIAL PRIMARY KEY,
+  content_run_id INTEGER NOT NULL,
+  item_type TEXT NOT NULL,
+  item_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TEXT NOT NULL,
+  UNIQUE (content_run_id, item_type, item_id),
+  FOREIGN KEY (content_run_id) REFERENCES content_runs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_idempotency_keys (
+  id SERIAL PRIMARY KEY,
+  agent_profile_id INTEGER NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  action TEXT NOT NULL,
+  response_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (agent_profile_id, idempotency_key),
+  FOREIGN KEY (agent_profile_id) REFERENCES agent_profiles(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_topics_status_published_at ON topics(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_topics_category_id ON topics(category_id);
 CREATE INDEX IF NOT EXISTS idx_topics_type ON topics(type);
@@ -321,6 +405,14 @@ CREATE INDEX IF NOT EXISTS idx_page_views_path_created ON page_views(path, creat
 CREATE INDEX IF NOT EXISTS idx_uploaded_files_user_created ON uploaded_files(user_id, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_model_configs_default ON ai_model_configs ((is_default)) WHERE is_default = TRUE;
 CREATE INDEX IF NOT EXISTS idx_ai_model_configs_provider ON ai_model_configs(provider, is_enabled);
+CREATE INDEX IF NOT EXISTS idx_agent_profiles_user ON agent_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_agent_tokens_agent ON agent_tokens(agent_profile_id);
+CREATE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_agent_action_logs_agent_created ON agent_action_logs(agent_profile_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_action_logs_resource ON agent_action_logs(resource_type, resource_id);
+CREATE INDEX IF NOT EXISTS idx_content_runs_agent_created ON content_runs(agent_profile_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_content_run_items_item ON content_run_items(item_type, item_id);
+CREATE INDEX IF NOT EXISTS idx_agent_idempotency_agent_key ON agent_idempotency_keys(agent_profile_id, idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_topics_search ON topics USING GIN (to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content_markdown, '')));
 CREATE INDEX IF NOT EXISTS idx_posts_search ON posts USING GIN (to_tsvector('simple', coalesce(content_markdown, '')));
 `;

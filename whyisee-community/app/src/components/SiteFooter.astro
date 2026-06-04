@@ -10,5 +10,9 @@ const { lang } = Astro.props;
 
 <footer class="site-footer">
   <span>© 2026 whyisee.xyz</span>
+  <nav class="footer-links" aria-label={lang === "en" ? "Footer links" : "页脚链接"}>
+    <a href="/agent-skill">AI Agent Skill</a>
+    <a href="/guidelines">{t(lang, "nav.guidelines")}</a>
+  </nav>
   <span>{t(lang, "footer.icpPending")}</span>
 </footer>

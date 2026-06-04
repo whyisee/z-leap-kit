@@ -8,7 +8,7 @@ export const prerender = false;
 
 export const GET: APIRoute = async ({ site }) => {
   const baseUrl = site?.toString() || process.env.SITE_URL || "https://whyisee.xyz";
-  const staticPaths = ["/", "/latest", "/categories", "/projects", "/about", "/guidelines"];
+  const staticPaths = ["/", "/latest", "/categories", "/projects", "/about", "/guidelines", "/agent-skill"];
   const categories = await listCategories();
   const tags = await listTags();
   const topics = await listTopics({ limit: 500 });

@@ -1,0 +1,294 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import AdminNav from "@components/AdminNav.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { formatRelative } from "@lib/format";
+import { getLangFromAstro } from "@lib/i18n";
+import {
+  agentScopes,
+  listAgentActionLogs,
+  listAgentAssignableUsers,
+  listAgentProfiles,
+  listAgentRuns,
+  listAgentTokens,
+} from "@server/services/agents";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/", 303);
+}
+
+const tokenCookie = Astro.cookies.get("whyisee_agent_token_once")?.value || "";
+let createdToken = "";
+
+if (tokenCookie) {
+  try {
+    createdToken = decodeURIComponent(tokenCookie);
+  } catch {
+    createdToken = tokenCookie;
+  }
+
+  Astro.cookies.delete("whyisee_agent_token_once", { path: "/admin/agents" });
+}
+
+const [profiles, tokens, users, runs, logs] = await Promise.all([
+  listAgentProfiles(),
+  listAgentTokens(),
+  listAgentAssignableUsers(),
+  listAgentRuns(50),
+  listAgentActionLogs(50),
+]);
+const saved = Astro.url.searchParams.get("saved") === "1";
+const error = Astro.url.searchParams.get("error") === "1";
+const copy = lang === "en"
+  ? {
+      title: "Agent Content",
+      description: "Manage AI agent identities, tokens, content runs, and audit logs.",
+      saved: "Saved.",
+      error: "Operation failed.",
+      tokenCreated: "Token created. Copy it now; it will only be shown once.",
+      profiles: "Agent Profiles",
+      createProfile: "Create profile",
+      tokens: "Tokens",
+      createToken: "Create token",
+      runs: "Content Runs",
+      logs: "Action Logs",
+      user: "Bound user",
+      name: "Name",
+      descriptionLabel: "Description",
+      rateLimit: "Hourly limit",
+      scopes: "Scopes",
+      create: "Create",
+      enable: "Enable",
+      disable: "Disable",
+      revoke: "Revoke",
+      expiresAt: "Expires at",
+      noExpires: "No expiry",
+      tokenName: "Token name",
+      status: "Status",
+      task: "Task",
+      quality: "Quality",
+      empty: "No records yet.",
+    }
+  : {
+      title: "Agent 内容生产",
+      description: "管理 AI agent 身份、Token、内容运行记录和审计日志。",
+      saved: "已保存。",
+      error: "操作失败。",
+      tokenCreated: "Token 已创建，请现在复制；它只会展示一次。",
+      profiles: "Agent 身份",
+      createProfile: "创建 Agent",
+      tokens: "Token",
+      createToken: "创建 Token",
+      runs: "内容运行",
+      logs: "动作日志",
+      user: "绑定用户",
+      name: "名称",
+      descriptionLabel: "说明",
+      rateLimit: "每小时限制",
+      scopes: "权限",
+      create: "创建",
+      enable: "启用",
+      disable: "禁用",
+      revoke: "撤销",
+      expiresAt: "过期时间",
+      noExpires: "不过期",
+      tokenName: "Token 名称",
+      status: "状态",
+      task: "任务",
+      quality: "质量",
+      empty: "暂无记录。",
+    };
+
+const defaultScopes = new Set([
+  "site:read",
+  "search:read",
+  "category:read",
+  "tag:read",
+  "topic:read",
+  "topic:create",
+  "topic:update_own",
+  "post:create",
+  "upload:image",
+  "mention:read",
+  "content_run:write",
+]);
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="admin-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{copy.title}</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.description}</p>
+      </div>
+      <span class="count-pill">{profiles.length}</span>
+    </div>
+
+    <AdminNav lang={lang} />
+
+    {saved && <p class="auth-message muted">{copy.saved}</p>}
+    {error && <p class="auth-message error">{copy.error}</p>}
+    {createdToken && (
+      <div class="auth-message muted">
+        <strong>{copy.tokenCreated}</strong>
+        <pre class="token-once">{createdToken}</pre>
+      </div>
+    )}
+
+    <details class="admin-create-drawer" open={profiles.length === 0}>
+      <summary class="admin-create-summary">{copy.createProfile}</summary>
+      <div class="admin-create-body">
+        <form class="admin-edit-form" method="post" action="/api/admin/agents">
+          <input type="hidden" name="redirect" value="/admin/agents" />
+          <label>
+            {copy.user}
+            <select name="userId" required>
+              {users.map((user) => (
+                <option value={user.id}>@{user.username} · {user.displayName}{user.isBot ? " · bot" : ""}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            {copy.name}
+            <input name="name" placeholder="content-seeder" required />
+          </label>
+          <label>
+            {copy.descriptionLabel}
+            <textarea name="description" rows="3" placeholder="用于冷启动话题和回复的外部 agent"></textarea>
+          </label>
+          <label>
+            {copy.rateLimit}
+            <input name="rateLimitPerHour" type="number" min="1" max="500" value="60" />
+          </label>
+          <fieldset class="agent-scope-grid">
+            <legend>{copy.scopes}</legend>
+            {agentScopes.map((scope) => (
+              <label class="checkbox-line">
+                <input type="checkbox" name="scopes" value={scope} checked={defaultScopes.has(scope)} />
+                {scope}
+              </label>
+            ))}
+          </fieldset>
+          <button class="button secondary" type="submit">{copy.create}</button>
+        </form>
+      </div>
+    </details>
+
+    <div class="admin-table">
+      <h2>{copy.profiles}</h2>
+      {profiles.length > 0 ? profiles.map((profile) => (
+        <article class="admin-table-row">
+          <div>
+            <strong>{profile.name} · {profile.status}</strong>
+            <span>@{profile.username} · {profile.displayName}</span>
+            <small>{profile.defaultScopes.join(", ") || "-"}</small>
+            {profile.description && <p>{profile.description}</p>}
+          </div>
+          <form class="admin-inline-form" method="post" action="/api/admin/agents">
+            <input type="hidden" name="intent" value="status" />
+            <input type="hidden" name="profileId" value={profile.id} />
+            <input type="hidden" name="status" value={profile.status === "active" ? "disabled" : "active"} />
+            <input type="hidden" name="redirect" value="/admin/agents" />
+            <button class="button secondary" type="submit">{profile.status === "active" ? copy.disable : copy.enable}</button>
+          </form>
+        </article>
+      )) : <p class="auth-message muted">{copy.empty}</p>}
+    </div>
+
+    {profiles.length > 0 && (
+      <details class="admin-create-drawer">
+        <summary class="admin-create-summary">{copy.createToken}</summary>
+        <div class="admin-create-body">
+          <form class="admin-edit-form" method="post" action="/api/admin/agents/tokens">
+            <label>
+              Agent
+              <select name="agentProfileId" required>
+                {profiles.map((profile) => <option value={profile.id}>{profile.name}</option>)}
+              </select>
+            </label>
+            <label>
+              {copy.tokenName}
+              <input name="name" placeholder="external-agent-token" required />
+            </label>
+            <label>
+              {copy.expiresAt}
+              <input name="expiresAt" type="datetime-local" />
+            </label>
+            <fieldset class="agent-scope-grid">
+              <legend>{copy.scopes}</legend>
+              {agentScopes.map((scope) => (
+                <label class="checkbox-line">
+                  <input type="checkbox" name="scopes" value={scope} checked={defaultScopes.has(scope)} />
+                  {scope}
+                </label>
+              ))}
+            </fieldset>
+            <button class="button secondary" type="submit">{copy.create}</button>
+          </form>
+        </div>
+      </details>
+    )}
+
+    <div class="admin-table">
+      <h2>{copy.tokens}</h2>
+      {tokens.length > 0 ? tokens.map((token) => (
+        <article class="admin-table-row">
+          <div>
+            <strong>{token.name} · {token.revokedAt ? "revoked" : "active"}</strong>
+            <span>{token.agentName} · prefix {token.tokenPrefix}</span>
+            <small>
+              {copy.expiresAt}: {token.expiresAt ? formatRelative(token.expiresAt, lang) : copy.noExpires}
+              {" · "}
+              last used: {token.lastUsedAt ? formatRelative(token.lastUsedAt, lang) : "-"}
+            </small>
+            <small>{token.scopes.join(", ") || "-"}</small>
+          </div>
+          {!token.revokedAt && (
+            <form class="admin-inline-form" method="post" action={`/api/admin/agents/tokens/${token.id}`}>
+              <input type="hidden" name="redirect" value="/admin/agents" />
+              <button class="button secondary danger" type="submit">{copy.revoke}</button>
+            </form>
+          )}
+        </article>
+      )) : <p class="auth-message muted">{copy.empty}</p>}
+    </div>
+
+    <div class="admin-table">
+      <h2>{copy.runs}</h2>
+      {runs.length > 0 ? runs.map((run) => (
+        <article class="admin-table-row">
+          <div>
+            <strong>{run.runKey} · {run.status}</strong>
+            <span>{run.agentName} · {copy.task}: {run.task} · {run.skillVersion}</span>
+            <small>{formatRelative(run.createdAt, lang)} · {copy.quality}: {run.qualityScore ?? "-"}</small>
+            {run.outputSummary && <p>{run.outputSummary}</p>}
+          </div>
+        </article>
+      )) : <p class="auth-message muted">{copy.empty}</p>}
+    </div>
+
+    <div class="admin-table">
+      <h2>{copy.logs}</h2>
+      {logs.length > 0 ? logs.map((log) => (
+        <article class="admin-table-row">
+          <div>
+            <strong>{log.action} · {log.status}</strong>
+            <span>{log.agentName} · {log.resourceType || "-"} {log.resourceId ? `#${log.resourceId}` : ""}</span>
+            <small>{formatRelative(log.createdAt, lang)} · key: {log.idempotencyKey || "-"}</small>
+            {(log.requestSummary || log.responseSummary) && <p>{log.requestSummary} {log.responseSummary ? `→ ${log.responseSummary}` : ""}</p>}
+          </div>
+        </article>
+      )) : <p class="auth-message muted">{copy.empty}</p>}
+    </div>
+  </section>
+</BaseLayout>

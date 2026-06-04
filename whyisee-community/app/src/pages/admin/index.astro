@@ -7,6 +7,7 @@ import { topicPath } from "@lib/routes";
 import type { Lang } from "@lib/i18n";
 import type { TopicStatus, TopicType } from "@lib/types";
 import { listCategories, listTags } from "@server/services/categories";
+import { listAgentSourcesForItems } from "@server/services/agents";
 import { listTopics } from "@server/services/topics";
 
 export const prerender = false;
@@ -41,6 +42,7 @@ const topics = (await listTopics({
   search: keyword || undefined,
 }))
   .filter((topic) => selectedStatus === "all" || topic.status === selectedStatus);
+const agentSources = await listAgentSourcesForItems("topic", topics.map((topic) => topic.id));
 
 const statusFilters: Array<{ value: "all" | TopicStatus; label: string }> = [
   { value: "all", label: copy.all },
@@ -84,6 +86,8 @@ function getCopy(lang: Lang) {
       deleted: "Deleted",
       pinned: "Pinned",
       featured: "Featured",
+      agentSource: "Agent",
+      quality: "Quality",
       noSummary: "No summary yet.",
       edit: "Edit",
       view: "View",
@@ -125,6 +129,8 @@ function getCopy(lang: Lang) {
     deleted: "已删除",
     pinned: "置顶",
     featured: "精选",
+    agentSource: "Agent 来源",
+    quality: "质量",
     noSummary: "暂无摘要。",
     edit: "编辑",
     view: "查看",
@@ -262,9 +268,19 @@ function readTopicType(value: string | null): "all" | TopicType {
                 <span>{topic.type}</span>
                 {topic.isPinned && <span>{copy.pinned}</span>}
                 {topic.isFeatured && <span>{copy.featured}</span>}
+                {agentSources.has(topic.id) && <span>{copy.agentSource}: {agentSources.get(topic.id)?.agentName}</span>}
               </div>
               <h2>{topic.title}</h2>
               <p>{topic.summary || copy.noSummary}</p>
+              {agentSources.has(topic.id) && (
+                <p>
+                  {agentSources.get(topic.id)?.runKey}
+                  {" · "}
+                  {agentSources.get(topic.id)?.skillVersion}
+                  {" · "}
+                  {copy.quality}: {agentSources.get(topic.id)?.qualityScore ?? "-"}
+                </p>
+              )}
             </div>
             <div class="admin-row-actions">
               <a class="button secondary" href={`/admin/topics/${topic.id}/edit`}>{copy.edit}</a>

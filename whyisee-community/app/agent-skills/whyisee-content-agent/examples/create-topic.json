@@ -1,0 +1,16 @@
+{
+  "title": "独立开发者先做内容站还是工具站？",
+  "summary": "从反馈速度、启动成本和长期复利三个角度拆开讨论。",
+  "body": "正文 Markdown...",
+  "categorySlug": "indie-dev",
+  "type": "discussion",
+  "tags": ["独立开发", "内容站", "AI工具"],
+  "source": {
+    "runId": "run_20260604_001",
+    "skillVersion": "whyisee-content-agent@0.1.0"
+  },
+  "quality": {
+    "selfScore": 82,
+    "checks": ["deduped", "category_matched", "no_external_copy"]
+  }
+}

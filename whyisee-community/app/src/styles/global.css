@@ -126,6 +126,21 @@ main {
   font-size: 12px;
 }
 
+.footer-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.footer-links a {
+  color: var(--muted);
+  font-weight: 760;
+}
+
+.footer-links a:hover {
+  color: var(--blue);
+}
+
 .header-left {
   position: relative;
   z-index: 1;
@@ -2435,6 +2450,142 @@ main > .auth-page {
   color: var(--muted);
 }
 
+.agent-skill-page {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  padding-top: clamp(48px, 8vh, 84px) !important;
+}
+
+main > .article-page.agent-skill-page > :where(.eyebrow, h1, p, .agent-skill-command-card, .agent-skill-note) {
+  max-width: 760px;
+}
+
+.agent-skill-page h1 {
+  margin: 0;
+  font-size: clamp(38px, 5vw, 58px);
+  line-height: 1.08;
+}
+
+.agent-skill-page > p:not(.eyebrow) {
+  margin: -10px 0 12px;
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 720;
+}
+
+.agent-skill-command-card {
+  display: grid;
+  gap: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 28px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.045), transparent 58%),
+    rgba(255, 255, 255, 0.034);
+}
+
+.agent-skill-command-card strong {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 920;
+}
+
+.agent-skill-command-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 10px 10px 10px 22px;
+  background: rgba(255, 255, 255, 0.032);
+}
+
+.agent-skill-command-row code {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-skill-copy {
+  min-width: 74px;
+  min-height: 50px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.agent-skill-copy:hover {
+  border-color: rgba(138, 180, 248, 0.48);
+  color: var(--blue);
+}
+
+.agent-skill-preview {
+  justify-self: start;
+}
+
+.agent-skill-preview summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border: 1px solid rgba(138, 180, 248, 0.26);
+  border-radius: 999px;
+  padding: 0 11px;
+  background: rgba(138, 180, 248, 0.06);
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 900;
+  list-style: none;
+  cursor: pointer;
+}
+
+.agent-skill-preview summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-skill-preview pre {
+  overflow: auto;
+  width: min(704px, calc(100vw - 120px));
+  max-height: 420px;
+  margin: 14px 0 0;
+  border: 1px solid rgba(138, 180, 248, 0.2);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(0, 0, 0, 0.2);
+  color: #b7d0ff;
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.agent-skill-note {
+  margin: -8px 0 0;
+  color: var(--subtle);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.agent-skill-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.agent-skill-hint a {
+  color: var(--blue);
+  font-weight: 900;
+}
+
 .admin-page {
   height: 100%;
   overflow-y: auto;
@@ -3882,6 +4033,55 @@ main > .admin-page.narrow-page > :where(.section-head, .auth-message, .admin-act
 .admin-create-drawer[open] > .admin-create-summary {
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   padding: 12px 15px;
+}
+
+.agent-scope-grid {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.agent-scope-grid legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.agent-scope-grid .checkbox-line {
+  min-height: 30px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.token-once {
+  overflow-wrap: anywhere;
+  margin: 10px 0 0;
+  border: 1px solid rgba(138, 180, 248, 0.26);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(138, 180, 248, 0.08);
+  color: #b7d0ff;
+  white-space: pre-wrap;
+}
+
+.agent-source-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.agent-source-panel span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 780;
 }
 
 .admin-form-head {

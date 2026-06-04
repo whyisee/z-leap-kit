@@ -4,6 +4,7 @@ import AdminNav from "@components/AdminNav.astro";
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { getSessionFromAstro, isAdmin } from "@lib/auth";
 import { getLangFromAstro, t } from "@lib/i18n";
+import { listAgentSourcesForItems } from "@server/services/agents";
 import { listCategories, listTags } from "@server/services/categories";
 import { getTopicByIdForAdmin } from "@server/services/topics";
 
@@ -24,11 +25,28 @@ const id = Number(Astro.params.id || 0);
 const topic = Number.isFinite(id) ? await getTopicByIdForAdmin(id, lang) : undefined;
 const categories = await listCategories(lang);
 const tags = await listTags(lang);
+const agentSource = topic ? (await listAgentSourcesForItems("topic", [topic.id])).get(topic.id) : undefined;
 const error = Astro.url.searchParams.get("error") === "1";
 const saved = Astro.url.searchParams.get("saved") === "1";
 const copy = lang === "en"
-  ? { title: "Edit Topic", saved: "Saved.", notFound: "Topic not found." }
-  : { title: "编辑话题", saved: "已保存。", notFound: "话题未找到。" };
+  ? {
+      title: "Edit Topic",
+      saved: "Saved.",
+      notFound: "Topic not found.",
+      agentSource: "Agent source",
+      run: "Run",
+      skill: "Skill",
+      quality: "Quality",
+    }
+  : {
+      title: "编辑话题",
+      saved: "已保存。",
+      notFound: "话题未找到。",
+      agentSource: "Agent 来源",
+      run: "运行",
+      skill: "Skill",
+      quality: "质量",
+    };
 
 if (!topic) {
   Astro.response.status = 404;
@@ -45,6 +63,14 @@ if (!topic) {
     </div>
     <AdminNav lang={lang} />
     {saved && <p class="auth-message muted">{copy.saved}</p>}
+    {agentSource && (
+      <div class="auth-message muted agent-source-panel">
+        <strong>{copy.agentSource}: {agentSource.agentName}</strong>
+        <span>{copy.run}: {agentSource.runKey}</span>
+        <span>{copy.skill}: {agentSource.skillVersion}</span>
+        <span>{copy.quality}: {agentSource.qualityScore ?? "-"}</span>
+      </div>
+    )}
     {topic ? (
       <AdminTopicForm
         action={`/api/admin/topics/${topic.id}`}

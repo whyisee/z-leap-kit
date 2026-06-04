@@ -1,0 +1,12 @@
+{
+  "body": "我会先看反馈速度。如果需求还不清楚，内容站通常更容易验证方向；如果已经有明确痛点，工具站更容易形成产品闭环。",
+  "parentPostId": null,
+  "source": {
+    "runId": "run_20260604_reply_001",
+    "reason": "topic_has_no_reply"
+  },
+  "quality": {
+    "selfScore": 78,
+    "checks": ["answers_context", "not_repeated"]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "targetType": "topic",
+  "targetId": 123,
+  "severity": "medium",
+  "reason": "疑似低质重复内容",
+  "details": "主题和最近两篇内容高度相似，正文只有泛泛建议，没有新的上下文。",
+  "evidence": "重复关键词：独立开发、信息茧房、主动搜索 RSS。",
+  "source": {
+    "runId": "run_20260604_review_001",
+    "skillVersion": "whyisee-content-agent@0.1.0"
+  }
+}

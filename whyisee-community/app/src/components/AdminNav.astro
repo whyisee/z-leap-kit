@@ -17,6 +17,7 @@ const copy = lang === "en"
       categories: "Categories",
       tags: "Tags",
       ai: "AI Settings",
+      agents: "Agents",
       botJobs: "Bot Jobs",
       stats: "Stats",
       back: "Back to site",
@@ -30,6 +31,7 @@ const copy = lang === "en"
       categories: "分类",
       tags: "标签",
       ai: "AI 配置",
+      agents: "Agent",
       botJobs: "机器人任务",
       stats: "统计",
       back: "返回前台",
@@ -43,6 +45,7 @@ const items = [
   { href: "/admin/categories", label: copy.categories, match: (path: string) => path.startsWith("/admin/categories") },
   { href: "/admin/tags", label: copy.tags, match: (path: string) => path.startsWith("/admin/tags") },
   { href: "/admin/ai", label: copy.ai, match: (path: string) => path.startsWith("/admin/ai") },
+  { href: "/admin/agents", label: copy.agents, match: (path: string) => path.startsWith("/admin/agents") },
   { href: "/admin/bot-jobs", label: copy.botJobs, match: (path: string) => path.startsWith("/admin/bot-jobs") },
   { href: "/admin/stats", label: copy.stats, match: (path: string) => path.startsWith("/admin/stats") },
 ];
