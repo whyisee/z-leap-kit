@@ -1,5 +1,5 @@
 ---
-import BaseLayout from "@layouts/BaseLayout.astro";
+import SettingsShell from "@components/SettingsShell.astro";
 import { getSessionFromAstro } from "@lib/auth";
 import { getLangFromAstro } from "@lib/i18n";
 import { getUserById } from "@server/services/users";
@@ -29,7 +29,6 @@ const copy = lang === "en"
       saved: "Profile saved.",
       error: "Failed to save profile.",
       publicPage: "Public profile",
-      account: "Account security",
     }
   : {
       title: "个人资料设置",
@@ -43,50 +42,40 @@ const copy = lang === "en"
       saved: "资料已保存。",
       error: "保存失败。",
       publicPage: "公开主页",
-      account: "账号安全",
     };
 ---
 
-<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
-  <section class="article-page auth-page">
-    <div class="auth-card profile-card">
-      <p class="eyebrow">{session.username}</p>
-      <h1>{copy.title}</h1>
-      <p>{copy.description}</p>
+<SettingsShell title={copy.title} description={copy.description} current="profile" lang={lang} session={session}>
+  {saved && <p class="auth-message muted">{copy.saved}</p>}
+  {hasError && <p class="auth-message error">{copy.error}</p>}
 
-      {saved && <p class="auth-message muted">{copy.saved}</p>}
-      {hasError && <p class="auth-message error">{copy.error}</p>}
-
-      <form class="auth-form" method="post" action="/api/settings/profile">
-        <label>
-          {copy.displayName}
-          <input name="displayName" value={user?.displayName || session.displayName} required type="text" />
-        </label>
-        <label>
-          {copy.bio}
-          <textarea name="bio" rows="5">{user?.bio || ""}</textarea>
-        </label>
-        <label>
-          {copy.website}
-          <input name="websiteUrl" value={user?.websiteUrl || ""} type="url" />
-        </label>
-        <label>
-          {copy.github}
-          <input name="githubUrl" value={user?.githubUrl || ""} type="url" />
-        </label>
-        <label>
-          {copy.locale}
-          <select name="locale">
-            <option value="zh" selected={(user?.locale || lang) === "zh"}>中文</option>
-            <option value="en" selected={(user?.locale || lang) === "en"}>English</option>
-          </select>
-        </label>
-        <div class="form-actions">
-          <button class="button primary" type="submit">{copy.save}</button>
-          <a class="button secondary" href={`/u/${session.username}`}>{copy.publicPage}</a>
-          <a class="button secondary" href="/settings/account">{copy.account}</a>
-        </div>
-      </form>
+  <form class="auth-form settings-form" method="post" action="/api/settings/profile">
+    <label>
+      {copy.displayName}
+      <input name="displayName" value={user?.displayName || session.displayName} required type="text" />
+    </label>
+    <label>
+      {copy.bio}
+      <textarea name="bio" rows="5">{user?.bio || ""}</textarea>
+    </label>
+    <label>
+      {copy.website}
+      <input name="websiteUrl" value={user?.websiteUrl || ""} type="url" />
+    </label>
+    <label>
+      {copy.github}
+      <input name="githubUrl" value={user?.githubUrl || ""} type="url" />
+    </label>
+    <label>
+      {copy.locale}
+      <select name="locale">
+        <option value="zh" selected={(user?.locale || lang) === "zh"}>中文</option>
+        <option value="en" selected={(user?.locale || lang) === "en"}>English</option>
+      </select>
+    </label>
+    <div class="form-actions">
+      <button class="button primary" type="submit">{copy.save}</button>
+      <a class="button secondary" href={`/u/${session.username}`}>{copy.publicPage}</a>
     </div>
-  </section>
-</BaseLayout>
+  </form>
+</SettingsShell>

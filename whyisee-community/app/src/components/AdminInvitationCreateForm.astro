@@ -1,0 +1,47 @@
+---
+interface InvitationCopy {
+  create: string;
+  description: string;
+  code: string;
+  codePlaceholder: string;
+  email: string;
+  emailPlaceholder: string;
+  role: string;
+  maxUses: string;
+  expiresAt: string;
+}
+
+interface Props {
+  copy: InvitationCopy;
+  roles: string[];
+}
+
+const { copy, roles } = Astro.props;
+---
+
+<details class="invitation-create-card admin-collapsible-card admin-create-drawer" data-admin-collapsible>
+  <summary class="admin-create-summary">
+    <button class="button primary" type="button" data-collapse-button>+ {copy.create}</button>
+  </summary>
+
+  <div class="admin-create-body">
+    <form class="invitation-create-form" method="post" action="/api/admin/invitations">
+      <div class="admin-form-head">
+        <strong>{copy.create}</strong>
+        <span>{copy.description}</span>
+      </div>
+      <div class="invitation-form-grid">
+        <label>{copy.code}<input name="code" placeholder={copy.codePlaceholder} /></label>
+        <label>{copy.role}
+          <select name="role">
+            {roles.map((role) => <option value={role}>{role}</option>)}
+          </select>
+        </label>
+        <label>{copy.maxUses}<input name="maxUses" type="number" min="1" value="1" /></label>
+        <label>{copy.email}<input name="email" type="email" placeholder={copy.emailPlaceholder} /></label>
+        <label>{copy.expiresAt}<input name="expiresAt" type="datetime-local" /></label>
+      </div>
+      <button class="button primary" type="submit">{copy.create}</button>
+    </form>
+  </div>
+</details>

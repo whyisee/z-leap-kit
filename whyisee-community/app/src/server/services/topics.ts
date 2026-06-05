@@ -13,6 +13,12 @@ interface TopicRow {
   content_markdown: string;
   content_html: string;
   author_id: number;
+  author_username: string;
+  author_display_name: string;
+  author_role: "admin" | "moderator" | "member" | "new_user";
+  author_avatar_url: string | null;
+  author_bio: string;
+  author_created_at: string;
   type: TopicType;
   status: TopicStatus;
   is_pinned: boolean;
@@ -351,6 +357,12 @@ SELECT
   topics.content_markdown,
   topics.content_html,
   topics.author_id,
+  users.username AS author_username,
+  users.display_name AS author_display_name,
+  users.role AS author_role,
+  users.avatar_url AS author_avatar_url,
+  users.bio AS author_bio,
+  users.created_at AS author_created_at,
   topics.type,
   topics.status,
   topics.is_pinned,
@@ -369,6 +381,7 @@ SELECT
   categories.sort_order AS category_sort_order
 FROM topics
 INNER JOIN categories ON categories.id = topics.category_id
+INNER JOIN users ON users.id = topics.author_id
 `;
 
 async function mapTopicRow(row: TopicRow, lang: Lang): Promise<Topic> {
@@ -384,6 +397,15 @@ async function mapTopicRow(row: TopicRow, lang: Lang): Promise<Topic> {
     contentMarkdown,
     contentHtml: translated ? renderMarkdown(contentMarkdown) : row.content_html,
     authorId: row.author_id,
+    author: {
+      id: row.author_id,
+      username: row.author_username,
+      displayName: row.author_display_name,
+      role: row.author_role,
+      avatarUrl: row.author_avatar_url,
+      bio: row.author_bio,
+      createdAt: row.author_created_at,
+    },
     type: row.type,
     status: row.status,
     isPinned: Boolean(row.is_pinned),

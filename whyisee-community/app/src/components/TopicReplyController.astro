@@ -1,0 +1,442 @@
+<script is:inline>
+  (() => {
+    const composer = document.querySelector("[data-reply-composer]");
+    const textarea = document.querySelector("[data-reply-composer-input]");
+    let scheduleReplyComposerUpdate = () => {};
+
+    if (composer && textarea) {
+      const section = composer.closest(".reply-section");
+      const scrollRoot = composer.closest(".content-column, .plain-page, .article-page, .admin-page, .auth-page");
+      const mentionBackdrop = composer.querySelector("[data-reply-mention-backdrop]");
+      const mentionButton = composer.querySelector("[data-reply-insert-mention]");
+      const emojiButton = composer.querySelector("[data-reply-emoji-button]");
+      const emojiPanel = composer.querySelector("[data-reply-emoji-panel]");
+      const marker = document.createElement("div");
+      const flowSpacer = document.createElement("div");
+      const bottomSpacer = document.createElement("div");
+      let floatingFrame = 0;
+
+      marker.className = "reply-composer-marker";
+      marker.setAttribute("aria-hidden", "true");
+      flowSpacer.className = "reply-composer-spacer";
+      flowSpacer.setAttribute("aria-hidden", "true");
+      bottomSpacer.className = "reply-composer-bottom-spacer";
+      bottomSpacer.setAttribute("aria-hidden", "true");
+      composer.before(marker);
+      composer.after(flowSpacer);
+      section?.append(bottomSpacer);
+
+      const expand = () => {
+        composer.classList.add("is-expanded");
+        resizeTextarea();
+        syncMentionBackdrop();
+        scheduleFloatingUpdate();
+      };
+
+      const resizeTextarea = () => {
+        textarea.style.height = "auto";
+        textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 48), 220)}px`;
+      };
+
+      const escapeHtml = (value) => String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+
+      const highlightMentions = (value) => {
+        const escaped = escapeHtml(value);
+
+        return escaped.replace(/(^|[^a-zA-Z0-9_@./-])(@[a-zA-Z0-9][a-zA-Z0-9_-]{1,31})\b/g, (_match, prefix, mention) => {
+          return `${prefix}<span class="reply-mention-token">${mention}</span>`;
+        });
+      };
+
+      const syncMentionBackdrop = () => {
+        if (!mentionBackdrop) {
+          return;
+        }
+
+        mentionBackdrop.innerHTML = textarea.value ? highlightMentions(textarea.value) : "";
+        mentionBackdrop.scrollTop = textarea.scrollTop;
+        mentionBackdrop.scrollLeft = textarea.scrollLeft;
+      };
+
+      const hideEmojiPanel = () => {
+        if (!emojiPanel || !emojiButton) {
+          return;
+        }
+
+        emojiPanel.hidden = true;
+        emojiButton.setAttribute("aria-expanded", "false");
+      };
+
+      const collapse = () => {
+        hideEmojiPanel();
+        composer.classList.remove("is-expanded");
+        textarea.style.height = "";
+        syncMentionBackdrop();
+        scheduleFloatingUpdate();
+      };
+
+      const collapseIfOutside = () => {
+        if (composer.contains(document.activeElement)) {
+          return;
+        }
+
+        collapse();
+      };
+
+      const insertAtCursor = (text, dispatchInput = true) => {
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        const before = textarea.value.slice(0, start);
+        const after = textarea.value.slice(end);
+        const nextValue = `${before}${text}${after}`;
+        const nextPosition = before.length + text.length;
+
+        textarea.value = nextValue;
+        textarea.focus();
+        textarea.selectionStart = nextPosition;
+        textarea.selectionEnd = nextPosition;
+        if (dispatchInput) {
+          textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        syncMentionBackdrop();
+      };
+
+      const openMentionPicker = () => {
+        expand();
+        hideEmojiPanel();
+        window.dispatchEvent(new CustomEvent("whyisee:mention-open", {
+          detail: {
+            textarea,
+            anchor: mentionButton,
+            mode: "append",
+          },
+        }));
+        syncMentionBackdrop();
+      };
+
+      const updateFloatingComposer = () => {
+        if (!section) {
+          return;
+        }
+
+        const scrollRootRect = scrollRoot?.getBoundingClientRect();
+        const sectionRect = section.getBoundingClientRect();
+        const markerRect = marker.getBoundingClientRect();
+        const viewportBottom = scrollRootRect?.bottom || window.visualViewport?.height || window.innerHeight;
+        const viewportTop = scrollRootRect?.top || 0;
+        const shouldFloat = markerRect.top < viewportTop && sectionRect.bottom > viewportTop + 48;
+
+        if (!shouldFloat) {
+          composer.classList.remove("is-floating");
+          composer.style.left = "";
+          composer.style.width = "";
+          composer.style.bottom = "";
+          flowSpacer.style.height = "0px";
+          bottomSpacer.style.height = "0px";
+          return;
+        }
+
+        const width = Math.max(280, Math.min(sectionRect.width, window.innerWidth - 24));
+        const left = Math.min(Math.max(12, sectionRect.left), window.innerWidth - width - 12);
+        const bottom = Math.max(0, window.innerHeight - viewportBottom);
+
+        composer.classList.add("is-floating");
+        composer.style.left = `${left}px`;
+        composer.style.width = `${width}px`;
+        composer.style.bottom = `${bottom}px`;
+        flowSpacer.style.height = `${composer.offsetHeight}px`;
+        bottomSpacer.style.height = `${composer.offsetHeight + 18}px`;
+      };
+
+      const scheduleFloatingUpdate = () => {
+        if (floatingFrame) {
+          cancelAnimationFrame(floatingFrame);
+        }
+
+        floatingFrame = requestAnimationFrame(() => {
+          floatingFrame = 0;
+          updateFloatingComposer();
+        });
+      };
+      scheduleReplyComposerUpdate = scheduleFloatingUpdate;
+
+      textarea.addEventListener("focus", expand);
+      textarea.addEventListener("click", expand);
+      textarea.addEventListener("input", () => {
+        expand();
+        resizeTextarea();
+        syncMentionBackdrop();
+      });
+
+      textarea.addEventListener("blur", () => {
+        window.setTimeout(collapseIfOutside, 0);
+      });
+
+      textarea.addEventListener("scroll", syncMentionBackdrop);
+
+      let mentionOpenedFromPointer = false;
+
+      mentionButton?.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        mentionOpenedFromPointer = true;
+        openMentionPicker();
+      });
+      mentionButton?.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (mentionOpenedFromPointer) {
+          mentionOpenedFromPointer = false;
+          return;
+        }
+
+        openMentionPicker();
+      });
+
+      emojiButton?.addEventListener("click", () => {
+        expand();
+
+        if (!emojiPanel) {
+          return;
+        }
+
+        const nextOpen = emojiPanel.hidden;
+        emojiPanel.hidden = !nextOpen;
+        emojiButton.setAttribute("aria-expanded", String(nextOpen));
+      });
+
+      emojiPanel?.querySelectorAll("[data-reply-emoji]").forEach((button) => {
+        button.addEventListener("click", () => {
+          insertAtCursor(button.dataset.replyEmoji || "");
+          hideEmojiPanel();
+        });
+      });
+
+      document.addEventListener("pointerdown", (event) => {
+        if (!(event.target instanceof Node)) {
+          return;
+        }
+
+        if (composer.contains(event.target) || event.target.closest?.(".mention-autocomplete")) {
+          return;
+        }
+
+        if (!composer.contains(event.target)) {
+          window.setTimeout(collapseIfOutside, 0);
+        }
+      });
+
+      scrollRoot?.addEventListener("scroll", scheduleFloatingUpdate, { passive: true });
+      window.addEventListener("scroll", scheduleFloatingUpdate, { passive: true });
+      window.addEventListener("resize", scheduleFloatingUpdate);
+      window.addEventListener("whyisee:mention-inserted", () => {
+        expand();
+        syncMentionBackdrop();
+      });
+      syncMentionBackdrop();
+      scheduleFloatingUpdate();
+    }
+
+    const setThreadOpen = (thread, open) => {
+      const button = thread.querySelector("[data-reply-thread-toggle]");
+      const list = thread.querySelector("[data-reply-child-list]");
+
+      if (!button || !list) {
+        return;
+      }
+
+      if (open) {
+        list.removeAttribute("hidden");
+      } else {
+        list.setAttribute("hidden", "");
+      }
+      button.setAttribute("aria-expanded", String(open));
+      button.textContent = open
+        ? button.dataset.closeLabel || button.textContent || ""
+        : button.dataset.openLabel || button.textContent || "";
+      scheduleReplyComposerUpdate();
+    };
+
+    document.querySelectorAll("[data-reply-thread]").forEach((thread) => {
+      const button = thread.querySelector("[data-reply-thread-toggle]");
+
+      button?.addEventListener("click", () => {
+        const list = thread.querySelector("[data-reply-child-list]");
+        setThreadOpen(thread, Boolean(list?.hasAttribute("hidden")));
+      });
+    });
+
+    const revealHashReply = () => {
+      if (!window.location.hash) {
+        return;
+      }
+
+      const target = document.getElementById(window.location.hash.slice(1));
+      const thread = target?.closest?.("[data-reply-thread]");
+
+      if (thread) {
+        setThreadOpen(thread, true);
+      }
+    };
+
+    revealHashReply();
+    window.addEventListener("hashchange", revealHashReply);
+
+    document.querySelectorAll("[data-inline-reply-open]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const scope = button.closest(".reply-card-main, .reply-child-main");
+        const form = scope?.querySelector("[data-inline-reply-form]");
+        const input = form?.querySelector("[data-inline-reply-input]");
+
+        if (!form || !(input instanceof HTMLTextAreaElement)) {
+          return;
+        }
+
+        document.querySelectorAll("[data-inline-reply-form]").forEach((item) => {
+          if (item !== form) {
+            item.setAttribute("hidden", "");
+          }
+        });
+
+        form.removeAttribute("hidden");
+        input.focus({ preventScroll: true });
+        scheduleReplyComposerUpdate();
+      });
+    });
+
+    document.querySelectorAll("[data-inline-reply-cancel]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const form = button.closest("[data-inline-reply-form]");
+
+        if (form) {
+          form.setAttribute("hidden", "");
+          scheduleReplyComposerUpdate();
+        }
+      });
+    });
+
+    const closeReplyMorePanels = (except) => {
+      document.querySelectorAll("[data-reply-more]").forEach((wrapper) => {
+        if (except && wrapper === except) {
+          return;
+        }
+
+        const panel = wrapper.querySelector("[data-reply-more-panel]");
+        const button = wrapper.querySelector("[data-reply-more-button]");
+
+        panel?.setAttribute("hidden", "");
+        button?.setAttribute("aria-expanded", "false");
+      });
+    };
+
+    document.querySelectorAll("[data-reply-more-button]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const wrapper = button.closest("[data-reply-more]");
+        const panel = wrapper?.querySelector("[data-reply-more-panel]");
+
+        if (!wrapper || !panel) {
+          return;
+        }
+
+        const nextOpen = panel.hasAttribute("hidden");
+        closeReplyMorePanels(nextOpen ? wrapper : undefined);
+
+        if (nextOpen) {
+          panel.removeAttribute("hidden");
+        } else {
+          panel.setAttribute("hidden", "");
+        }
+
+        button.setAttribute("aria-expanded", String(nextOpen));
+      });
+    });
+
+    document.querySelectorAll("[data-copy-comment-link]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const url = button.dataset.commentUrl || "";
+        const originalText = button.textContent || "";
+
+        if (!url) {
+          return;
+        }
+
+        try {
+          await navigator.clipboard.writeText(url);
+          button.textContent = button.dataset.copiedLabel || originalText;
+          window.setTimeout(() => {
+            button.textContent = originalText;
+          }, 1400);
+        } catch {
+          button.textContent = originalText;
+        }
+      });
+    });
+
+    document.addEventListener("click", (event) => {
+      if (event.target instanceof Element && event.target.closest("[data-reply-more]")) {
+        return;
+      }
+
+      closeReplyMorePanels();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeReplyMorePanels();
+      }
+    });
+
+    const list = document.querySelector("[data-reply-list]");
+    const sortButtons = Array.from(document.querySelectorAll("[data-reply-sort]"));
+
+    if (!list || sortButtons.length === 0) {
+      return;
+    }
+
+    const readNumber = (card, key) => Number(card.dataset[key] || 0);
+
+    const applySort = (mode) => {
+      const cards = Array.from(list.querySelectorAll("[data-reply-card]"));
+
+      cards.sort((a, b) => {
+        const aCreated = readNumber(a, "replyCreated");
+        const bCreated = readNumber(b, "replyCreated");
+        const aId = readNumber(a, "replyId");
+        const bId = readNumber(b, "replyId");
+
+        if (mode === "latest") {
+          return bCreated - aCreated || bId - aId;
+        }
+
+        return readNumber(b, "replyLikes") - readNumber(a, "replyLikes") || bCreated - aCreated || bId - aId;
+      });
+
+      cards.forEach((card, index) => {
+        const floor = card.querySelector(".reply-floor");
+
+        if (floor) {
+          floor.textContent = `#${index + 1}`;
+        }
+      });
+      list.replaceChildren(...cards);
+
+      sortButtons.forEach((button) => {
+        const active = button.dataset.replySort === mode;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+    };
+
+    sortButtons.forEach((button) => {
+      button.addEventListener("click", () => applySort(button.dataset.replySort || "hot"));
+    });
+  })();
+</script>

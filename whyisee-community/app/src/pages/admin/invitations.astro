@@ -1,0 +1,108 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import AdminNav from "@components/AdminNav.astro";
+import AdminCollapsibleController from "@components/AdminCollapsibleController.astro";
+import AdminInvitationCreateForm from "@components/AdminInvitationCreateForm.astro";
+import AdminInvitationList from "@components/AdminInvitationList.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { getLangFromAstro } from "@lib/i18n";
+import { listAdminInvitations } from "@server/services/admin";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/", 303);
+}
+
+const invitations = await listAdminInvitations();
+const roles = ["member", "new_user", "moderator", "admin"];
+const saved = Astro.url.searchParams.get("saved") === "1";
+const error = Astro.url.searchParams.get("error") === "1";
+const copy = lang === "en"
+  ? {
+      title: "Invitation Codes",
+      description: "Create invitation codes, limit usage, and control registration access.",
+      create: "New invitation",
+      update: "Update",
+      edit: "Edit",
+      code: "Code",
+      codePlaceholder: "Leave blank to generate",
+      email: "Email",
+      emailPlaceholder: "Optional target email",
+      role: "Role",
+      maxUses: "Max uses",
+      useCount: "Used",
+      remaining: "Remaining",
+      expiresAt: "Expires at",
+      noExpiry: "No expiry",
+      creator: "Creator",
+      created: "Created",
+      active: "Active",
+      disabled: "Disabled",
+      expired: "Expired",
+      usedOut: "Used out",
+      disable: "Disable",
+      enable: "Enable",
+      saved: "Invitation saved.",
+      error: "Invitation update failed.",
+      empty: "No invitation codes yet.",
+    }
+  : {
+      title: "邀请码管理",
+      description: "创建邀请码、限制使用次数，并控制注册入口。",
+      create: "新增邀请码",
+      update: "更新",
+      edit: "编辑",
+      code: "邀请码",
+      codePlaceholder: "留空自动生成",
+      email: "邮箱",
+      emailPlaceholder: "可选，指定邀请邮箱",
+      role: "注册角色",
+      maxUses: "可用次数",
+      useCount: "已使用",
+      remaining: "剩余",
+      expiresAt: "过期时间",
+      noExpiry: "永不过期",
+      creator: "创建人",
+      created: "创建",
+      active: "可用",
+      disabled: "已禁用",
+      expired: "已过期",
+      usedOut: "次数用尽",
+      disable: "禁用",
+      enable: "恢复",
+      saved: "邀请码已保存。",
+      error: "邀请码保存失败。",
+      empty: "还没有邀请码。",
+    };
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="admin-page invitation-admin-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{copy.title}</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.description}</p>
+      </div>
+      <span class="count-pill">{invitations.length}</span>
+    </div>
+
+    <AdminNav lang={lang} />
+
+    {saved && <p class="auth-message success">{copy.saved}</p>}
+    {error && <p class="auth-message error">{copy.error}</p>}
+
+    <AdminInvitationCreateForm copy={copy} roles={roles} />
+    <AdminInvitationList copy={copy} invitations={invitations} lang={lang} roles={roles} />
+
+    <AdminCollapsibleController />
+  </section>
+</BaseLayout>

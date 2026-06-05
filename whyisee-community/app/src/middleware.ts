@@ -1,8 +1,11 @@
 import { defineMiddleware } from "astro:middleware";
 import { authCookieName, readSessionId } from "@lib/auth";
 import { recordPageView } from "@server/services/analytics";
+import { startBotScheduler } from "@server/services/botScheduler";
 
 export const onRequest = defineMiddleware(async (context, next) => {
+  startBotScheduler();
+
   const response = await next();
 
   if (shouldRecordPageView(context.request, context.url.pathname, response)) {

@@ -1,31 +1,20 @@
 import { createHash, randomBytes } from "node:crypto";
 import { query, queryOne } from "@server/db/client";
+import { AgentApiError } from "./agentErrors";
+import {
+  normalizeScopes,
+  type AgentScope,
+} from "./agentScopes";
+import { authenticateUserAgentDeviceRequest } from "./userAgentDevices";
 
 export const agentSkillVersion = "whyisee-content-agent@0.1.0";
-
-export const agentScopes = [
-  "site:read",
-  "search:read",
-  "category:read",
-  "tag:read",
-  "topic:read",
-  "topic:create",
-  "topic:update_own",
-  "topic:publish",
-  "post:create",
-  "post:publish",
-  "upload:image",
-  "mention:read",
-  "review:suggest",
-  "content_run:write",
-] as const;
-
-export type AgentScope = (typeof agentScopes)[number];
+export { agentScopes, normalizeScopes, type AgentScope } from "./agentScopes";
+export { AgentApiError } from "./agentErrors";
 
 export interface AgentContext {
   agentProfileId: number;
   agentName: string;
-  tokenId: number;
+  tokenId: number | null;
   tokenName: string;
   userId: number;
   username: string;
@@ -33,6 +22,10 @@ export interface AgentContext {
   role: "admin" | "moderator" | "member" | "new_user";
   scopes: AgentScope[];
   rateLimitPerHour: number;
+  credentialKind: "profile_token" | "user_device";
+  agentDeviceRecordId?: number;
+  deviceId?: string;
+  deviceName?: string;
 }
 
 export interface AgentProfile {
@@ -88,6 +81,8 @@ export interface AgentActionLog {
   agentProfileId: number;
   agentName: string;
   tokenId: number | null;
+  agentDeviceId: number | null;
+  deviceId: string | null;
   action: string;
   resourceType: string;
   resourceId: number | null;
@@ -108,17 +103,6 @@ export interface AgentSource {
   skillVersion: string;
   qualityScore: number | null;
   status: string;
-}
-
-export class AgentApiError extends Error {
-  status: number;
-  code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
 }
 
 interface AgentAuthRow {
@@ -182,6 +166,8 @@ interface AgentActionLogRow {
   agent_profile_id: number;
   agent_name: string;
   token_id: number | null;
+  agent_device_id: number | null;
+  device_id: string | null;
   action: string;
   resource_type: string;
   resource_id: number | null;
@@ -198,9 +184,14 @@ export async function authenticateAgentRequest(request: Request): Promise<AgentC
   const authorization = request.headers.get("authorization") || "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   const token = match?.[1]?.trim();
+  const deviceId = request.headers.get("x-whyisee-agent-device")?.trim() || "";
 
   if (!token) {
     throw new AgentApiError(401, "agent_token_missing", "Missing agent bearer token.");
+  }
+
+  if (deviceId || token.startsWith("whyisee_user_agent_")) {
+    return authenticateUserAgentDeviceRequest(request, token, deviceId);
   }
 
   const tokenHash = hashToken(token);
@@ -247,6 +238,7 @@ export async function authenticateAgentRequest(request: Request): Promise<AgentC
     role: row.role,
     scopes: normalizeScopes(row.token_scopes),
     rateLimitPerHour: Number(row.rate_limit_per_hour || 60),
+    credentialKind: "profile_token",
   };
 }
 
@@ -295,14 +287,16 @@ export async function logAgentAction(
   await query(
     `
     INSERT INTO agent_action_logs (
-      agent_profile_id, token_id, action, resource_type, resource_id, status,
+      agent_profile_id, token_id, agent_device_id, device_id, action, resource_type, resource_id, status,
       request_summary, response_summary, ip_address, user_agent, idempotency_key, created_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     `,
     [
       agent.agentProfileId,
       agent.tokenId,
+      agent.agentDeviceRecordId || null,
+      agent.deviceId || null,
       input.action,
       input.resourceType || "",
       input.resourceId || null,
@@ -699,6 +693,8 @@ export async function listAgentActionLogs(limit = 100): Promise<AgentActionLog[]
       agent_action_logs.agent_profile_id,
       agent_profiles.name AS agent_name,
       agent_action_logs.token_id,
+      agent_action_logs.agent_device_id,
+      agent_action_logs.device_id,
       agent_action_logs.action,
       agent_action_logs.resource_type,
       agent_action_logs.resource_id,
@@ -722,6 +718,8 @@ export async function listAgentActionLogs(limit = 100): Promise<AgentActionLog[]
     agentProfileId: row.agent_profile_id,
     agentName: row.agent_name,
     tokenId: row.token_id,
+    agentDeviceId: row.agent_device_id,
+    deviceId: row.device_id,
     action: row.action,
     resourceType: row.resource_type,
     resourceId: row.resource_id,
@@ -784,23 +782,6 @@ export async function listAgentSourcesForItems(itemType: string, itemIds: number
   );
 }
 
-export function normalizeScopes(values: unknown): AgentScope[] {
-  const raw = Array.isArray(values) ? values : safeJsonParse<unknown[]>(String(values || "[]"), []);
-  const seen = new Set<AgentScope>();
-
-  for (const value of raw) {
-    if (typeof value !== "string") continue;
-    if (!isAgentScope(value)) continue;
-    seen.add(value);
-  }
-
-  return [...seen];
-}
-
-export function isAgentScope(value: string): value is AgentScope {
-  return (agentScopes as readonly string[]).includes(value);
-}
-
 export function readIdempotencyKey(request: Request) {
   const value = request.headers.get("idempotency-key")?.trim() || "";
   return value ? value.slice(0, 160) : null;
@@ -855,7 +836,7 @@ function mapAgentRun(row: AgentRunRow): AgentRun {
   };
 }
 
-function hashToken(token: string) {
+export function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 

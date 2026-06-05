@@ -28,6 +28,7 @@ export interface Topic {
   contentMarkdown: string;
   contentHtml: string;
   authorId: number;
+  author: TopicAuthor;
   type: TopicType;
   status: TopicStatus;
   isPinned: boolean;
@@ -47,6 +48,9 @@ export interface TopicAuthor {
   username: string;
   displayName: string;
   role: "admin" | "moderator" | "member" | "new_user";
+  avatarUrl?: string | null;
+  bio?: string;
+  createdAt?: string;
 }
 
 export interface Post {

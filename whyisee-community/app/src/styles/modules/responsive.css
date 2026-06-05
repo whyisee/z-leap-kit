@@ -1,0 +1,54 @@
+@media (max-width: 980px) {
+  .site-shell {
+    width: 1120px;
+  }
+
+  .markdown-image-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .reply-card,
+  .reply-composer {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .reply-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 13px;
+  }
+
+  .reply-child-card {
+    grid-template-columns: 28px minmax(0, 1fr);
+    padding: 7px 0;
+  }
+
+  .reply-child-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+  }
+
+  .site-header,
+  .site-footer {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .brand {
+    min-width: 0;
+  }
+
+  .nav {
+    justify-content: flex-start;
+  }
+
+  .header-actions {
+    justify-content: flex-end;
+  }
+
+  h1 {
+    font-size: 32px;
+  }
+}

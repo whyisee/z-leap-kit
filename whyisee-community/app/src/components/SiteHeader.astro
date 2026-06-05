@@ -51,19 +51,17 @@ const menuCopy = lang === "en"
   ? {
       profile: "Profile",
       topics: "Topics",
-      following: "Following",
       admin: "Admin",
       logout: "Log out",
-      account: "Account",
+      settings: "Settings",
       unread: "unread",
     }
   : {
-      profile: "个人资料",
+      profile: "资料",
       topics: "话题",
-      following: "关注",
-      admin: "管理后台",
+      admin: "管理",
       logout: "退出登录",
-      account: "账号",
+      settings: "设置",
       unread: "未读",
     };
 const avatarLabel = session ? `${session.displayName || session.username}` : t(lang, "header.login");
@@ -219,18 +217,22 @@ function buildNewTopicHref(url: URL) {
         </button>
         <div class="user-menu-panel" role="menu" data-user-menu-panel hidden>
           <div class="user-menu-head">
-            <strong>{session.displayName}</strong>
-            <span>@{session.username}</span>
+            <span class="user-menu-head-avatar" aria-hidden="true">{avatarInitial}</span>
+            <div>
+              <strong>{session.displayName}</strong>
+              <span>@{session.username}</span>
+            </div>
           </div>
           <a class="user-menu-item" href="/notifications" role="menuitem">
             <span>{notificationLabel}</span>
             {unreadNotifications > 0 && <small>{unreadNotifications} {menuCopy.unread}</small>}
           </a>
-          <a class="user-menu-item" href="/settings/profile" role="menuitem">{menuCopy.profile}</a>
-          <a class="user-menu-item" href={`/u/${session.username}`} role="menuitem">{menuCopy.topics}</a>
-          <a class="user-menu-item" href={`/u/${session.username}?view=following`} role="menuitem">{menuCopy.following}</a>
+          <div class="user-menu-divider" aria-hidden="true"></div>
+          <a class="user-menu-item" href={`/u/${session.username}`} role="menuitem">{menuCopy.profile}</a>
+          <a class="user-menu-item" href={`/u/${session.username}#topics`} role="menuitem">{menuCopy.topics}</a>
           {session.role === "admin" && <a class="user-menu-item" href="/admin" role="menuitem">{menuCopy.admin}</a>}
-          <a class="user-menu-item" href="/settings/account" role="menuitem">{menuCopy.account}</a>
+          <div class="user-menu-divider" aria-hidden="true"></div>
+          <a class="user-menu-item" href="/settings" role="menuitem">{menuCopy.settings}</a>
           <form method="post" action="/api/logout?redirect=/">
             <button class="user-menu-item danger" type="submit" role="menuitem">{menuCopy.logout}</button>
           </form>

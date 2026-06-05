@@ -91,7 +91,7 @@ const deleted = Astro.url.searchParams.get("deleted") === "1";
       {submitted && <p class="auth-message muted">{copy.submitted}</p>}
       {deleted && <p class="auth-message muted">{copy.deleted}</p>}
 
-      <div class="section-head">
+      <div class="section-head" id="topics">
         <div>
           <p class="eyebrow">{canEditProfile ? copy.myTopics : copy.topics}</p>
           <h2>{canEditProfile ? copy.myTopics : copy.topics}</h2>

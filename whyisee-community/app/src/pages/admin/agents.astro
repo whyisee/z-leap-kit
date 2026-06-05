@@ -12,6 +12,7 @@ import {
   listAgentRuns,
   listAgentTokens,
 } from "@server/services/agents";
+import { listAllUserAgentDevices } from "@server/services/userAgentDevices";
 
 export const prerender = false;
 
@@ -39,12 +40,13 @@ if (tokenCookie) {
   Astro.cookies.delete("whyisee_agent_token_once", { path: "/admin/agents" });
 }
 
-const [profiles, tokens, users, runs, logs] = await Promise.all([
+const [profiles, tokens, users, runs, logs, userDevices] = await Promise.all([
   listAgentProfiles(),
   listAgentTokens(),
   listAgentAssignableUsers(),
   listAgentRuns(50),
   listAgentActionLogs(50),
+  listAllUserAgentDevices(200),
 ]);
 const saved = Astro.url.searchParams.get("saved") === "1";
 const error = Astro.url.searchParams.get("error") === "1";
@@ -61,6 +63,7 @@ const copy = lang === "en"
       createToken: "Create token",
       runs: "Content Runs",
       logs: "Action Logs",
+      userDevices: "User Agent Devices",
       user: "Bound user",
       name: "Name",
       descriptionLabel: "Description",
@@ -72,6 +75,8 @@ const copy = lang === "en"
       revoke: "Revoke",
       expiresAt: "Expires at",
       noExpires: "No expiry",
+      device: "Device",
+      lastSeen: "Last seen",
       tokenName: "Token name",
       status: "Status",
       task: "Task",
@@ -90,6 +95,7 @@ const copy = lang === "en"
       createToken: "创建 Token",
       runs: "内容运行",
       logs: "动作日志",
+      userDevices: "用户 Agent 设备",
       user: "绑定用户",
       name: "名称",
       descriptionLabel: "说明",
@@ -101,6 +107,8 @@ const copy = lang === "en"
       revoke: "撤销",
       expiresAt: "过期时间",
       noExpires: "不过期",
+      device: "设备",
+      lastSeen: "最近出现",
       tokenName: "Token 名称",
       status: "状态",
       task: "任务",
@@ -264,6 +272,42 @@ const defaultScopes = new Set([
     </div>
 
     <div class="admin-table">
+      <h2>{copy.userDevices}</h2>
+      {userDevices.length > 0 ? userDevices.map((device) => (
+        <article class="admin-table-row agent-device-row">
+          <div>
+            <strong>{device.deviceName} · {device.agentName} · {device.status}</strong>
+            <span>@{device.username} · {device.displayName}</span>
+            <small>
+              {copy.device}: {device.deviceId}
+              {" · "}
+              prefix {device.tokenPrefix || "-"} {device.tokenRevokedAt ? "· revoked" : ""}
+            </small>
+            <small>
+              {copy.lastSeen}: {device.lastSeenAt ? formatRelative(device.lastSeenAt, lang) : "-"}
+              {" · "}
+              last used: {device.tokenLastUsedAt ? formatRelative(device.tokenLastUsedAt, lang) : "-"}
+            </small>
+          </div>
+          <div class="admin-inline-actions">
+            <form method="post" action={`/api/admin/agents/devices/${device.id}`}>
+              <input type="hidden" name="redirect" value="/admin/agents" />
+              <input type="hidden" name="status" value={device.status === "active" ? "disabled" : "active"} />
+              <button class="button secondary" type="submit">{device.status === "active" ? copy.disable : copy.enable}</button>
+            </form>
+            {!device.tokenRevokedAt && (
+              <form method="post" action={`/api/admin/agents/devices/${device.id}`}>
+                <input type="hidden" name="redirect" value="/admin/agents" />
+                <input type="hidden" name="intent" value="revoke-token" />
+                <button class="button secondary danger" type="submit">{copy.revoke}</button>
+              </form>
+            )}
+          </div>
+        </article>
+      )) : <p class="auth-message muted">{copy.empty}</p>}
+    </div>
+
+    <div class="admin-table">
       <h2>{copy.runs}</h2>
       {runs.length > 0 ? runs.map((run) => (
         <article class="admin-table-row">
@@ -283,7 +327,12 @@ const defaultScopes = new Set([
         <article class="admin-table-row">
           <div>
             <strong>{log.action} · {log.status}</strong>
-            <span>{log.agentName} · {log.resourceType || "-"} {log.resourceId ? `#${log.resourceId}` : ""}</span>
+            <span>
+              {log.agentName}
+              {log.deviceId ? ` · ${log.deviceId}` : ""}
+              {" · "}
+              {log.resourceType || "-"} {log.resourceId ? `#${log.resourceId}` : ""}
+            </span>
             <small>{formatRelative(log.createdAt, lang)} · key: {log.idempotencyKey || "-"}</small>
             {(log.requestSummary || log.responseSummary) && <p>{log.requestSummary} {log.responseSummary ? `→ ${log.responseSummary}` : ""}</p>}
           </div>

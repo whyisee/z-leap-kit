@@ -14,6 +14,26 @@ export function formatRelative(value: string, lang: Lang = "zh") {
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
+  const absDiff = Math.abs(diff);
+
+  if (diff < 0) {
+    if (absDiff < hour) {
+      const count = Math.max(1, Math.ceil(absDiff / minute));
+      return lang === "en" ? `in ${count}m` : `${count} 分钟后`;
+    }
+
+    if (absDiff < day) {
+      const count = Math.ceil(absDiff / hour);
+      return lang === "en" ? `in ${count}h` : `${count} 小时后`;
+    }
+
+    if (absDiff < 14 * day) {
+      const count = Math.ceil(absDiff / day);
+      return lang === "en" ? `in ${count}d` : `${count} 天后`;
+    }
+
+    return formatDate(value, lang);
+  }
 
   if (diff < hour) {
     const count = Math.max(1, Math.floor(diff / minute));

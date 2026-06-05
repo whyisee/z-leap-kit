@@ -1,0 +1,93 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import type { AuthSession } from "@lib/auth";
+import type { Lang } from "@lib/i18n";
+
+interface Props {
+  title: string;
+  description: string;
+  current: "profile" | "account" | "agents";
+  lang: Lang;
+  session: AuthSession;
+}
+
+const { title, description, current, lang, session } = Astro.props;
+const copy = lang === "en"
+  ? {
+      accountLabel: "Your personal account",
+      viewProfile: "Go to your personal profile",
+      personal: "Personal settings",
+      access: "Access",
+      automation: "Code, planning, and automation",
+      profile: "Public profile",
+      account: "Password and authentication",
+      agents: "Agent devices",
+    }
+  : {
+      accountLabel: "你的个人账号",
+      viewProfile: "查看个人主页",
+      personal: "个人设置",
+      access: "访问与安全",
+      automation: "代码、规划和自动化",
+      profile: "公开资料",
+      account: "密码与认证",
+      agents: "Agent 设备",
+    };
+const sections = [
+  {
+    label: copy.personal,
+    items: [
+      { id: "profile", href: "/settings/profile", label: copy.profile },
+    ],
+  },
+  {
+    label: copy.access,
+    items: [
+      { id: "account", href: "/settings/account", label: copy.account },
+    ],
+  },
+  {
+    label: copy.automation,
+    items: [
+      { id: "agents", href: "/settings/agents", label: copy.agents },
+    ],
+  },
+] as const;
+const avatarInitial = (session.displayName || session.username).trim().slice(0, 1).toUpperCase();
+---
+
+<BaseLayout title={`${title} - whyisee.xyz`} description={description}>
+  <section class="article-page settings-page">
+    <header class="settings-head">
+      <span class="settings-avatar" aria-hidden="true">{avatarInitial}</span>
+      <div>
+        <h1>{session.displayName}</h1>
+        <p>@{session.username} · {copy.accountLabel}</p>
+      </div>
+      <a class="button secondary compact" href={`/u/${session.username}`}>{copy.viewProfile}</a>
+    </header>
+
+    <div class="settings-layout">
+      <aside class="settings-sidebar" aria-label={lang === "en" ? "Settings" : "设置"}>
+        {sections.map((section) => (
+          <nav class="settings-nav-group" aria-label={section.label}>
+            <strong>{section.label}</strong>
+            {section.items.map((item) => (
+              <a class:list={["settings-nav-item", current === item.id && "is-active"]} href={item.href}>
+                {item.label}
+              </a>
+            ))}
+          </nav>
+        ))}
+      </aside>
+
+      <div class="settings-content-panel">
+        <div class="settings-content-head">
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        <slot />
+      </div>
+    </div>
+  </section>
+</BaseLayout>

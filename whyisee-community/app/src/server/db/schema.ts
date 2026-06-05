@@ -225,6 +225,64 @@ CREATE TABLE IF NOT EXISTS bot_jobs (
   FOREIGN KEY (result_post_id) REFERENCES posts(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS bot_tasks (
+  id SERIAL PRIMARY KEY,
+  task_key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  task_type TEXT NOT NULL,
+  bot_user_id INTEGER NOT NULL,
+  trigger_type TEXT NOT NULL DEFAULT 'schedule',
+  status TEXT NOT NULL DEFAULT 'active',
+  schedule_interval_seconds INTEGER NOT NULL DEFAULT 60,
+  config_json TEXT NOT NULL DEFAULT '{}',
+  next_run_at TEXT,
+  locked_at TEXT,
+  last_run_at TEXT,
+  last_status TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (bot_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS bot_task_runs (
+  id SERIAL PRIMARY KEY,
+  task_id INTEGER NOT NULL,
+  run_key TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'running',
+  input_summary TEXT NOT NULL DEFAULT '',
+  output_summary TEXT NOT NULL DEFAULT '',
+  error TEXT,
+  metrics_json TEXT NOT NULL DEFAULT '{}',
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  FOREIGN KEY (task_id) REFERENCES bot_tasks(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS content_review_results (
+  id SERIAL PRIMARY KEY,
+  target_type TEXT NOT NULL,
+  target_id INTEGER NOT NULL,
+  content_hash TEXT NOT NULL,
+  task_id INTEGER,
+  task_run_id INTEGER,
+  bot_user_id INTEGER,
+  ai_provider TEXT NOT NULL DEFAULT '',
+  ai_model TEXT NOT NULL DEFAULT '',
+  decision TEXT NOT NULL,
+  risk_score INTEGER NOT NULL DEFAULT 100,
+  reasons_json TEXT NOT NULL DEFAULT '[]',
+  raw_result_json TEXT NOT NULL DEFAULT '{}',
+  result_status TEXT NOT NULL DEFAULT 'suggested',
+  error TEXT,
+  applied_at TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (task_id) REFERENCES bot_tasks(id) ON DELETE SET NULL,
+  FOREIGN KEY (task_run_id) REFERENCES bot_task_runs(id) ON DELETE SET NULL,
+  FOREIGN KEY (bot_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  UNIQUE (target_type, target_id, content_hash)
+);
+
 CREATE TABLE IF NOT EXISTS reports (
   id SERIAL PRIMARY KEY,
   reporter_id INTEGER NOT NULL,
@@ -322,10 +380,59 @@ CREATE TABLE IF NOT EXISTS agent_tokens (
   FOREIGN KEY (agent_profile_id) REFERENCES agent_profiles(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS agent_devices (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  agent_profile_id INTEGER NOT NULL,
+  device_id TEXT NOT NULL UNIQUE,
+  device_name TEXT NOT NULL,
+  agent_name TEXT NOT NULL,
+  machine_fingerprint_hash TEXT,
+  runtime_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_seen_at TEXT,
+  last_ip_address TEXT,
+  last_user_agent TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (agent_profile_id) REFERENCES agent_profiles(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_device_tokens (
+  id SERIAL PRIMARY KEY,
+  agent_device_id INTEGER NOT NULL,
+  token_prefix TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  scopes TEXT NOT NULL DEFAULT '[]',
+  expires_at TEXT,
+  last_used_at TEXT,
+  revoked_at TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (agent_device_id) REFERENCES agent_devices(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_bind_links (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  code_prefix TEXT NOT NULL,
+  code_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  used_device_id INTEGER,
+  revoked_at TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (used_device_id) REFERENCES agent_devices(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS agent_action_logs (
   id SERIAL PRIMARY KEY,
   agent_profile_id INTEGER NOT NULL,
   token_id INTEGER,
+  agent_device_id INTEGER,
+  device_id TEXT,
   action TEXT NOT NULL,
   resource_type TEXT NOT NULL DEFAULT '',
   resource_id INTEGER,
@@ -337,7 +444,8 @@ CREATE TABLE IF NOT EXISTS agent_action_logs (
   idempotency_key TEXT,
   created_at TEXT NOT NULL,
   FOREIGN KEY (agent_profile_id) REFERENCES agent_profiles(id) ON DELETE CASCADE,
-  FOREIGN KEY (token_id) REFERENCES agent_tokens(id) ON DELETE SET NULL
+  FOREIGN KEY (token_id) REFERENCES agent_tokens(id) ON DELETE SET NULL,
+  FOREIGN KEY (agent_device_id) REFERENCES agent_devices(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS content_runs (
@@ -399,6 +507,10 @@ CREATE INDEX IF NOT EXISTS idx_mentions_user_created ON mentions(mentioned_user_
 CREATE INDEX IF NOT EXISTS idx_mentions_source ON mentions(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_bot_jobs_status_created ON bot_jobs(status, created_at ASC);
 CREATE INDEX IF NOT EXISTS idx_bot_jobs_source ON bot_jobs(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_bot_tasks_status_next ON bot_tasks(status, next_run_at);
+CREATE INDEX IF NOT EXISTS idx_bot_task_runs_task_started ON bot_task_runs(task_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_content_review_results_target ON content_review_results(target_type, target_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_content_review_results_status_created ON content_review_results(result_status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reports_status_created ON reports(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_page_views_created ON page_views(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_page_views_path_created ON page_views(path, created_at DESC);
@@ -408,7 +520,14 @@ CREATE INDEX IF NOT EXISTS idx_ai_model_configs_provider ON ai_model_configs(pro
 CREATE INDEX IF NOT EXISTS idx_agent_profiles_user ON agent_profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_agent_tokens_agent ON agent_tokens(agent_profile_id);
 CREATE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_agent_bind_links_user_created ON agent_bind_links(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_bind_links_hash ON agent_bind_links(code_hash);
+CREATE INDEX IF NOT EXISTS idx_agent_devices_user_created ON agent_devices(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_devices_device_id ON agent_devices(device_id);
+CREATE INDEX IF NOT EXISTS idx_agent_device_tokens_device ON agent_device_tokens(agent_device_id);
+CREATE INDEX IF NOT EXISTS idx_agent_device_tokens_hash ON agent_device_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_agent_action_logs_agent_created ON agent_action_logs(agent_profile_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_action_logs_device_created ON agent_action_logs(agent_device_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_action_logs_resource ON agent_action_logs(resource_type, resource_id);
 CREATE INDEX IF NOT EXISTS idx_content_runs_agent_created ON content_runs(agent_profile_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_run_items_item ON content_run_items(item_type, item_id);

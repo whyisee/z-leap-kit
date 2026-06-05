@@ -74,12 +74,17 @@ export async function createUserWithInvitation(input: {
     throw new Error("Password must be at least 8 characters.");
   }
 
+  if (!inviteCode) {
+    throw new Error("Invitation code is required.");
+  }
+
   const now = new Date().toISOString();
   const passwordHash = await hashPassword(input.password);
 
   const user = await withTransaction(async (client) => {
     const invitation = await client.query<{
       id: number;
+      email: string | null;
       role: AuthSession["role"];
       max_uses: number;
       use_count: number;
@@ -87,10 +92,11 @@ export async function createUserWithInvitation(input: {
       disabled_at: string | null;
     }>(
       `
-      SELECT id, role, max_uses, use_count, expires_at, disabled_at
+      SELECT id, email, role, max_uses, use_count, expires_at, disabled_at
       FROM invitations
       WHERE code = $1
       LIMIT 1
+      FOR UPDATE
       `,
       [inviteCode],
     );
@@ -98,6 +104,10 @@ export async function createUserWithInvitation(input: {
 
     if (!invite || invite.disabled_at || invite.use_count >= invite.max_uses || (invite.expires_at && invite.expires_at < now)) {
       throw new Error("Invalid invitation code.");
+    }
+
+    if (invite.email && invite.email.toLowerCase() !== email) {
+      throw new Error("Invalid invitation email.");
     }
 
     const result = await client.query<{

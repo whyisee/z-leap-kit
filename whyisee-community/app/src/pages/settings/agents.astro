@@ -1,0 +1,228 @@
+---
+import SettingsShell from "@components/SettingsShell.astro";
+import { getSessionFromAstro } from "@lib/auth";
+import { formatDate, formatRelative } from "@lib/format";
+import { getLangFromAstro } from "@lib/i18n";
+import {
+  createUserAgentBindLink,
+  listUserAgentDevices,
+  type UserAgentDevice,
+} from "@server/services/userAgentDevices";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect("/login?redirect=/settings/agents", 303);
+}
+
+const bindLink = await createUserAgentBindLink(session.userId, Astro.url.origin);
+const devices = await listUserAgentDevices(session.userId);
+const skillDownloadUrl = `${Astro.url.origin}/api/agent/${encodeURIComponent(bindLink.code)}/skill.md`;
+const skillDownloadCommand = `curl -L ${skillDownloadUrl} -o whyisee-content-agent-SKILL.md`;
+const saved = Astro.url.searchParams.get("saved") === "1";
+const copy = lang === "en"
+  ? {
+      title: "Agent devices",
+      description: "Send one command to the agent. The downloaded Skill includes the one-time binding command.",
+      promptTitle: "Copy this sentence to the agent",
+      promptHint: "Use this when you want the agent to bind itself without explaining the setup again.",
+      copy: "Copy",
+      copied: "Copied",
+      saved: "Agent device settings updated.",
+      boundDevices: "Bound devices",
+      boundDescription: "Only active devices with a valid token can call the agent API.",
+      emptyDevices: "No agent device has been bound yet.",
+      active: "Bound",
+      disabled: "Disabled",
+      unbound: "Unbound",
+      expired: "Token expired",
+      deviceId: "Device ID",
+      token: "Token",
+      expires: "Expires",
+      created: "Bound",
+      lastSeen: "Last seen",
+      lastUsed: "Token used",
+      ip: "Last IP",
+      unknown: "Never",
+      unbind: "Unbind",
+      enable: "Enable",
+      revokeHint: "Unbinding disables this device and revokes its token. The agent must bind again before writing.",
+    }
+  : {
+      title: "Agent 设备",
+      description: "把一条命令发给 Agent。下载到的 Skill 开头已经包含一次性绑定命令。",
+      promptTitle: "直接复制这句话给 Agent",
+      promptHint: "不用再解释流程，把这句话发给 Agent，它就知道先下载 Skill 并完成绑定。",
+      copy: "复制",
+      copied: "已复制",
+      saved: "Agent 设备设置已更新。",
+      boundDevices: "绑定状态",
+      boundDescription: "只有状态正常且 token 有效的设备，才能继续调用 Agent API。",
+      emptyDevices: "还没有绑定任何 Agent 设备。",
+      active: "已绑定",
+      disabled: "已停用",
+      unbound: "已解绑",
+      expired: "Token 已过期",
+      deviceId: "设备 ID",
+      token: "Token",
+      expires: "过期时间",
+      created: "绑定时间",
+      lastSeen: "最近连接",
+      lastUsed: "Token 使用",
+      ip: "最近 IP",
+      unknown: "从未",
+      unbind: "解绑",
+      enable: "启用",
+      revokeHint: "解绑会停用这个设备并撤销 token。Agent 需要重新绑定后才能写入。",
+    };
+const agentInstruction = lang === "en"
+  ? `Please run this command to download my personalized whyisee Content Agent Skill, then follow the one-time binding command at the top of the downloaded file to bind this device before using the whyisee agent API: ${skillDownloadCommand}`
+  : `请运行这条命令下载我的 whyisee 内容 Agent Skill，然后按照下载文件开头的一次性绑定命令完成当前设备绑定，再使用 whyisee 的 Agent API：${skillDownloadCommand}`;
+
+function getDeviceState(device: UserAgentDevice) {
+  if (device.tokenRevokedAt) return "unbound";
+  if (device.tokenExpiresAt && new Date(device.tokenExpiresAt).getTime() <= Date.now()) return "expired";
+  if (device.status === "disabled") return "disabled";
+  return "active";
+}
+
+function getDeviceStateLabel(device: UserAgentDevice) {
+  const state = getDeviceState(device);
+  if (state === "unbound") return copy.unbound;
+  if (state === "expired") return copy.expired;
+  if (state === "disabled") return copy.disabled;
+  return copy.active;
+}
+
+function canEnableDevice(device: UserAgentDevice) {
+  return device.status === "disabled" && !device.tokenRevokedAt && getDeviceState(device) !== "expired";
+}
+---
+
+<SettingsShell title={copy.title} description={copy.description} current="agents" lang={lang} session={session}>
+  {saved && <p class="auth-message muted">{copy.saved}</p>}
+
+  <div class="agent-settings-card">
+    <div class="agent-bind-command-card">
+      <div>
+        <strong>{copy.promptTitle}</strong>
+        <p>{copy.promptHint}</p>
+      </div>
+      <div class="agent-copy-row">
+        <pre class="agent-copy-text" data-agent-copy-text>{agentInstruction}</pre>
+        <button
+          type="button"
+          class="agent-copy-button"
+          data-copy-agent-text
+          data-copy-label={copy.copy}
+          data-copied-label={copy.copied}
+        >
+          {copy.copy}
+        </button>
+      </div>
+    </div>
+
+    <section class="agent-device-section" aria-labelledby="agent-device-title">
+      <div class="agent-device-section-head">
+        <div>
+          <h3 id="agent-device-title">{copy.boundDevices}</h3>
+          <p>{copy.boundDescription}</p>
+        </div>
+        <span class="agent-device-count">{devices.length}</span>
+      </div>
+
+      {devices.length > 0 ? (
+        <div class="agent-device-list">
+          {devices.map((device) => (
+            <article class:list={["agent-device-card", `state-${getDeviceState(device)}`]}>
+              <div class="agent-device-main">
+                <div class="agent-device-title-row">
+                  <strong>{device.deviceName}</strong>
+                  <span class="agent-device-status">{getDeviceStateLabel(device)}</span>
+                </div>
+                <p>{device.agentName}</p>
+                <dl class="agent-device-meta">
+                  <div>
+                    <dt>{copy.deviceId}</dt>
+                    <dd>{device.deviceId}</dd>
+                  </div>
+                  <div>
+                    <dt>{copy.token}</dt>
+                    <dd>
+                      {device.tokenPrefix || "-"}
+                      {device.tokenExpiresAt ? ` · ${copy.expires}: ${formatDate(device.tokenExpiresAt, lang)}` : ""}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{copy.created}</dt>
+                    <dd>{formatRelative(device.createdAt, lang)}</dd>
+                  </div>
+                  <div>
+                    <dt>{copy.lastSeen}</dt>
+                    <dd>{device.lastSeenAt ? formatRelative(device.lastSeenAt, lang) : copy.unknown}</dd>
+                  </div>
+                  <div>
+                    <dt>{copy.lastUsed}</dt>
+                    <dd>{device.tokenLastUsedAt ? formatRelative(device.tokenLastUsedAt, lang) : copy.unknown}</dd>
+                  </div>
+                  {device.lastIpAddress && (
+                    <div>
+                      <dt>{copy.ip}</dt>
+                      <dd>{device.lastIpAddress}</dd>
+                    </div>
+                  )}
+                </dl>
+                <small>{copy.revokeHint}</small>
+              </div>
+
+              <div class="agent-device-actions">
+                {canEnableDevice(device) && (
+                  <form method="post" action={`/api/settings/agents/devices/${device.id}`}>
+                    <input type="hidden" name="redirect" value="/settings/agents?saved=1" />
+                    <input type="hidden" name="status" value="active" />
+                    <button class="button secondary compact" type="submit">{copy.enable}</button>
+                  </form>
+                )}
+                {!device.tokenRevokedAt && (
+                  <form method="post" action={`/api/settings/agents/devices/${device.id}`}>
+                    <input type="hidden" name="redirect" value="/settings/agents?saved=1" />
+                    <input type="hidden" name="intent" value="unbind" />
+                    <button class="button danger compact" type="submit">{copy.unbind}</button>
+                  </form>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p class="auth-message muted">{copy.emptyDevices}</p>
+      )}
+    </section>
+  </div>
+
+  <script is:inline>
+    (() => {
+      const button = document.querySelector("[data-copy-agent-text]");
+      const text = document.querySelector("[data-agent-copy-text]")?.textContent || "";
+
+      if (!button || !text) {
+        return;
+      }
+
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          button.textContent = button.dataset.copiedLabel || "Copied";
+          window.setTimeout(() => {
+            button.textContent = button.dataset.copyLabel || "Copy";
+          }, 1300);
+        } catch {
+          button.textContent = text;
+        }
+      });
+    })();
+  </script>
+</SettingsShell>

@@ -1,0 +1,394 @@
+---
+import MarkdownImageUpload from "@components/MarkdownImageUpload.astro";
+import MentionAutocomplete from "@components/MentionAutocomplete.astro";
+import type { AuthSession } from "@lib/auth";
+import { formatRelative } from "@lib/format";
+import type { Lang } from "@lib/i18n";
+
+interface ReplyAuthor {
+  id: number;
+  username: string;
+  displayName: string;
+}
+
+interface ReplyPost {
+  id: number;
+  author: ReplyAuthor;
+  createdAt: string;
+}
+
+export interface TopicReplyItem {
+  post: ReplyPost;
+  authorInitial: string;
+  contentHtml: string;
+  likeCount: number;
+  liked: boolean;
+  createdAtMs: number;
+}
+
+interface TopicReplyCopy {
+  comments: string;
+  reply: string;
+  replyPlaceholder: string;
+  submitReply: string;
+  loginToReply: string;
+  noReplies: string;
+  replyError: string;
+  sortHot: string;
+  sortLatest: string;
+  uploadImage: string;
+  mentionUser: string;
+  emoji: string;
+  replyToComment: string;
+  cancelReply: string;
+  inlineReplyPlaceholder: string;
+  hideNestedReplies: string;
+  moreActions: string;
+  copyCommentLink: string;
+  copiedCommentLink: string;
+  blockUser: string;
+  like: string;
+  liked: string;
+  report: string;
+}
+
+interface Props {
+  childRepliesByParentId: Map<number, TopicReplyItem[]>;
+  copy: TopicReplyCopy;
+  currentPath: string;
+  currentUserInitial: string;
+  lang: Lang;
+  postCount: number;
+  replyError: boolean;
+  replyItems: TopicReplyItem[];
+  session: AuthSession | undefined;
+  topicId: number;
+  topicUrl: string;
+}
+
+const {
+  childRepliesByParentId,
+  copy,
+  currentPath,
+  currentUserInitial,
+  lang,
+  postCount,
+  replyError,
+  replyItems,
+  session,
+  topicId,
+  topicUrl,
+} = Astro.props;
+---
+
+<section class="reply-section" aria-labelledby="reply-title">
+  <div class="reply-head">
+    <div class="reply-title-row">
+      <h2 id="reply-title">{copy.comments}</h2>
+      <span class="reply-count">{postCount}</span>
+    </div>
+    <div class="reply-sort" role="group" aria-label={copy.comments}>
+      <button class="reply-sort-button is-active" type="button" data-reply-sort="hot" aria-pressed="true">
+        {copy.sortHot}
+      </button>
+      <span aria-hidden="true">|</span>
+      <button class="reply-sort-button" type="button" data-reply-sort="latest" aria-pressed="false">
+        {copy.sortLatest}
+      </button>
+    </div>
+  </div>
+
+  {replyError && <p class="auth-message error">{copy.replyError}</p>}
+
+  {session ? (
+    <form class="reply-form reply-composer" method="post" action={`/api/topics/${topicId}/posts`} data-reply-composer>
+      <input type="hidden" name="redirect" value={currentPath} />
+      <div class="reply-avatar reply-composer-avatar" aria-hidden="true">{currentUserInitial}</div>
+      <div class="reply-composer-main">
+        <label class="reply-composer-field">
+          <span class="sr-only">{copy.reply}</span>
+          <div class="reply-composer-input-shell">
+            <div class="reply-mention-backdrop" aria-hidden="true" data-reply-mention-backdrop></div>
+            <textarea
+              name="contentMarkdown"
+              rows="1"
+              placeholder={copy.replyPlaceholder}
+              required
+              data-reply-composer-input
+            ></textarea>
+          </div>
+        </label>
+        <div class="reply-composer-tools" data-reply-composer-tools>
+          <div class="reply-composer-tool-group">
+            <MarkdownImageUpload lang={lang} variant="icon" />
+            <button class="reply-tool-button" type="button" aria-label={copy.mentionUser} title={copy.mentionUser} data-reply-insert-mention>
+              <span aria-hidden="true">@</span>
+            </button>
+            <div class="reply-emoji-tool">
+              <button
+                class="reply-tool-button"
+                type="button"
+                aria-label={copy.emoji}
+                title={copy.emoji}
+                aria-expanded="false"
+                aria-controls="reply-emoji-panel"
+                data-reply-emoji-button
+              >
+                <span class="reply-tool-smile-icon" aria-hidden="true"></span>
+              </button>
+              <div class="reply-emoji-panel" id="reply-emoji-panel" data-reply-emoji-panel hidden>
+                {["🙂", "😂", "👍", "🎉", "🤔", "😭", "❤️", "🔥"].map((emoji) => (
+                  <button class="reply-emoji-option" type="button" data-reply-emoji={emoji} aria-label={emoji}>
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <MentionAutocomplete lang={lang} />
+          </div>
+          <button class="button primary reply-submit-button" type="submit">{copy.submitReply}</button>
+        </div>
+      </div>
+    </form>
+  ) : (
+    <a class="button primary reply-login-button" href={`/login?redirect=${encodeURIComponent(currentPath)}`}>{copy.loginToReply}</a>
+  )}
+
+  {postCount > 0 ? (
+    <div class="reply-list" data-reply-list>
+      {replyItems.map(({ post, authorInitial, contentHtml, likeCount, liked, createdAtMs }, index) => {
+        const childReplies = childRepliesByParentId.get(post.id) || [];
+        const featuredChildReply = childReplies[0];
+        const remainingChildReplies = childReplies.slice(1);
+        const childListId = `post-${post.id}-replies`;
+        const openLabel = lang === "en"
+          ? `${childReplies.length} replies, view all`
+          : `共${childReplies.length}条回复，点击查看`;
+
+        return (
+          <article
+            class="reply-card"
+            id={`post-${post.id}`}
+            data-reply-card
+            data-reply-created={createdAtMs}
+            data-reply-likes={likeCount}
+            data-reply-id={post.id}
+          >
+            <div class="reply-avatar" aria-hidden="true">{authorInitial}</div>
+            <div class="reply-card-main">
+              <header>
+                <a class="reply-author" href={`/u/${post.author.username}`}>{post.author.displayName}</a>
+                <span class="reply-floor">#{index + 1}</span>
+              </header>
+              <div class="reply-content" set:html={contentHtml} />
+              <footer class="reply-actions">
+                <span class="reply-action-time">{formatRelative(post.createdAt, lang)}</span>
+                <form method="post" action="/api/interactions/reaction">
+                  <input type="hidden" name="targetType" value="post" />
+                  <input type="hidden" name="targetId" value={post.id} />
+                  <input type="hidden" name="redirect" value={`${currentPath}#post-${post.id}`} />
+                  <button class:list={["action-button compact", liked && "is-active"]} type="submit">
+                    {liked ? copy.liked : copy.like}
+                    <span>{likeCount}</span>
+                  </button>
+                </form>
+                {session && (
+                  <button class="action-button compact" type="button" data-inline-reply-open>
+                    {copy.replyToComment}
+                  </button>
+                )}
+                <div class="reply-more" data-reply-more>
+                  <button class="reply-more-button" type="button" aria-label={copy.moreActions} aria-expanded="false" data-reply-more-button>
+                    <span aria-hidden="true">⋯</span>
+                  </button>
+                  <div class="reply-more-panel" data-reply-more-panel hidden>
+                    <button type="button" data-copy-comment-link data-comment-url={`${topicUrl}#post-${post.id}`} data-copied-label={copy.copiedCommentLink}>
+                      {copy.copyCommentLink}
+                    </button>
+                    {session && session.userId !== post.author.id && (
+                      <form method="post" action="/api/interactions/block-user">
+                        <input type="hidden" name="blockedUserId" value={post.author.id} />
+                        <input type="hidden" name="redirect" value={currentPath} />
+                        <button type="submit">{copy.blockUser}</button>
+                      </form>
+                    )}
+                    <a href={`/report?targetType=post&targetId=${post.id}&redirect=${encodeURIComponent(`${currentPath}#post-${post.id}`)}`}>{copy.report}</a>
+                  </div>
+                </div>
+              </footer>
+
+              {session && (
+                <form class="reply-inline-form" method="post" action={`/api/topics/${topicId}/posts`} data-inline-reply-form hidden>
+                  <input type="hidden" name="parentPostId" value={post.id} />
+                  <input type="hidden" name="redirect" value={`${currentPath}#post-${post.id}`} />
+                  <textarea
+                    name="contentMarkdown"
+                    rows="2"
+                    placeholder={`${copy.inlineReplyPlaceholder} @${post.author.username}`}
+                    required
+                    data-inline-reply-input
+                  ></textarea>
+                  <div class="reply-inline-actions">
+                    <button class="action-button compact" type="button" data-inline-reply-cancel>{copy.cancelReply}</button>
+                    <button class="button primary compact" type="submit">{copy.submitReply}</button>
+                  </div>
+                </form>
+              )}
+
+              {childReplies.length > 0 && (
+                <section class="reply-thread" data-reply-thread>
+                  {featuredChildReply && (
+                    <article class="reply-child-card is-featured" id={`post-${featuredChildReply.post.id}`}>
+                      <div class="reply-avatar reply-child-avatar" aria-hidden="true">{featuredChildReply.authorInitial}</div>
+                      <div class="reply-child-main">
+                        <header>
+                          <a class="reply-author" href={`/u/${featuredChildReply.post.author.username}`}>{featuredChildReply.post.author.displayName}</a>
+                        </header>
+                        <div class="reply-content reply-child-content" set:html={featuredChildReply.contentHtml} />
+                        <footer class="reply-actions reply-child-actions">
+                          <span class="reply-action-time">{formatRelative(featuredChildReply.post.createdAt, lang)}</span>
+                          <form method="post" action="/api/interactions/reaction">
+                            <input type="hidden" name="targetType" value="post" />
+                            <input type="hidden" name="targetId" value={featuredChildReply.post.id} />
+                            <input type="hidden" name="redirect" value={`${currentPath}#post-${featuredChildReply.post.id}`} />
+                            <button class:list={["action-button compact", featuredChildReply.liked && "is-active"]} type="submit">
+                              {featuredChildReply.liked ? copy.liked : copy.like}
+                              <span>{featuredChildReply.likeCount}</span>
+                            </button>
+                          </form>
+                          {session && (
+                            <button class="action-button compact" type="button" data-inline-reply-open>
+                              {copy.replyToComment}
+                            </button>
+                          )}
+                          <div class="reply-more" data-reply-more>
+                            <button class="reply-more-button" type="button" aria-label={copy.moreActions} aria-expanded="false" data-reply-more-button>
+                              <span aria-hidden="true">⋯</span>
+                            </button>
+                            <div class="reply-more-panel" data-reply-more-panel hidden>
+                              <button type="button" data-copy-comment-link data-comment-url={`${topicUrl}#post-${featuredChildReply.post.id}`} data-copied-label={copy.copiedCommentLink}>
+                                {copy.copyCommentLink}
+                              </button>
+                              {session && session.userId !== featuredChildReply.post.author.id && (
+                                <form method="post" action="/api/interactions/block-user">
+                                  <input type="hidden" name="blockedUserId" value={featuredChildReply.post.author.id} />
+                                  <input type="hidden" name="redirect" value={currentPath} />
+                                  <button type="submit">{copy.blockUser}</button>
+                                </form>
+                              )}
+                              <a href={`/report?targetType=post&targetId=${featuredChildReply.post.id}&redirect=${encodeURIComponent(`${currentPath}#post-${featuredChildReply.post.id}`)}`}>{copy.report}</a>
+                            </div>
+                          </div>
+                        </footer>
+                        {session && (
+                          <form class="reply-inline-form" method="post" action={`/api/topics/${topicId}/posts`} data-inline-reply-form hidden>
+                            <input type="hidden" name="parentPostId" value={featuredChildReply.post.id} />
+                            <input type="hidden" name="redirect" value={`${currentPath}#post-${featuredChildReply.post.id}`} />
+                            <textarea
+                              name="contentMarkdown"
+                              rows="2"
+                              placeholder={`${copy.inlineReplyPlaceholder} @${featuredChildReply.post.author.username}`}
+                              required
+                              data-inline-reply-input
+                            ></textarea>
+                            <div class="reply-inline-actions">
+                              <button class="action-button compact" type="button" data-inline-reply-cancel>{copy.cancelReply}</button>
+                              <button class="button primary compact" type="submit">{copy.submitReply}</button>
+                            </div>
+                          </form>
+                        )}
+                      </div>
+                    </article>
+                  )}
+
+                  {remainingChildReplies.length > 0 && (
+                    <>
+                      <button
+                        class="reply-thread-toggle"
+                        type="button"
+                        aria-expanded="false"
+                        aria-controls={childListId}
+                        data-reply-thread-toggle
+                        data-open-label={openLabel}
+                        data-close-label={copy.hideNestedReplies}
+                      >
+                        {openLabel}
+                      </button>
+                      <div class="reply-child-list" id={childListId} data-reply-child-list hidden>
+                        {remainingChildReplies.map((child) => (
+                          <article class="reply-child-card" id={`post-${child.post.id}`}>
+                            <div class="reply-avatar reply-child-avatar" aria-hidden="true">{child.authorInitial}</div>
+                            <div class="reply-child-main">
+                              <header>
+                                <a class="reply-author" href={`/u/${child.post.author.username}`}>{child.post.author.displayName}</a>
+                              </header>
+                              <div class="reply-content reply-child-content" set:html={child.contentHtml} />
+                              <footer class="reply-actions reply-child-actions">
+                                <span class="reply-action-time">{formatRelative(child.post.createdAt, lang)}</span>
+                                <form method="post" action="/api/interactions/reaction">
+                                  <input type="hidden" name="targetType" value="post" />
+                                  <input type="hidden" name="targetId" value={child.post.id} />
+                                  <input type="hidden" name="redirect" value={`${currentPath}#post-${child.post.id}`} />
+                                  <button class:list={["action-button compact", child.liked && "is-active"]} type="submit">
+                                    {child.liked ? copy.liked : copy.like}
+                                    <span>{child.likeCount}</span>
+                                  </button>
+                                </form>
+                                {session && (
+                                  <button class="action-button compact" type="button" data-inline-reply-open>
+                                    {copy.replyToComment}
+                                  </button>
+                                )}
+                                <div class="reply-more" data-reply-more>
+                                  <button class="reply-more-button" type="button" aria-label={copy.moreActions} aria-expanded="false" data-reply-more-button>
+                                    <span aria-hidden="true">⋯</span>
+                                  </button>
+                                  <div class="reply-more-panel" data-reply-more-panel hidden>
+                                    <button type="button" data-copy-comment-link data-comment-url={`${topicUrl}#post-${child.post.id}`} data-copied-label={copy.copiedCommentLink}>
+                                      {copy.copyCommentLink}
+                                    </button>
+                                    {session && session.userId !== child.post.author.id && (
+                                      <form method="post" action="/api/interactions/block-user">
+                                        <input type="hidden" name="blockedUserId" value={child.post.author.id} />
+                                        <input type="hidden" name="redirect" value={currentPath} />
+                                        <button type="submit">{copy.blockUser}</button>
+                                      </form>
+                                    )}
+                                    <a href={`/report?targetType=post&targetId=${child.post.id}&redirect=${encodeURIComponent(`${currentPath}#post-${child.post.id}`)}`}>{copy.report}</a>
+                                  </div>
+                                </div>
+                              </footer>
+                              {session && (
+                                <form class="reply-inline-form" method="post" action={`/api/topics/${topicId}/posts`} data-inline-reply-form hidden>
+                                  <input type="hidden" name="parentPostId" value={child.post.id} />
+                                  <input type="hidden" name="redirect" value={`${currentPath}#post-${child.post.id}`} />
+                                  <textarea
+                                    name="contentMarkdown"
+                                    rows="2"
+                                    placeholder={`${copy.inlineReplyPlaceholder} @${child.post.author.username}`}
+                                    required
+                                    data-inline-reply-input
+                                  ></textarea>
+                                  <div class="reply-inline-actions">
+                                    <button class="action-button compact" type="button" data-inline-reply-cancel>{copy.cancelReply}</button>
+                                    <button class="button primary compact" type="submit">{copy.submitReply}</button>
+                                  </div>
+                                </form>
+                              )}
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </section>
+              )}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  ) : (
+    <p class="auth-message muted">{copy.noReplies}</p>
+  )}
+</section>

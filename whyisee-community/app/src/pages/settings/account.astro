@@ -1,5 +1,5 @@
 ---
-import BaseLayout from "@layouts/BaseLayout.astro";
+import SettingsShell from "@components/SettingsShell.astro";
 import { getSessionFromAstro } from "@lib/auth";
 import { getLangFromAstro } from "@lib/i18n";
 
@@ -22,7 +22,6 @@ const copy = lang === "en"
       nextPasswordPlaceholder: "at least 8 characters",
       action: "Update password",
       error: "Password update failed. Check the current password and length.",
-      profile: "Profile settings",
     }
   : {
       title: "账号安全",
@@ -32,33 +31,23 @@ const copy = lang === "en"
       nextPasswordPlaceholder: "至少 8 位",
       action: "更新密码",
       error: "密码更新失败，请检查当前密码和新密码长度。",
-      profile: "个人资料设置",
     };
 ---
 
-<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
-  <section class="article-page auth-page">
-    <div class="auth-card">
-      <p class="eyebrow">{session.username}</p>
-      <h1>{copy.title}</h1>
-      <p>{copy.description}</p>
+<SettingsShell title={copy.title} description={copy.description} current="account" lang={lang} session={session}>
+  {hasError && <p class="auth-message error">{copy.error}</p>}
 
-      {hasError && <p class="auth-message error">{copy.error}</p>}
-
-      <form class="auth-form" method="post" action="/api/settings/account">
-        <label>
-          {copy.currentPassword}
-          <input autocomplete="current-password" name="currentPassword" required type="password" />
-        </label>
-        <label>
-          {copy.nextPassword}
-          <input autocomplete="new-password" name="nextPassword" placeholder={copy.nextPasswordPlaceholder} required type="password" />
-        </label>
-        <div class="form-actions">
-          <button class="button primary" type="submit">{copy.action}</button>
-          <a class="button secondary" href="/settings/profile">{copy.profile}</a>
-        </div>
-      </form>
+  <form class="auth-form settings-form" method="post" action="/api/settings/account">
+    <label>
+      {copy.currentPassword}
+      <input autocomplete="current-password" name="currentPassword" required type="password" />
+    </label>
+    <label>
+      {copy.nextPassword}
+      <input autocomplete="new-password" name="nextPassword" placeholder={copy.nextPasswordPlaceholder} required type="password" />
+    </label>
+    <div class="form-actions">
+      <button class="button primary" type="submit">{copy.action}</button>
     </div>
-  </section>
-</BaseLayout>
+  </form>
+</SettingsShell>

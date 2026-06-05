@@ -28,6 +28,7 @@ function getCopy(lang: "zh" | "en") {
       emailPlaceholder: "you@example.com",
       passwordPlaceholder: "at least 8 characters",
       invitePlaceholder: "Invitation code",
+      inviteHelp: "Required. Each invitation code has a limited number of uses.",
       action: "Create account",
       error: "Sign up failed. Check invitation code, username, email, and password.",
       login: "Already have an account? Log in",
@@ -45,6 +46,7 @@ function getCopy(lang: "zh" | "en") {
     emailPlaceholder: "you@example.com",
     passwordPlaceholder: "至少 8 位",
     invitePlaceholder: "输入邀请码",
+    inviteHelp: "必填。每个邀请码都有使用次数限制。",
     action: "创建账号",
     error: "注册失败，请检查邀请码、用户名、邮箱和密码。",
     login: "已有账号？去登录",
@@ -78,6 +80,7 @@ function getCopy(lang: "zh" | "en") {
         <label>
           {copy.inviteCode}
           <input name="inviteCode" placeholder={copy.invitePlaceholder} required type="text" />
+          <small class="auth-field-hint">{copy.inviteHelp}</small>
         </label>
         <button class="button primary" type="submit">{copy.action}</button>
         <div class="auth-links">

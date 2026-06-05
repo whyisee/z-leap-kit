@@ -1,0 +1,126 @@
+---
+import { formatRelative } from "@lib/format";
+import type { Lang } from "@lib/i18n";
+import type { AdminInvitationRow } from "@server/services/admin";
+
+interface InvitationCopy {
+  update: string;
+  edit: string;
+  code: string;
+  email: string;
+  emailPlaceholder: string;
+  role: string;
+  maxUses: string;
+  useCount: string;
+  remaining: string;
+  expiresAt: string;
+  noExpiry: string;
+  creator: string;
+  created: string;
+  active: string;
+  disabled: string;
+  expired: string;
+  usedOut: string;
+  disable: string;
+  enable: string;
+  empty: string;
+}
+
+interface Props {
+  copy: InvitationCopy;
+  invitations: AdminInvitationRow[];
+  lang: Lang;
+  roles: string[];
+}
+
+const { copy, invitations, lang, roles } = Astro.props;
+const now = Date.now();
+
+function getInvitationStatus(invitation: AdminInvitationRow) {
+  if (invitation.disabledAt) {
+    return { label: copy.disabled, className: "deleted" };
+  }
+
+  if (invitation.expiresAt && new Date(invitation.expiresAt).getTime() <= now) {
+    return { label: copy.expired, className: "hidden" };
+  }
+
+  if (invitation.useCount >= invitation.maxUses) {
+    return { label: copy.usedOut, className: "pending" };
+  }
+
+  return { label: copy.active, className: "published" };
+}
+
+function toDatetimeLocal(value: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toISOString().slice(0, 16);
+}
+---
+
+{invitations.length > 0 ? (
+  <div class="invitation-admin-list">
+    {invitations.map((invitation) => {
+      const status = getInvitationStatus(invitation);
+      const remaining = Math.max(invitation.maxUses - invitation.useCount, 0);
+
+      return (
+        <details class="invitation-admin-card admin-collapsible-card" data-admin-collapsible>
+          <summary class="invitation-card-summary">
+            <span class="invitation-card-mark" aria-hidden="true">邀</span>
+            <div>
+              <strong>{invitation.code}</strong>
+              <span>
+                {copy.useCount}: {invitation.useCount}/{invitation.maxUses} · {copy.remaining}: {remaining}
+              </span>
+              <small>
+                {copy.role}: {invitation.role} · {copy.creator}: {invitation.createdByUsername ? `@${invitation.createdByUsername}` : "-"} · {copy.created}: {formatRelative(invitation.createdAt, lang)}
+              </small>
+            </div>
+            <span class="category-card-actions">
+              <span class:list={["admin-status", status.className]}>{status.label}</span>
+              <button class="button secondary compact" type="button" data-collapse-button>{copy.edit}</button>
+            </span>
+          </summary>
+
+          <div class="invitation-card-body">
+            <form class="invitation-edit-form" method="post" action={`/api/admin/invitations/${invitation.id}`}>
+              <input type="hidden" name="redirect" value="/admin/invitations" />
+              <input type="hidden" name="action" value="update" />
+              <label>{copy.code}<input name="code" value={invitation.code} required /></label>
+              <label>{copy.role}
+                <select name="role">
+                  {roles.map((role) => <option value={role} selected={role === invitation.role}>{role}</option>)}
+                </select>
+              </label>
+              <label>{copy.maxUses}<input name="maxUses" type="number" min="1" value={invitation.maxUses} /></label>
+              <label>{copy.email}<input name="email" type="email" value={invitation.email || ""} placeholder={copy.emailPlaceholder} /></label>
+              <label>{copy.expiresAt}<input name="expiresAt" type="datetime-local" value={toDatetimeLocal(invitation.expiresAt)} /></label>
+              <button class="button secondary" type="submit">{copy.update}</button>
+            </form>
+
+            <form class="invitation-state-form" method="post" action={`/api/admin/invitations/${invitation.id}`}>
+              <input type="hidden" name="redirect" value="/admin/invitations" />
+              <input type="hidden" name="action" value={invitation.disabledAt ? "enable" : "disable"} />
+              <button class:list={["button", invitation.disabledAt ? "secondary" : "danger"]} type="submit">
+                {invitation.disabledAt ? copy.enable : copy.disable}
+              </button>
+              <span>{invitation.expiresAt ? `${copy.expiresAt}: ${formatRelative(invitation.expiresAt, lang)}` : copy.noExpiry}</span>
+            </form>
+          </div>
+        </details>
+      );
+    })}
+  </div>
+) : (
+  <p class="auth-message muted">{copy.empty}</p>
+)}
