@@ -16,10 +16,18 @@ if (!session) {
 const user = await getUserById(session.userId);
 const saved = Astro.url.searchParams.get("saved") === "1";
 const hasError = Astro.url.searchParams.get("error") === "1";
+const avatarInitial = (user?.displayName || session.displayName || session.username).trim().slice(0, 1).toUpperCase();
+const currentAvatarUrl = user?.avatarUrl || "";
 const copy = lang === "en"
   ? {
       title: "Profile settings",
       description: "Update your public profile and language preference.",
+      avatar: "Avatar",
+      avatarHint: "Pick a built-in avatar or upload an image.",
+      uploadAvatar: "Upload avatar",
+      uploadingAvatar: "Uploading...",
+      clearAvatar: "Use initial",
+      avatarUploadError: "Avatar upload failed.",
       displayName: "Display name",
       bio: "Bio",
       website: "Website",
@@ -33,6 +41,12 @@ const copy = lang === "en"
   : {
       title: "个人资料设置",
       description: "更新公开资料和语言偏好。",
+      avatar: "头像",
+      avatarHint: "选择一个内置头像，或者上传自己的图片。",
+      uploadAvatar: "上传头像",
+      uploadingAvatar: "上传中...",
+      clearAvatar: "使用首字母",
+      avatarUploadError: "头像上传失败。",
       displayName: "显示名称",
       bio: "简介",
       website: "网站",
@@ -43,6 +57,36 @@ const copy = lang === "en"
       error: "保存失败。",
       publicPage: "公开主页",
     };
+const builtinAvatars = [
+  ["mint-cat", "#66d08c", "#8ab4f8", "M 18 33 Q 24 18 31 33 M 13 19 L 17 10 L 22 18 M 36 18 L 41 10 L 44 20"],
+  ["blue-bear", "#8ab4f8", "#b69cff", "M 14 18 A 7 7 0 0 1 25 15 M 39 18 A 7 7 0 0 0 28 15 M 18 33 Q 28 42 42 33"],
+  ["sun-fox", "#ffb86c", "#ff6b7a", "M 14 17 L 18 8 L 24 18 M 40 18 L 46 8 L 48 20 M 19 35 Q 30 43 43 35"],
+  ["pink-bun", "#ff7aa8", "#ffd166", "M 19 17 C 9 3 6 21 19 24 M 43 17 C 53 3 56 21 43 24 M 21 35 Q 31 42 43 35"],
+  ["green-panda", "#5ee0a0", "#f0f3f7", "M 15 19 A 7 7 0 0 1 25 16 M 39 19 A 7 7 0 0 0 29 16 M 22 35 Q 31 39 40 35"],
+  ["violet-owl", "#b69cff", "#8ab4f8", "M 17 20 L 24 12 L 31 20 L 38 12 L 45 20 M 22 36 Q 31 44 40 36"],
+  ["cyan-pup", "#5bd7e8", "#66d08c", "M 15 18 C 9 8 7 27 18 25 M 43 18 C 51 8 54 27 42 25 M 20 36 Q 31 43 42 36"],
+  ["gold-chick", "#ffd166", "#ff9f7a", "M 18 17 Q 31 6 44 17 M 24 36 Q 31 41 38 36"],
+].map(([id, primary, secondary, path]) => ({
+  id,
+  label: id,
+  url: `data:image/svg+xml,${encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+          <stop stop-color="${primary}" offset="0"/>
+          <stop stop-color="${secondary}" offset="1"/>
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="13" fill="#121823"/>
+      <rect x="5" y="5" width="54" height="54" rx="12" fill="url(#bg)" opacity=".95"/>
+      <circle cx="24" cy="27" r="3.2" fill="#152033"/>
+      <circle cx="40" cy="27" r="3.2" fill="#152033"/>
+      <path d="${path}" fill="none" stroke="#152033" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="32" cy="32" r="2.4" fill="#152033"/>
+      <path d="M 26 42 Q 32 46 38 42" fill="none" stroke="#152033" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+  `)}`,
+}));
 ---
 
 <SettingsShell title={copy.title} description={copy.description} current="profile" lang={lang} session={session}>
@@ -50,6 +94,45 @@ const copy = lang === "en"
   {hasError && <p class="auth-message error">{copy.error}</p>}
 
   <form class="auth-form settings-form" method="post" action="/api/settings/profile">
+    <section
+      class="avatar-picker"
+      data-avatar-picker
+      data-uploading={copy.uploadingAvatar}
+      data-upload-label={copy.uploadAvatar}
+      data-upload-error={copy.avatarUploadError}
+    >
+      <div class="avatar-picker-preview" data-avatar-preview>
+        {currentAvatarUrl
+          ? <img src={currentAvatarUrl} alt="" />
+          : <span>{avatarInitial}</span>}
+      </div>
+      <div class="avatar-picker-body">
+        <div>
+          <strong>{copy.avatar}</strong>
+          <p>{copy.avatarHint}</p>
+        </div>
+        <input type="hidden" name="avatarUrl" value={currentAvatarUrl} data-avatar-value />
+        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-avatar-file hidden />
+        <div class="avatar-option-grid" aria-label={copy.avatar}>
+          {builtinAvatars.map((avatar) => (
+            <button
+              class:list={["avatar-option", currentAvatarUrl === avatar.url && "is-selected"]}
+              type="button"
+              data-avatar-option={avatar.url}
+              aria-label={avatar.label}
+            >
+              <img src={avatar.url} alt="" />
+            </button>
+          ))}
+        </div>
+        <div class="avatar-picker-actions">
+          <button class="button secondary compact" type="button" data-avatar-upload>{copy.uploadAvatar}</button>
+          <button class="button secondary compact" type="button" data-avatar-clear>{copy.clearAvatar}</button>
+          <span class="avatar-upload-status" data-avatar-status aria-live="polite"></span>
+        </div>
+      </div>
+    </section>
+
     <label>
       {copy.displayName}
       <input name="displayName" value={user?.displayName || session.displayName} required type="text" />
@@ -79,3 +162,107 @@ const copy = lang === "en"
     </div>
   </form>
 </SettingsShell>
+
+<script is:inline>
+  (() => {
+    const root = document.querySelector("[data-avatar-picker]");
+
+    if (!root) {
+      return;
+    }
+
+    const valueInput = root.querySelector("[data-avatar-value]");
+    const fileInput = root.querySelector("[data-avatar-file]");
+    const uploadButton = root.querySelector("[data-avatar-upload]");
+    const clearButton = root.querySelector("[data-avatar-clear]");
+    const preview = root.querySelector("[data-avatar-preview]");
+    const status = root.querySelector("[data-avatar-status]");
+    const initial = preview?.textContent?.trim() || "W";
+
+    const setStatus = (message = "") => {
+      if (status) {
+        status.textContent = message;
+      }
+    };
+
+    const renderPreview = (url) => {
+      if (!preview) {
+        return;
+      }
+
+      preview.innerHTML = "";
+
+      if (url) {
+        const image = document.createElement("img");
+        image.alt = "";
+        image.src = url;
+        preview.append(image);
+      } else {
+        const text = document.createElement("span");
+        text.textContent = initial;
+        preview.append(text);
+      }
+    };
+
+    const setAvatar = (url) => {
+      valueInput.value = url;
+      renderPreview(url);
+      root.querySelectorAll("[data-avatar-option]").forEach((option) => {
+        option.classList.toggle("is-selected", option.dataset.avatarOption === url);
+      });
+      setStatus("");
+    };
+
+    root.querySelectorAll("[data-avatar-option]").forEach((button) => {
+      button.addEventListener("click", () => {
+        setAvatar(button.dataset.avatarOption || "");
+      });
+    });
+
+    clearButton?.addEventListener("click", () => {
+      setAvatar("");
+    });
+
+    uploadButton?.addEventListener("click", () => {
+      fileInput?.click();
+    });
+
+    fileInput?.addEventListener("change", async () => {
+      const file = fileInput.files?.[0];
+
+      if (!file) {
+        return;
+      }
+
+      const originalLabel = uploadButton?.textContent || root.dataset.uploadLabel || "";
+      const formData = new FormData();
+      formData.append("image", file);
+
+      uploadButton.disabled = true;
+      uploadButton.textContent = root.dataset.uploading || originalLabel;
+      setStatus("");
+
+      try {
+        const response = await fetch("/api/uploads/images", {
+          method: "POST",
+          body: formData,
+        });
+        const payload = await response.json();
+
+        const uploadedUrl = payload.url || payload.publicUrl;
+
+        if (!response.ok || !uploadedUrl) {
+          throw new Error(payload.error || root.dataset.uploadError || "");
+        }
+
+        setAvatar(uploadedUrl);
+      } catch (error) {
+        setStatus(error instanceof Error && error.message ? error.message : root.dataset.uploadError || "");
+      } finally {
+        uploadButton.disabled = false;
+        uploadButton.textContent = originalLabel;
+        fileInput.value = "";
+      }
+    });
+  })();
+</script>

@@ -64,20 +64,26 @@ const copy = lang === "en"
       deletedStatus: "已删除",
     };
 const deleted = Astro.url.searchParams.get("deleted") === "1";
+const avatarInitial = (user?.displayName || user?.username || "W").trim().slice(0, 1).toUpperCase();
 ---
 
 <BaseLayout title={`${user?.displayName || copy.notFound} - whyisee.xyz`} description={user ? (user.bio || copy.profileDescription) : copy.notFoundDescription}>
   {user ? (
     <ForumFrame categories={categories} tags={tags} featuredTopics={featuredTopics} lang={lang}>
       <section class="user-profile-head">
-        <div>
-          <p class="eyebrow">@{user.username}</p>
-          <h1>{user.displayName}</h1>
-          <p>{user.bio || (lang === "en" ? "No bio yet." : "还没有填写简介。")}</p>
-          <div class="topic-meta">
-            <span>{copy.joined} {new Date(user.createdAt).toLocaleDateString(lang === "en" ? "en-US" : "zh-CN")}</span>
-            {user.websiteUrl && <a class="text-link" href={user.websiteUrl} rel="noreferrer" target="_blank">Website</a>}
-            {user.githubUrl && <a class="text-link" href={user.githubUrl} rel="noreferrer" target="_blank">GitHub</a>}
+        <div class="user-profile-main">
+          <span class="user-profile-avatar" aria-hidden="true">
+            {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : avatarInitial}
+          </span>
+          <div>
+            <p class="eyebrow">@{user.username}</p>
+            <h1>{user.displayName}</h1>
+            <p>{user.bio || (lang === "en" ? "No bio yet." : "还没有填写简介。")}</p>
+            <div class="topic-meta">
+              <span>{copy.joined} {new Date(user.createdAt).toLocaleDateString(lang === "en" ? "en-US" : "zh-CN")}</span>
+              {user.websiteUrl && <a class="text-link" href={user.websiteUrl} rel="noreferrer" target="_blank">Website</a>}
+              {user.githubUrl && <a class="text-link" href={user.githubUrl} rel="noreferrer" target="_blank">GitHub</a>}
+            </div>
           </div>
         </div>
         {canEditProfile && (

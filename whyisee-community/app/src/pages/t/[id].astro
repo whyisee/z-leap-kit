@@ -205,7 +205,7 @@ const aiActions = lang === "en"
 
 <BaseLayout title={`${topic?.title ?? t(lang, "topic.notFound")} - whyisee.xyz`} description={topic?.summary ?? t(lang, "topic.notFound")}>
   {topic ? (
-    <section class="page-grid topic-layout">
+    <section class="page-grid topic-layout" data-topic-reading-page>
       <LeftNav categories={categories} tags={tags} lang={lang} activeCategorySlug={topic.category.slug} />
 
       <div class="content-column">
@@ -418,3 +418,89 @@ const aiActions = lang === "en"
 
 <TopicAiController />
 <TopicReplyController />
+
+<script is:inline>
+  (() => {
+    const page = document.querySelector("[data-topic-reading-page]");
+
+    if (!page) {
+      return;
+    }
+
+    const scrollRoot = page.querySelector(".content-column");
+    const hero = page.querySelector(".topic-hero");
+    const postBody = page.querySelector(".topic-post-body");
+    const header = document.querySelector(".site-header");
+    const title = page.querySelector(".topic-title-stack h1")?.textContent?.trim() || "";
+
+    if (!scrollRoot || !hero || !postBody || !header) {
+      return;
+    }
+
+    let titleIndicator = header.querySelector(".reading-header-title");
+
+    if (!titleIndicator) {
+      titleIndicator = document.createElement("div");
+      titleIndicator.className = "reading-header-title";
+      titleIndicator.setAttribute("aria-hidden", "true");
+      header.append(titleIndicator);
+    }
+
+    titleIndicator.textContent = title;
+
+    let ticking = false;
+
+    const getScrollTop = () => Math.max(
+      scrollRoot.scrollTop || 0,
+      window.scrollY || 0,
+      document.documentElement.scrollTop || 0,
+      document.body.scrollTop || 0,
+    );
+
+    const syncTitlePosition = () => {
+      const headerRect = header.getBoundingClientRect();
+      const bodyRect = postBody.getBoundingClientRect();
+      const left = Math.max(16, bodyRect.left - headerRect.left);
+      const width = Math.max(180, headerRect.right - bodyRect.left - 24);
+
+      header.style.setProperty("--reading-title-left", `${left}px`);
+      header.style.setProperty("--reading-title-width", `${width}px`);
+    };
+
+    const setState = () => {
+      ticking = false;
+
+      syncTitlePosition();
+
+      const scrolled = getScrollTop() > 64;
+      const headerRect = header.getBoundingClientRect();
+      const heroRect = hero.getBoundingClientRect();
+      const titleStuck = scrolled && heroRect.bottom <= headerRect.bottom + 10;
+
+      document.documentElement.dataset.readingMode = scrolled ? "true" : "";
+      document.documentElement.dataset.topicTitleStuck = titleStuck ? "true" : "";
+
+      if (!scrolled) {
+        document.documentElement.removeAttribute("data-reading-mode");
+      }
+
+      if (!titleStuck) {
+        document.documentElement.removeAttribute("data-topic-title-stuck");
+      }
+    };
+
+    const requestUpdate = () => {
+      if (ticking) {
+        return;
+      }
+
+      ticking = true;
+      window.requestAnimationFrame(setState);
+    };
+
+    scrollRoot.addEventListener("scroll", requestUpdate, { passive: true });
+    window.addEventListener("scroll", requestUpdate, { passive: true });
+    window.addEventListener("resize", requestUpdate);
+    setState();
+  })();
+</script>

@@ -3,36 +3,521 @@ import BaseLayout from "@layouts/BaseLayout.astro";
 import ForumFrame from "@components/ForumFrame.astro";
 import TopicCard from "@components/TopicCard.astro";
 import TopicListHeader from "@components/TopicListHeader.astro";
-import { getSessionFromAstro } from "@lib/auth";
-import { getLangFromAstro, t } from "@lib/i18n";
+import { getLangFromAstro } from "@lib/i18n";
 import { listCategories, listTags } from "@server/services/categories";
 import { listFeaturedTopics, listTopics } from "@server/services/topics";
 
 export const prerender = false;
 
 const lang = getLangFromAstro(Astro);
-const session = await getSessionFromAstro(Astro);
-const topics = await listTopics({ limit: 12, lang });
+const allTopics = await listTopics({ limit: 50, lang });
 const categories = await listCategories(lang);
 const tags = await listTags(lang);
 const featuredTopics = await listFeaturedTopics(4, lang);
+const sort = readSort(Astro.url.searchParams.get("sort"));
+const requestedCategorySlug = Astro.url.searchParams.get("category") || "";
+const requestedTagSlug = Astro.url.searchParams.get("tag") || "";
+const activeCategory = categories.find((category) => category.slug === requestedCategorySlug);
+const activeTag = tags.find((tag) => tag.slug === requestedTagSlug);
+const selectedCategorySlug = activeCategory?.slug || "";
+const selectedTagSlug = activeTag?.slug || "";
+const topics = sortTopics(allTopics, sort);
+const latestOrderByTopicId = new Map(allTopics.map((topic, index) => [topic.id, index]));
+const homeAccent = activeCategory?.color || "#8ab4f8";
+const homeCopy = lang === "en"
+  ? {
+      title: "Latest topics",
+      description: "Follow the newest discussions across whyisee, then narrow them by category, tag, or activity.",
+      category: "Categories",
+      tags: "Tags",
+      allCategories: "All categories",
+      allTags: "All tags",
+      latest: "Latest",
+      popular: "Top",
+      hot: "Hot",
+      topics: "topics",
+      search: "Search...",
+      empty: "No topics match this filter.",
+    }
+  : {
+      title: "最新话题",
+      description: "查看社区里的最新讨论，也可以按分类、标签和活跃度快速筛选。",
+      category: "分类",
+      tags: "标签",
+      allCategories: "全部分类",
+      allTags: "全部标签",
+      latest: "最新",
+      popular: "排行榜",
+      hot: "热门",
+      topics: "话题",
+      search: "搜索...",
+      empty: "没有匹配当前筛选的话题。",
+    };
+
+function readSort(value: string | null): "latest" | "popular" | "hot" {
+  return value === "popular" || value === "hot" ? value : "latest";
+}
+
+function sortTopics(items: Awaited<ReturnType<typeof listTopics>>, mode: "latest" | "popular" | "hot") {
+  const sorted = [...items];
+
+  if (mode === "popular") {
+    return sorted.sort((a, b) => b.viewCount - a.viewCount || b.replyCount - a.replyCount);
+  }
+
+  if (mode === "hot") {
+    return sorted.sort((a, b) => b.replyCount * 8 + b.viewCount - (a.replyCount * 8 + a.viewCount));
+  }
+
+  return sorted;
+}
+
+function homeFilterHref(mode: "latest" | "popular" | "hot" = sort, categorySlug = selectedCategorySlug, tagSlug = selectedTagSlug) {
+  const params = new URLSearchParams();
+
+  if (mode !== "latest") {
+    params.set("sort", mode);
+  }
+
+  if (categorySlug) {
+    params.set("category", categorySlug);
+  }
+
+  if (tagSlug) {
+    params.set("tag", tagSlug);
+  }
+
+  const query = params.toString();
+  return `/${query ? `?${query}` : ""}`;
+}
 ---
 
-<BaseLayout>
-  <ForumFrame categories={categories} tags={tags} featuredTopics={featuredTopics} lang={lang}>
-    <div class="section-head">
+<BaseLayout title={`${homeCopy.title} - whyisee.xyz`} description={homeCopy.description}>
+  <ForumFrame
+    categories={categories}
+    tags={tags}
+    featuredTopics={featuredTopics}
+    lang={lang}
+    showSidebar={false}
+  >
+    <section
+      class="category-topic-page home-topic-page"
+      style={`--pill-color: ${homeAccent}`}
+      data-selected-category={selectedCategorySlug}
+      data-selected-tag={selectedTagSlug}
+      data-default-accent="#8ab4f8"
+    >
+      <div class="category-hero-panel">
+        <span class="category-hero-mark" aria-hidden="true">
+        <span></span>
+      </span>
       <div>
-        <p class="eyebrow">{t(lang, "home.feed")}</p>
-        <h2>{t(lang, "home.latestTopics")}</h2>
+        <h1>{homeCopy.title}</h1>
+        <p>{homeCopy.description}</p>
       </div>
-      <div class="section-actions">
-        {session && <a class="button secondary compact" href="/new-topic">{lang === "en" ? "New topic" : "新建话题"}</a>}
-        <a class="text-link" href="/latest" aria-label={t(lang, "home.allTopicsAria")}>{t(lang, "home.allTopics")}</a>
       </div>
-    </div>
-    <div class="topic-list">
-      <TopicListHeader lang={lang} />
-      {topics.map((topic) => <TopicCard topic={topic} lang={lang} />)}
-    </div>
+
+      <div class="topic-filter-row">
+        <div class="topic-filter-pills">
+          <div class="topic-filter-control" data-filter-dropdown>
+            <button
+              class:list={["topic-filter-pill", selectedCategorySlug && "is-active"]}
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              data-filter-trigger
+              data-category-filter-trigger
+            >
+              <span class="category-mini-mark" aria-hidden="true"></span>
+              <span data-category-filter-label data-default-label={homeCopy.allCategories}>
+                {activeCategory?.name ?? homeCopy.allCategories}
+              </span>
+              <span class="filter-chevron" aria-hidden="true">›</span>
+            </button>
+            <div class="topic-filter-menu category-filter-menu" data-filter-menu hidden>
+              <label class="filter-search-box">
+                <input type="search" placeholder={homeCopy.search} data-filter-search />
+                <span aria-hidden="true">⌕</span>
+              </label>
+              <a
+                class:list={["filter-menu-action", !selectedCategorySlug && "is-active"]}
+                href={homeFilterHref(sort, "", selectedTagSlug)}
+                data-category-filter=""
+                data-category-name={homeCopy.allCategories}
+                data-category-color="#8ab4f8"
+                data-filter-option
+                data-filter-text={homeCopy.allCategories}
+              >
+                {homeCopy.allCategories}
+              </a>
+              <div class="filter-option-list" role="listbox" aria-label={homeCopy.category}>
+                {categories.map((category) => (
+                  <a
+                    class:list={["filter-option", category.slug === selectedCategorySlug && "is-active"]}
+                    href={homeFilterHref(sort, category.slug, selectedTagSlug)}
+                    style={`--option-color: ${category.color}`}
+                    data-category-filter={category.slug}
+                    data-category-name={category.name}
+                    data-category-color={category.color}
+                    data-filter-option
+                    data-filter-text={`${category.name} ${category.description}`}
+                  >
+                    <span class="filter-option-mark" aria-hidden="true"></span>
+                    <span class="filter-option-body">
+                      <span class="filter-option-title">
+                        {category.name}
+                        <span class="filter-option-count">× {category.topicCount ?? 0}</span>
+                      </span>
+                      <span class="filter-option-desc">{category.description}</span>
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div class="topic-filter-control" data-filter-dropdown>
+            <button
+              class:list={["topic-filter-pill", selectedTagSlug && "is-active"]}
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              data-filter-trigger
+              data-tag-filter-trigger
+            >
+              <span data-tag-filter-label data-default-label={homeCopy.allTags}>{activeTag?.name ?? homeCopy.allTags}</span>
+              <span class="filter-chevron" aria-hidden="true">›</span>
+            </button>
+            <div class="topic-filter-menu tag-filter-menu" data-filter-menu hidden>
+              <label class="filter-search-box">
+                <input type="search" placeholder={homeCopy.search} data-filter-search />
+                <span aria-hidden="true">⌕</span>
+              </label>
+              <a
+                class:list={["filter-menu-action", !selectedTagSlug && "is-active"]}
+                href={homeFilterHref(sort, selectedCategorySlug, "")}
+                data-tag-filter=""
+                data-tag-name={homeCopy.allTags}
+                data-filter-option
+                data-filter-text={homeCopy.allTags}
+              >
+                {homeCopy.allTags}
+              </a>
+              <div class="filter-option-list" role="listbox" aria-label={homeCopy.tags}>
+                {tags.map((tag) => (
+                  <a
+                    class:list={["filter-option filter-option-compact", tag.slug === selectedTagSlug && "is-active"]}
+                    href={homeFilterHref(sort, selectedCategorySlug, tag.slug)}
+                    data-tag-filter={tag.slug}
+                    data-tag-name={tag.name}
+                    data-filter-option
+                    data-filter-text={`${tag.name} ${tag.description}`}
+                  >
+                    <span class="filter-option-body">
+                      <span class="filter-option-title">
+                        #{tag.name}
+                        <span class="filter-option-count">× {tag.topicCount ?? 0}</span>
+                      </span>
+                      {tag.description && <span class="filter-option-desc">{tag.description}</span>}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <nav class="topic-sort-tabs" aria-label={homeCopy.topics}>
+          <a class:list={[sort === "latest" && "is-active"]} href={homeFilterHref("latest")} data-sort-tab="latest">{homeCopy.latest}</a>
+          <a class:list={[sort === "popular" && "is-active"]} href={homeFilterHref("popular")} data-sort-tab="popular">{homeCopy.popular}</a>
+          <a class:list={[sort === "hot" && "is-active"]} href={homeFilterHref("hot")} data-sort-tab="hot">{homeCopy.hot}</a>
+        </nav>
+      </div>
+
+      <div class="topic-list forum-topic-list">
+        <TopicListHeader lang={lang} />
+        {topics.map((topic) => (
+          <TopicCard topic={topic} lang={lang} latestOrder={latestOrderByTopicId.get(topic.id) ?? 0} />
+        ))}
+        <p class="topic-filter-empty" data-filter-empty hidden>{homeCopy.empty}</p>
+      </div>
+    </section>
   </ForumFrame>
 </BaseLayout>
+
+<script is:inline>
+  (() => {
+    const page = document.querySelector(".home-topic-page");
+    const list = document.querySelector(".forum-topic-list");
+    const tabs = Array.from(document.querySelectorAll("[data-sort-tab]"));
+    const dropdowns = Array.from(document.querySelectorAll("[data-filter-dropdown]"));
+    const empty = document.querySelector("[data-filter-empty]");
+    const categoryLabel = document.querySelector("[data-category-filter-label]");
+    const categoryTrigger = document.querySelector("[data-category-filter-trigger]");
+    const tagLabel = document.querySelector("[data-tag-filter-label]");
+    const tagTrigger = document.querySelector("[data-tag-filter-trigger]");
+
+    if (!page || !list || tabs.length === 0) {
+      return;
+    }
+
+    const readMode = () => {
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get("sort");
+      return mode === "popular" || mode === "hot" ? mode : "latest";
+    };
+
+    const readCategory = () => {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("category") || "";
+    };
+
+    const readTag = () => {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("tag") || "";
+    };
+
+    let currentCategory = page.dataset.selectedCategory || readCategory();
+    let currentTag = page.dataset.selectedTag || readTag();
+
+    const readNumber = (element, name) => Number(element.dataset[name] || 0);
+
+    const score = (item, mode) => {
+      if (mode === "popular") {
+        return readNumber(item, "topicViews") * 10 + readNumber(item, "topicReplies");
+      }
+
+      if (mode === "hot") {
+        return readNumber(item, "topicReplies") * 80 + readNumber(item, "topicViews");
+      }
+
+      return -readNumber(item, "topicLatestOrder");
+    };
+
+    const closeDropdowns = (except) => {
+      dropdowns.forEach((dropdown) => {
+        if (except && dropdown === except) {
+          return;
+        }
+
+        const trigger = dropdown.querySelector("[data-filter-trigger]");
+        const menu = dropdown.querySelector("[data-filter-menu]");
+
+        if (menu) {
+          menu.hidden = true;
+        }
+
+        if (trigger) {
+          trigger.setAttribute("aria-expanded", "false");
+        }
+      });
+    };
+
+    const activeOption = (selector, value) => Array.from(document.querySelectorAll(selector)).find(
+      (option) => (option.dataset.categoryFilter || option.dataset.tagFilter || "") === value,
+    );
+
+    const updateFilterState = () => {
+      const items = Array.from(list.querySelectorAll("[data-topic-item]"));
+      let visibleCount = 0;
+
+      items.forEach((item) => {
+        const itemTags = (item.dataset.topicTags || "").split(" ").filter(Boolean);
+        const visibleCategory = !currentCategory || item.dataset.topicCategory === currentCategory;
+        const visibleTag = !currentTag || itemTags.includes(currentTag);
+        const visible = visibleCategory && visibleTag;
+        item.hidden = !visible;
+
+        if (visible) {
+          visibleCount += 1;
+        }
+      });
+
+      document.querySelectorAll("[data-category-filter]").forEach((option) => {
+        option.classList.toggle("is-active", (option.dataset.categoryFilter || "") === currentCategory);
+      });
+      document.querySelectorAll("[data-tag-filter]").forEach((option) => {
+        option.classList.toggle("is-active", (option.dataset.tagFilter || "") === currentTag);
+      });
+
+      const categoryOption = activeOption("[data-category-filter]", currentCategory);
+      if (categoryLabel) {
+        const defaultLabel = categoryLabel.dataset.defaultLabel || categoryLabel.textContent || "";
+        categoryLabel.textContent = currentCategory ? categoryOption?.dataset.categoryName || currentCategory : defaultLabel;
+      }
+
+      if (categoryTrigger) {
+        categoryTrigger.classList.toggle("is-active", Boolean(currentCategory));
+      }
+
+      page.style.setProperty("--pill-color", currentCategory ? categoryOption?.dataset.categoryColor || page.dataset.defaultAccent || "#8ab4f8" : page.dataset.defaultAccent || "#8ab4f8");
+
+      const tagOption = activeOption("[data-tag-filter]", currentTag);
+      if (tagLabel) {
+        const defaultLabel = tagLabel.dataset.defaultLabel || tagLabel.textContent || "";
+        tagLabel.textContent = currentTag ? tagOption?.dataset.tagName || currentTag : defaultLabel;
+      }
+
+      if (tagTrigger) {
+        tagTrigger.classList.toggle("is-active", Boolean(currentTag));
+      }
+
+      if (empty) {
+        empty.hidden = visibleCount > 0;
+      }
+    };
+
+    const buildUrl = (mode, category, tag) => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("sort");
+      url.searchParams.delete("category");
+      url.searchParams.delete("tag");
+
+      if (mode !== "latest") {
+        url.searchParams.set("sort", mode);
+      }
+
+      if (category) {
+        url.searchParams.set("category", category);
+      }
+
+      if (tag) {
+        url.searchParams.set("tag", tag);
+      }
+
+      return `${url.pathname}${url.search}${url.hash}`;
+    };
+
+    const sortItems = (mode) => {
+      const items = Array.from(list.querySelectorAll("[data-topic-item]"));
+
+      items
+        .sort((a, b) => {
+          const pinnedDiff = readNumber(b, "topicPinned") - readNumber(a, "topicPinned");
+
+          if (pinnedDiff !== 0) {
+            return pinnedDiff;
+          }
+
+          const scoreDiff = score(b, mode) - score(a, mode);
+
+          if (scoreDiff !== 0) {
+            return scoreDiff;
+          }
+
+          return readNumber(a, "topicLatestOrder") - readNumber(b, "topicLatestOrder");
+        })
+        .forEach((item) => {
+          if (empty) {
+            list.insertBefore(item, empty);
+          } else {
+            list.append(item);
+          }
+        });
+
+      tabs.forEach((tab) => tab.classList.toggle("is-active", tab.dataset.sortTab === mode));
+      updateFilterState();
+    };
+
+    dropdowns.forEach((dropdown) => {
+      const trigger = dropdown.querySelector("[data-filter-trigger]");
+      const menu = dropdown.querySelector("[data-filter-menu]");
+      const searchInput = dropdown.querySelector("[data-filter-search]");
+      const options = Array.from(dropdown.querySelectorAll("[data-filter-option]"));
+
+      if (!trigger || !menu) {
+        return;
+      }
+
+      trigger.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const shouldOpen = menu.hidden;
+        closeDropdowns(dropdown);
+        menu.hidden = !shouldOpen;
+        trigger.setAttribute("aria-expanded", String(shouldOpen));
+
+        if (shouldOpen && searchInput) {
+          searchInput.value = "";
+          options.forEach((option) => {
+            option.hidden = false;
+          });
+          searchInput.focus();
+        }
+      });
+
+      if (searchInput) {
+        searchInput.addEventListener("input", () => {
+          const value = searchInput.value.trim().toLowerCase();
+
+          options.forEach((option) => {
+            const text = (option.dataset.filterText || option.textContent || "").toLowerCase();
+            option.hidden = Boolean(value) && !text.includes(value);
+          });
+        });
+      }
+    });
+
+    document.querySelectorAll("[data-category-filter]").forEach((option) => {
+      option.addEventListener("click", (event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+          return;
+        }
+
+        event.preventDefault();
+        currentCategory = option.dataset.categoryFilter || "";
+        sortItems(readMode());
+        closeDropdowns();
+        window.history.pushState({ sort: readMode(), category: currentCategory, tag: currentTag }, "", buildUrl(readMode(), currentCategory, currentTag));
+      });
+    });
+
+    document.querySelectorAll("[data-tag-filter]").forEach((option) => {
+      option.addEventListener("click", (event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+          return;
+        }
+
+        event.preventDefault();
+        currentTag = option.dataset.tagFilter || "";
+        sortItems(readMode());
+        closeDropdowns();
+        window.history.pushState({ sort: readMode(), category: currentCategory, tag: currentTag }, "", buildUrl(readMode(), currentCategory, currentTag));
+      });
+    });
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", (event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+          return;
+        }
+
+        event.preventDefault();
+        const mode = tab.dataset.sortTab || "latest";
+        sortItems(mode);
+        window.history.pushState({ sort: mode, category: currentCategory, tag: currentTag }, "", buildUrl(mode, currentCategory, currentTag));
+      });
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!(event.target instanceof Element) || !event.target.closest("[data-filter-dropdown]")) {
+        closeDropdowns();
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeDropdowns();
+      }
+    });
+
+    window.addEventListener("popstate", () => {
+      currentCategory = readCategory();
+      currentTag = readTag();
+      sortItems(readMode());
+    });
+
+    sortItems(readMode());
+  })();
+</script>

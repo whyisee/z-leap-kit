@@ -48,6 +48,10 @@ BOT_SCHEDULER_INTERVAL_MS=5000
 
 # 每轮最多处理几个自动任务，默认 1。
 BOT_SCHEDULER_TASK_LIMIT=1
+
+# 使用 http://服务器IP:端口 临时调试登录时设为 false。
+# 正式 HTTPS 域名部署时建议设为 true，或删掉该项使用生产默认值。
+AUTH_COOKIE_SECURE=false
 ```
 
 ## 首次部署
@@ -120,6 +124,7 @@ Environment=DB_SCHEMA=ws
 Environment=BOT_SCHEDULER_ENABLED=1
 Environment=BOT_SCHEDULER_INTERVAL_MS=5000
 Environment=BOT_SCHEDULER_TASK_LIMIT=1
+Environment=AUTH_COOKIE_SECURE=false
 ExecStart=/usr/bin/npm run start
 Restart=always
 RestartSec=5
@@ -295,6 +300,37 @@ sudo journalctl -u whyisee-bot-worker -f
 - 后续内容量上来后，再拆出 `whyisee-bot-worker.service`。
 
 ## 常见问题
+
+### 登录后还是未登录
+
+如果你用的是：
+
+```text
+http://服务器IP:4321
+```
+
+并且服务是生产构建，默认登录 cookie 会带 `Secure`。浏览器不会在 HTTP 页面保存 `Secure` cookie，所以登录后会立刻变回未登录状态。
+
+临时调试方案是在环境变量里加入：
+
+```bash
+AUTH_COOKIE_SECURE=false
+```
+
+然后重新构建并重启：
+
+```bash
+npm run build
+sudo systemctl restart whyisee-community
+```
+
+正式上线建议使用 HTTPS 域名，并把配置改回：
+
+```bash
+AUTH_COOKIE_SECURE=true
+```
+
+或者删除该环境变量，使用生产默认值。
 
 ### 页面能打开，但自动审核不运行
 

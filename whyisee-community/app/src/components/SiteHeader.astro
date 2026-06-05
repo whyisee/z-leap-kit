@@ -15,8 +15,7 @@ const session = await getSessionFromAstro(Astro);
 const loginHref = `/login?redirect=${encodeURIComponent(redirectPath)}`;
 const unreadNotifications = session ? await countUnreadNotifications(session.userId) : 0;
 const searchLabel = lang === "en" ? "Search" : "搜索";
-const newTopicLabel = lang === "en" ? "New topic" : "新建话题";
-const newTopicHref = buildNewTopicHref(Astro.url);
+const newTopicHref = buildNewTopicHref(Astro.url, { type: "discussion" });
 const searchValue = Astro.url.pathname === "/search" ? Astro.url.searchParams.get("q") || "" : "";
 const searchOpen = Astro.url.pathname === "/search";
 const searchCopy = lang === "en"
@@ -64,12 +63,79 @@ const menuCopy = lang === "en"
       settings: "设置",
       unread: "未读",
     };
+const createCopy = lang === "en"
+  ? {
+      label: "Create",
+      writeTopic: "Write topic",
+      writeTopicHint: "Start a normal discussion.",
+      askQuestion: "Ask question",
+      askQuestionHint: "Get help or collect opinions.",
+      writeArticle: "Write article",
+      writeArticleHint: "Publish notes, reviews, or tutorials.",
+      showProject: "Show project",
+      showProjectHint: "Share a product or build log.",
+      shareResource: "Share resource",
+      shareResourceHint: "Post a useful link or tool.",
+      drafts: "My drafts",
+      draftsHint: "Review unfinished topics.",
+    }
+  : {
+      label: "创建",
+      writeTopic: "写话题",
+      writeTopicHint: "发起普通讨论。",
+      askQuestion: "提问题",
+      askQuestionHint: "求助、征集建议或快速确认。",
+      writeArticle: "写文章",
+      writeArticleHint: "发布笔记、复盘或教程。",
+      showProject: "发项目",
+      showProjectHint: "展示产品、作品或开发日志。",
+      shareResource: "分享资源",
+      shareResourceHint: "推荐链接、工具或资料。",
+      drafts: "我的草稿",
+      draftsHint: "查看未完成的话题。",
+    };
+const createActions = [
+  {
+    href: newTopicHref,
+    label: createCopy.writeTopic,
+    hint: createCopy.writeTopicHint,
+    icon: "＋",
+  },
+  {
+    href: buildNewTopicHref(Astro.url, { type: "question" }),
+    label: createCopy.askQuestion,
+    hint: createCopy.askQuestionHint,
+    icon: "？",
+  },
+  {
+    href: buildNewTopicHref(Astro.url, { type: "article" }),
+    label: createCopy.writeArticle,
+    hint: createCopy.writeArticleHint,
+    icon: "✎",
+  },
+  {
+    href: buildNewTopicHref(Astro.url, { type: "project" }),
+    label: createCopy.showProject,
+    hint: createCopy.showProjectHint,
+    icon: "◇",
+  },
+  {
+    href: buildNewTopicHref(Astro.url, { type: "resource" }),
+    label: createCopy.shareResource,
+    hint: createCopy.shareResourceHint,
+    icon: "↗",
+  },
+];
 const avatarLabel = session ? `${session.displayName || session.username}` : t(lang, "header.login");
 const avatarInitial = session ? (session.displayName || session.username).trim().slice(0, 1).toUpperCase() : "";
 
-function buildNewTopicHref(url: URL) {
+function buildNewTopicHref(url: URL, options: { type?: string } = {}) {
   const parts = url.pathname.split("/").filter(Boolean);
   const params = new URLSearchParams();
+
+  if (options.type) {
+    params.set("type", options.type);
+  }
 
   if (parts[0] === "c" && parts[1]) {
     params.set("category", parts[1]);
@@ -113,19 +179,51 @@ function buildNewTopicHref(url: URL) {
     </button>
 
     <a class="brand" href="/" aria-label="whyisee.xyz">
-      <span class="brand-mark">W</span>
       <span>
         <strong>whyisee</strong>
         <small>{t(lang, "site.slogan")}</small>
       </span>
     </a>
+
+    <div class="quick-create" data-quick-create>
+      <button
+        class="quick-create-button"
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-label={createCopy.label}
+        title={createCopy.label}
+        data-quick-create-button
+      >
+        <span class="quick-create-plus" aria-hidden="true"></span>
+      </button>
+      <div class="quick-create-panel" role="menu" data-quick-create-panel hidden>
+        {createActions.map((action) => (
+          <a class="quick-create-item" href={action.href} role="menuitem">
+            <span class="quick-create-item-icon" aria-hidden="true">{action.icon}</span>
+            <span>
+              <strong>{action.label}</strong>
+              <small>{action.hint}</small>
+            </span>
+          </a>
+        ))}
+        {session && (
+          <>
+            <span class="quick-create-divider" aria-hidden="true"></span>
+            <a class="quick-create-item" href={`/u/${session.username}#topics`} role="menuitem">
+              <span class="quick-create-item-icon" aria-hidden="true">…</span>
+              <span>
+                <strong>{createCopy.drafts}</strong>
+                <small>{createCopy.draftsHint}</small>
+              </span>
+            </a>
+          </>
+        )}
+      </div>
+    </div>
   </div>
 
   <div class="header-actions">
-    <a class="header-icon-button new-topic-button" href={newTopicHref} aria-label={newTopicLabel} title={newTopicLabel}>
-      <span class="new-topic-icon" aria-hidden="true"></span>
-    </a>
-
     <form
       class:list={["header-search", searchOpen && "is-open"]}
       method="get"
@@ -213,11 +311,15 @@ function buildNewTopicHref(url: URL) {
           aria-label={avatarLabel}
           data-user-menu-button
         >
-          <span class="avatar-mark" aria-hidden="true">{avatarInitial}</span>
+          <span class="avatar-mark" aria-hidden="true">
+            {session.avatarUrl ? <img src={session.avatarUrl} alt="" /> : avatarInitial}
+          </span>
         </button>
         <div class="user-menu-panel" role="menu" data-user-menu-panel hidden>
           <div class="user-menu-head">
-            <span class="user-menu-head-avatar" aria-hidden="true">{avatarInitial}</span>
+            <span class="user-menu-head-avatar" aria-hidden="true">
+              {session.avatarUrl ? <img src={session.avatarUrl} alt="" /> : avatarInitial}
+            </span>
             <div>
               <strong>{session.displayName}</strong>
               <span>@{session.username}</span>
@@ -272,9 +374,11 @@ function buildNewTopicHref(url: URL) {
     let animationTimer = 0;
 
     try {
-      collapsed = localStorage.getItem(storageKey) === "1";
+      const storedSidebar = localStorage.getItem(storageKey);
+      const isNarrowScreen = window.matchMedia?.("(max-width: 980px)").matches;
+      collapsed = isNarrowScreen || storedSidebar === "1";
     } catch {
-      collapsed = false;
+      collapsed = window.matchMedia?.("(max-width: 980px)").matches || false;
     }
 
     applyState(collapsed);
@@ -294,6 +398,39 @@ function buildNewTopicHref(url: URL) {
       animationTimer = window.setTimeout(() => {
         document.documentElement.removeAttribute("data-sidebar-animating");
       }, 380);
+    });
+  })();
+
+  (() => {
+    const menu = document.querySelector("[data-quick-create]");
+    const button = document.querySelector("[data-quick-create-button]");
+    const panel = document.querySelector("[data-quick-create-panel]");
+
+    if (!menu || !button || !panel) {
+      return;
+    }
+
+    const setOpen = (open) => {
+      panel.hidden = !open;
+      button.setAttribute("aria-expanded", String(open));
+      menu.dataset.open = open ? "true" : "false";
+    };
+
+    button.addEventListener("click", () => {
+      setOpen(panel.hidden);
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!menu.contains(event.target)) {
+        setOpen(false);
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        button.focus();
+      }
     });
   })();
 

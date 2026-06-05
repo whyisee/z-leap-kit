@@ -10,6 +10,7 @@ export interface PublicUser {
   id: number;
   username: string;
   displayName: string;
+  avatarUrl: string | null;
   email: string | null;
   role: AuthSession["role"];
   status: AuthSession["status"];
@@ -24,6 +25,7 @@ interface UserRow {
   id: number;
   username: string;
   display_name: string;
+  avatar_url: string | null;
   email: string | null;
   role: AuthSession["role"];
   status: AuthSession["status"];
@@ -147,6 +149,7 @@ export async function updateUserProfile(
   userId: number,
   input: {
     displayName: string;
+    avatarUrl: string;
     bio: string;
     websiteUrl: string;
     githubUrl: string;
@@ -157,15 +160,17 @@ export async function updateUserProfile(
     `
     UPDATE users
     SET display_name = $1,
-        bio = $2,
-        website_url = NULLIF($3, ''),
-        github_url = NULLIF($4, ''),
-        locale = $5,
-        updated_at = $6
-    WHERE id = $7
+        avatar_url = $2,
+        bio = $3,
+        website_url = NULLIF($4, ''),
+        github_url = NULLIF($5, ''),
+        locale = $6,
+        updated_at = $7
+    WHERE id = $8
     `,
     [
       input.displayName.trim() || "whyisee user",
+      normalizeAvatarUrl(input.avatarUrl),
       input.bio.trim(),
       input.websiteUrl.trim(),
       input.githubUrl.trim(),
@@ -263,7 +268,7 @@ export async function resetPassword(token: string, password: string) {
 }
 
 const userSelectSql = `
-SELECT id, username, display_name, email, role, status, bio, website_url, github_url, locale, created_at
+SELECT id, username, display_name, avatar_url, email, role, status, bio, website_url, github_url, locale, created_at
 FROM users
 `;
 
@@ -272,6 +277,7 @@ function mapUser(row: UserRow): PublicUser {
     id: row.id,
     username: row.username,
     displayName: row.display_name,
+    avatarUrl: row.avatar_url,
     email: row.email,
     role: row.role,
     status: row.status,
@@ -285,4 +291,25 @@ function mapUser(row: UserRow): PublicUser {
 
 function normalizeUsername(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 32);
+}
+
+function normalizeAvatarUrl(value: string) {
+  const avatarUrl = value.trim();
+
+  if (!avatarUrl) {
+    return null;
+  }
+
+  if (avatarUrl.length > 6000) {
+    throw new Error("Avatar URL is too long.");
+  }
+
+  if (
+    avatarUrl.startsWith("/uploads/") ||
+    avatarUrl.startsWith("data:image/svg+xml")
+  ) {
+    return avatarUrl;
+  }
+
+  throw new Error("Invalid avatar URL.");
 }

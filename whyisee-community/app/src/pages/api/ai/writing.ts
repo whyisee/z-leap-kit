@@ -4,7 +4,7 @@ import { getLangFromAstro } from "@lib/i18n";
 import type { TopicType } from "@lib/types";
 import { AiServiceError } from "@server/services/ai";
 import { listCategories, listTags } from "@server/services/categories";
-import { isWritingAiAction, runWritingAiAction } from "@server/services/writingAi";
+import { isWritingAiAction, readWritingAiStyle, runWritingAiAction } from "@server/services/writingAi";
 
 export const prerender = false;
 
@@ -40,6 +40,7 @@ export const POST: APIRoute = async (context) => {
     const [categories, tags] = await Promise.all([listCategories(lang), listTags(lang)]);
     const result = await runWritingAiAction({
       action,
+      style: readWritingAiStyle(String(readBodyValue(body, "style") || "")),
       title,
       body: contentMarkdown,
       summary: String(readBodyValue(body, "summary") || ""),

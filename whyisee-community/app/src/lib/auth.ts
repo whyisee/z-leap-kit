@@ -11,6 +11,7 @@ export interface AuthSession {
   userId: number;
   username: string;
   displayName: string;
+  avatarUrl: string | null;
   email: string | null;
   role: "admin" | "moderator" | "member" | "new_user";
   status: "active" | "pending" | "suspended" | "banned";
@@ -21,10 +22,34 @@ export function getSessionMaxAgeSeconds() {
   return sessionMaxAgeSeconds;
 }
 
+export function getAuthCookieOptions(defaultSecure: boolean) {
+  return {
+    httpOnly: true,
+    maxAge: getSessionMaxAgeSeconds(),
+    path: "/",
+    sameSite: "lax" as const,
+    secure: shouldUseSecureAuthCookie(defaultSecure),
+  };
+}
+
+export function shouldUseSecureAuthCookie(defaultSecure: boolean) {
+  const value = process.env.AUTH_COOKIE_SECURE?.trim().toLowerCase();
+
+  if (value === "0" || value === "false" || value === "no") {
+    return false;
+  }
+
+  if (value === "1" || value === "true" || value === "yes") {
+    return true;
+  }
+
+  return defaultSecure;
+}
+
 export async function authenticateUser(identifier: string, password: string): Promise<AuthSession | undefined> {
   const user = await queryOne<UserAuthRow>(
     `
-    SELECT id, username, display_name, email, role, status, password_hash
+    SELECT id, username, display_name, avatar_url, email, role, status, password_hash
     FROM users
     WHERE lower(username) = lower($1) OR lower(email) = lower($1)
     LIMIT 1
@@ -79,6 +104,7 @@ export async function readSessionId(sessionId: string | undefined): Promise<Auth
       users.id,
       users.username,
       users.display_name,
+      users.avatar_url,
       users.email,
       users.role,
       users.status
@@ -130,6 +156,7 @@ function mapSession(user: UserSessionSource, sessionId: string): AuthSession {
     username: user.username,
     displayName: user.display_name,
     email: user.email,
+    avatarUrl: user.avatar_url ?? null,
     role: user.role,
     status: user.status,
     sessionId,
@@ -140,6 +167,7 @@ interface UserSessionSource {
   id: number;
   username: string;
   display_name: string;
+  avatar_url?: string | null;
   email: string | null;
   role: AuthSession["role"];
   status: AuthSession["status"];

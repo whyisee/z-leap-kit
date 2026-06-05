@@ -17,6 +17,7 @@ interface Props {
   forcedStatus?: TopicStatus;
   defaultCategorySlug?: string;
   defaultTagSlugs?: string[];
+  defaultType?: TopicType;
 }
 
 const {
@@ -32,9 +33,10 @@ const {
   forcedStatus,
   defaultCategorySlug,
   defaultTagSlugs = [],
+  defaultType,
 } = Astro.props;
 const copy = getCopy(lang);
-const selectedType = topic?.type || "discussion";
+const selectedType = topic?.type || defaultType || "discussion";
 const selectedStatus = forcedStatus || topic?.status || "draft";
 const defaultCategory = categories.find((category) => category.slug === defaultCategorySlug);
 const selectedCategoryId = topic?.category.id || defaultCategory?.id || categories[0]?.id;
@@ -53,6 +55,16 @@ const typeOptions: Array<{ value: TopicType; label: string }> = [
   { value: "project", label: copy.typeProject },
   { value: "resource", label: copy.typeResource },
   { value: "announcement", label: copy.typeAnnouncement },
+];
+
+const writingStyleOptions = [
+  { value: "community", label: copy.aiStyleCommunity },
+  { value: "technical", label: copy.aiStyleTechnical },
+  { value: "story", label: copy.aiStyleStory },
+  { value: "tutorial", label: copy.aiStyleTutorial },
+  { value: "opinion", label: copy.aiStyleOpinion },
+  { value: "launch", label: copy.aiStyleLaunch },
+  { value: "casual", label: copy.aiStyleCasual },
 ];
 
 const statusOptions: Array<{ value: TopicStatus; label: string }> = [
@@ -99,6 +111,15 @@ function getCopy(lang: Lang) {
       typeResource: "Resource",
       typeAnnouncement: "Announcement",
       aiWriting: "AI writing",
+      aiStyle: "Writing style",
+      aiStyleCommunity: "Community",
+      aiStyleTechnical: "Technical",
+      aiStyleStory: "Story",
+      aiStyleTutorial: "Tutorial",
+      aiStyleOpinion: "Opinion",
+      aiStyleLaunch: "Launch",
+      aiStyleCasual: "Casual",
+      aiDraft: "Write full body",
       aiOutline: "Generate outline",
       aiContinue: "Continue body",
       aiTitle: "Generate titles",
@@ -159,6 +180,15 @@ function getCopy(lang: Lang) {
     typeResource: "资源",
     typeAnnouncement: "公告",
     aiWriting: "AI 写作",
+    aiStyle: "写作风格",
+    aiStyleCommunity: "社区自然",
+    aiStyleTechnical: "技术解析",
+    aiStyleStory: "复盘故事",
+    aiStyleTutorial: "教程步骤",
+    aiStyleOpinion: "观点评论",
+    aiStyleLaunch: "项目更新",
+    aiStyleCasual: "轻松口语",
+    aiDraft: "生成正文",
     aiOutline: "生成大纲",
     aiContinue: "续写正文",
     aiTitle: "生成标题",
@@ -313,6 +343,14 @@ function normalizeTagValue(value: string) {
           data-copy={copy.aiCopy}
         >
           <div class="writing-ai-toolbar">
+            <label class="writing-ai-style">
+              <span>{copy.aiStyle}</span>
+              <select data-writing-ai-style aria-label={copy.aiStyle}>
+                {writingStyleOptions.map((option) => (
+                  <option value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
             <button
               class="writing-ai-button"
               type="button"
@@ -325,6 +363,7 @@ function normalizeTagValue(value: string) {
               <span class="writing-ai-chevron" aria-hidden="true">⌄</span>
             </button>
             <div class="writing-ai-menu" role="menu" data-writing-ai-menu hidden>
+              <button type="button" role="menuitem" data-writing-ai-action="draft">{copy.aiDraft}</button>
               <button type="button" role="menuitem" data-writing-ai-action="outline">{copy.aiOutline}</button>
               <button type="button" role="menuitem" data-writing-ai-action="continue">{copy.aiContinue}</button>
               <button type="button" role="menuitem" data-writing-ai-action="polish">{copy.aiPolish}</button>
@@ -560,6 +599,7 @@ function normalizeTagValue(value: string) {
     const titleList = root.querySelector("[data-writing-ai-title-list]");
     const closeButton = root.querySelector("[data-writing-ai-close]");
     const copyButton = root.querySelector("[data-writing-ai-copy]");
+    const styleSelect = root.querySelector("[data-writing-ai-style]");
     const applySummaryButton = root.querySelector("[data-writing-ai-apply-summary]");
     const replaceBodyButton = root.querySelector("[data-writing-ai-replace-body]");
     const appendBodyButton = root.querySelector("[data-writing-ai-append-body]");
@@ -593,6 +633,7 @@ function normalizeTagValue(value: string) {
       categoryId: Number(categorySelect?.value || 0),
       type: typeSelect?.value || "discussion",
       tags: tagsInput?.value || "",
+      style: styleSelect?.value || "community",
     });
 
     const setActionsDisabled = (disabled) => {

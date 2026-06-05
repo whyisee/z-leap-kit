@@ -2,10 +2,12 @@ import type { Category, Tag, TopicType } from "@lib/types";
 import type { Lang } from "@lib/i18n";
 import { generateAiText } from "./ai";
 
-export type WritingAiAction = "title" | "outline" | "continue" | "polish" | "humanize" | "summary" | "recommend";
+export type WritingAiAction = "title" | "outline" | "draft" | "continue" | "polish" | "humanize" | "summary" | "recommend";
+export type WritingAiStyle = "community" | "technical" | "story" | "tutorial" | "opinion" | "launch" | "casual";
 
 export interface WritingAiInput {
   action: WritingAiAction;
+  style: WritingAiStyle;
   title: string;
   body: string;
   summary: string;
@@ -30,10 +32,15 @@ export interface WritingAiResult {
   tags?: string[];
 }
 
-const writingAiActions = new Set<WritingAiAction>(["title", "outline", "continue", "polish", "humanize", "summary", "recommend"]);
+const writingAiActions = new Set<WritingAiAction>(["title", "outline", "draft", "continue", "polish", "humanize", "summary", "recommend"]);
+const writingAiStyles = new Set<WritingAiStyle>(["community", "technical", "story", "tutorial", "opinion", "launch", "casual"]);
 
 export function isWritingAiAction(value: string | undefined): value is WritingAiAction {
   return writingAiActions.has(value as WritingAiAction);
+}
+
+export function readWritingAiStyle(value: string | undefined): WritingAiStyle {
+  return writingAiStyles.has(value as WritingAiStyle) ? value as WritingAiStyle : "community";
 }
 
 export async function runWritingAiAction(input: WritingAiInput): Promise<WritingAiResult & {
@@ -73,6 +80,7 @@ function buildSystemPrompt(lang: Lang) {
 
 function buildPrompt(input: WritingAiInput) {
   const actionPrompt = getActionPrompt(input.action, input.lang);
+  const stylePrompt = getStylePrompt(input.style, input.lang);
   const category = input.categories.find((item) => item.id === input.categoryId);
   const availableCategories = input.categories
     .map((item) => `- ${item.slug}: ${item.name} (${item.description || "no description"})`)
@@ -84,6 +92,9 @@ function buildPrompt(input: WritingAiInput) {
 
   return [
     actionPrompt,
+    "",
+    "Style preference:",
+    stylePrompt,
     "",
     "Current draft:",
     `Title: ${input.title || "none"}`,
@@ -115,6 +126,14 @@ function getActionPrompt(action: WritingAiAction, lang: Lang) {
       "大纲要适合社区话题，包含 4-7 个二级标题或清晰小节，并给出每节 1-3 个要点。",
       "不要重复已有正文的长段落，不要虚构具体事实。",
       "返回 JSON：{\"body\":\"Markdown 大纲\"}",
+    ].join("\n"),
+    draft: [
+      "请根据当前标题、摘要、分类、标签，以及正文区已有的素材/大纲，写一篇完整 Markdown 正文。",
+      "如果正文区是大纲或要点，请把它扩展成有信息量的段落，不要只是复述大纲、不要把每个要点机械改成一句话。",
+      "正文要像真实社区帖子：有明确问题或观点、必要背景、关键判断、可讨论的细节和结尾的开放问题。",
+      "不要使用万能模板，不要硬凑“引言/正文/总结”，不要堆空泛正确的话。",
+      "如果素材不足，不要编造具体经历、数据、公司名、时间线；可以写成待确认问题或个人观察。",
+      "返回 JSON：{\"body\":\"完整 Markdown 正文\"}",
     ].join("\n"),
     continue: [
       "请基于当前标题、摘要和正文续写后续正文。",
@@ -159,6 +178,14 @@ function getActionPrompt(action: WritingAiAction, lang: Lang) {
       "Make it suitable for a community topic with 4-7 clear sections and 1-3 bullets per section.",
       "Do not repeat long existing passages or invent specific facts.",
       "Return JSON: {\"body\":\"Markdown outline\"}",
+    ].join("\n"),
+    draft: [
+      "Write a complete Markdown body from the current title, summary, category, tags, and the material or outline already in the body field.",
+      "If the body field is an outline or bullet list, expand it into substantial prose. Do not merely restate the outline or turn each bullet into one thin sentence.",
+      "Make it feel like a real community post: clear context, a concrete point of view or problem, useful details, tradeoffs, and a discussion-friendly ending.",
+      "Avoid generic templates, mechanical intro/body/conclusion structure, and bland universally-correct filler.",
+      "If the draft lacks facts, do not invent specific experiences, data, company names, or timelines. Use open questions or clearly framed observations instead.",
+      "Return JSON: {\"body\":\"Complete Markdown body\"}",
     ].join("\n"),
     continue: [
       "Continue the current body based on the title, summary, and existing draft.",
@@ -205,7 +232,7 @@ function mapResult(input: WritingAiInput, value: Record<string, unknown>, rawTex
     };
   }
 
-  if (input.action === "outline" || input.action === "continue" || input.action === "polish" || input.action === "humanize") {
+  if (input.action === "outline" || input.action === "draft" || input.action === "continue" || input.action === "polish" || input.action === "humanize") {
     const body = readString(value.body) || rawText;
     return {
       action: input.action,
@@ -296,12 +323,36 @@ function readTopicType(value: string): TopicType | undefined {
 }
 
 function maxTokensForAction(action: WritingAiAction) {
+  if (action === "draft") return 3600;
   if (action === "humanize") return 2400;
   if (action === "polish") return 2400;
   if (action === "continue") return 1800;
   if (action === "outline") return 1200;
   if (action === "recommend") return 800;
   return 900;
+}
+
+function getStylePrompt(style: WritingAiStyle, lang: Lang) {
+  const zh: Record<WritingAiStyle, string> = {
+    community: "社区自然风格：像真实开发者在社区发帖，直接、具体、有人味，少套话。",
+    technical: "技术解析风格：强调实现细节、架构取舍、踩坑、边界条件和可复用经验。",
+    story: "复盘故事风格：用第一人称讲清背景、冲突、尝试、结果和反思，但不要虚构经历。",
+    tutorial: "教程步骤风格：适合操作指南，按步骤写清准备、过程、注意点和结果验证。",
+    opinion: "观点评论风格：先给明确判断，再讲依据、反方观点、适用范围和可讨论问题。",
+    launch: "产品/项目更新风格：适合发布项目、版本、功能或进展，讲目标、变化、价值和下一步。",
+    casual: "轻松口语风格：更短句、更自然，可以有一点吐槽和个人语气，但不要低俗或灌水。",
+  };
+  const en: Record<WritingAiStyle, string> = {
+    community: "Natural community style: direct, specific, human, like a real builder posting to peers.",
+    technical: "Technical deep-dive style: implementation details, architecture tradeoffs, pitfalls, edge cases, reusable lessons.",
+    story: "Retrospective story style: first-person context, tension, attempts, outcome, and reflection without inventing experiences.",
+    tutorial: "Tutorial style: clear steps, prerequisites, process, gotchas, and validation.",
+    opinion: "Opinion style: clear thesis first, then reasoning, counterpoints, scope, and discussion questions.",
+    launch: "Product/project update style: goals, changes, user value, current status, and next steps.",
+    casual: "Casual style: shorter sentences and a more conversational rhythm, with light personal voice but no low-effort filler.",
+  };
+
+  return lang === "en" ? en[style] : zh[style];
 }
 
 function truncate(value: string, maxLength: number) {

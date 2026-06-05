@@ -54,6 +54,7 @@ main > .auth-page {
   padding-left: 18px;
   padding-right: 6px;
   scrollbar-gutter: stable;
+  transition: filter 0.2s ease;
 }
 
 .article-page,
@@ -646,6 +647,7 @@ button.topic-filter-pill {
   overflow-y: auto;
   padding-right: 4px;
   scrollbar-gutter: stable;
+  transition: opacity 0.22s ease, filter 0.22s ease, transform 0.22s ease;
 }
 
 .left-nav {
@@ -654,7 +656,28 @@ button.topic-filter-pill {
   padding-right: 18px;
   opacity: 1;
   transform: translateX(0);
+  transition: opacity 0.22s ease, filter 0.22s ease, transform 0.22s ease;
   will-change: opacity, transform;
+}
+
+:root[data-reading-mode="true"] .topic-layout .left-nav,
+:root[data-reading-mode="true"] .topic-layout .sidebar {
+  opacity: 0.18;
+  filter: blur(2.6px) saturate(0.62);
+  transform: scale(0.992);
+}
+
+:root[data-reading-mode="true"] .topic-layout .left-nav:hover,
+:root[data-reading-mode="true"] .topic-layout .left-nav:focus-within,
+:root[data-reading-mode="true"] .topic-layout .sidebar:hover,
+:root[data-reading-mode="true"] .topic-layout .sidebar:focus-within {
+  opacity: 0.92;
+  filter: none;
+  transform: none;
+}
+
+:root[data-reading-mode="true"] .topic-layout .content-column {
+  filter: saturate(0.96);
 }
 
 .left-nav::after {

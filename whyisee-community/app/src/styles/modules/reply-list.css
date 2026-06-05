@@ -83,7 +83,7 @@
   width: 42px;
   height: 42px;
   border: 1px solid rgba(138, 180, 248, 0.22);
-  border-radius: 50%;
+  border-radius: 9px;
   background:
     radial-gradient(circle at 28% 20%, rgba(255, 255, 255, 0.28), transparent 28%),
     linear-gradient(135deg, rgba(138, 180, 248, 0.34), rgba(102, 208, 140, 0.16));

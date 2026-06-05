@@ -182,10 +182,96 @@ const canonical = new URL(Astro.url.pathname, Astro.site || "https://whyisee.xyz
       .profile-card {
         width: min(720px, 100%);
       }
+
+      @media (max-width: 980px) {
+        html,
+        body {
+          height: auto;
+          min-height: 100%;
+        }
+
+        body {
+          overflow: auto;
+        }
+
+        .site-shell {
+          width: 100%;
+          min-width: 0;
+          min-height: 100dvh;
+          height: auto;
+        }
+
+        main {
+          width: 100%;
+          min-width: 0;
+          overflow: visible;
+        }
+
+        .site-header {
+          position: sticky;
+          top: 0;
+          z-index: 80;
+          width: 100%;
+          min-width: 0;
+          min-height: 58px;
+          padding: 8px 12px;
+        }
+
+        main > .plain-page,
+        main > .article-page,
+        main > .admin-page,
+        main > .auth-page {
+          height: auto;
+          min-height: 0;
+          min-width: 0;
+          overflow: visible;
+          padding: 22px 14px 36px;
+          scrollbar-gutter: auto;
+        }
+
+        main > .article-page:not(.auth-page),
+        main > .admin-page,
+        main > .admin-page.narrow-page {
+          width: 100%;
+        }
+
+        main > .admin-page:not(.narrow-page) {
+          display: block;
+        }
+
+        main > .admin-page:not(.narrow-page) > :not(.admin-nav) {
+          grid-column: auto;
+        }
+
+        .admin-nav {
+          display: flex;
+          overflow-x: auto;
+          grid-row: auto;
+          grid-column: auto;
+          border-right: 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.085);
+          margin-bottom: 18px;
+          padding: 0 0 12px;
+          scrollbar-width: none;
+        }
+
+        .settings-head,
+        .settings-layout {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .settings-content-panel {
+          max-width: none;
+        }
+      }
     </style>
     <script is:inline>
       try {
-        if (localStorage.getItem("whyisee_sidebar_collapsed") === "1") {
+        const storedSidebar = localStorage.getItem("whyisee_sidebar_collapsed");
+        const isNarrowScreen = window.matchMedia?.("(max-width: 980px)").matches;
+        const shouldStartCollapsed = isNarrowScreen || storedSidebar === "1";
+
+        if (shouldStartCollapsed) {
           document.documentElement.dataset.sidebar = "collapsed";
         }
       } catch {

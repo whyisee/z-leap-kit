@@ -16,6 +16,7 @@ export const POST: APIRoute = async (context) => {
   try {
     await updateUserProfile(session.userId, {
       displayName: String(formData.get("displayName") || ""),
+      avatarUrl: String(formData.get("avatarUrl") || ""),
       bio: String(formData.get("bio") || ""),
       websiteUrl: String(formData.get("websiteUrl") || ""),
       githubUrl: String(formData.get("githubUrl") || ""),

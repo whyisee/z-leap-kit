@@ -163,19 +163,18 @@
 
 .topic-post-frame {
   display: grid;
-  grid-template-columns: 94px minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 18px;
   align-items: start;
   border-bottom: 1px solid var(--line);
   padding: 0 0 26px;
 }
 
 .topic-author-card {
-  position: sticky;
-  top: 14px;
   display: grid;
   justify-items: center;
   min-width: 0;
+  padding-top: 2px;
   text-align: center;
 }
 
@@ -183,15 +182,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 58px;
-  height: 58px;
+  width: 46px;
+  height: 46px;
   border: 1px solid rgba(138, 180, 248, 0.26);
-  border-radius: 999px;
+  border-radius: 10px;
   background:
     radial-gradient(circle at 34% 26%, rgba(255, 255, 255, 0.18), transparent 34%),
     rgba(138, 180, 248, 0.12);
   color: var(--text);
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 950;
 }
 
@@ -241,7 +240,7 @@
 .topic-author-avatar-trigger {
   display: inline-flex;
   border: 0;
-  border-radius: 999px;
+  border-radius: 10px;
   padding: 0;
   background: transparent;
   color: inherit;
@@ -332,7 +331,7 @@
   width: 58px;
   height: 58px;
   border: 1px solid rgba(138, 180, 248, 0.32);
-  border-radius: 999px;
+  border-radius: 12px;
   background:
     radial-gradient(circle at 34% 26%, rgba(255, 255, 255, 0.18), transparent 34%),
     rgba(138, 180, 248, 0.12);

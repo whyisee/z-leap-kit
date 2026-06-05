@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import {
   authCookieName,
   authenticateUser,
-  getSessionMaxAgeSeconds,
+  getAuthCookieOptions,
   safeRedirectPath,
 } from "@lib/auth";
 
@@ -19,13 +19,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     return redirect(`/login?error=1&redirect=${encodeURIComponent(target)}`, 303);
   }
 
-  cookies.set(authCookieName, session.sessionId, {
-    httpOnly: true,
-    maxAge: getSessionMaxAgeSeconds(),
-    path: "/",
-    sameSite: "lax",
-    secure: import.meta.env.PROD,
-  });
+  cookies.set(authCookieName, session.sessionId, getAuthCookieOptions(import.meta.env.PROD));
 
   return redirect(target, 303);
 };

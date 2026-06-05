@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { authCookieName, getSessionMaxAgeSeconds, safeRedirectPath } from "@lib/auth";
+import { authCookieName, getAuthCookieOptions, safeRedirectPath } from "@lib/auth";
 import { createUserWithInvitation } from "@server/services/users";
 
 export const prerender = false;
@@ -16,13 +16,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
       inviteCode: String(formData.get("inviteCode") || ""),
     });
 
-    cookies.set(authCookieName, session.sessionId, {
-      httpOnly: true,
-      maxAge: getSessionMaxAgeSeconds(),
-      path: "/",
-      sameSite: "lax",
-      secure: import.meta.env.PROD,
-    });
+    cookies.set(authCookieName, session.sessionId, getAuthCookieOptions(import.meta.env.PROD));
 
     return redirect(target, 303);
   } catch (error) {

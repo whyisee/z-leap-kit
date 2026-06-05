@@ -125,7 +125,7 @@ const translations: Record<Lang, Record<TranslationKey, string>> = {
     "site.title": "whyisee - 独立开发与 AI 工具实战社区",
     "site.description":
       "whyisee 是一个面向独立开发者、AI 工具玩家、效率工具作者和小产品站长的实战社区。",
-    "site.slogan": "看见想法",
+    "site.slogan": "看见想法，让灵感出发",
     "header.login": "登录",
     "header.language": "语言",
     "header.sidebarToggle": "展开或收起侧边栏",
@@ -223,7 +223,7 @@ const translations: Record<Lang, Record<TranslationKey, string>> = {
     "site.title": "whyisee - Indie Building and AI Tools Community",
     "site.description":
       "whyisee is a practical community for indie builders, AI tool users, productivity tool makers, and small product founders.",
-    "site.slogan": "See ideas. Test them. Build things.",
+    "site.slogan": "See ideas. Launch inspiration.",
     "header.login": "Log In",
     "header.language": "Language",
     "header.sidebarToggle": "Toggle sidebar",

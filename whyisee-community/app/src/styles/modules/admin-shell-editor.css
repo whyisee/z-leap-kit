@@ -517,8 +517,49 @@ main > .article-page > .draft-form.public-topic-form {
 .writing-ai-toolbar {
   position: relative;
   display: flex;
+  align-items: center;
+  gap: 8px;
   justify-content: flex-end;
   min-height: 38px;
+}
+
+.writing-ai-style {
+  display: inline-grid;
+  grid-template-columns: auto minmax(108px, 1fr);
+  align-items: center;
+  min-height: 38px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.writing-ai-style span {
+  padding: 0 9px;
+  white-space: nowrap;
+}
+
+.writing-ai-style select {
+  min-width: 0;
+  min-height: 36px;
+  border: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0 28px 0 10px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  outline: 0;
+}
+
+.writing-ai-style:focus-within {
+  border-color: rgba(138, 180, 248, 0.48);
+  background: rgba(138, 180, 248, 0.08);
 }
 
 .writing-ai-button {
@@ -571,7 +612,7 @@ main > .article-page > .draft-form.public-topic-form {
   z-index: 8;
   display: grid;
   gap: 4px;
-  width: 188px;
+  width: 228px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   padding: 6px;

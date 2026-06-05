@@ -5,13 +5,13 @@ import type { Lang } from "@lib/i18n";
 
 interface Props {
   title: string;
-  description: string;
+  description?: string;
   current: "profile" | "account" | "agents";
   lang: Lang;
   session: AuthSession;
 }
 
-const { title, description, current, lang, session } = Astro.props;
+const { title, description = "", current, lang, session } = Astro.props;
 const copy = lang === "en"
   ? {
       accountLabel: "Your personal account",
@@ -59,7 +59,9 @@ const avatarInitial = (session.displayName || session.username).trim().slice(0, 
 <BaseLayout title={`${title} - whyisee.xyz`} description={description}>
   <section class="article-page settings-page">
     <header class="settings-head">
-      <span class="settings-avatar" aria-hidden="true">{avatarInitial}</span>
+      <span class="settings-avatar" aria-hidden="true">
+        {session.avatarUrl ? <img src={session.avatarUrl} alt="" /> : avatarInitial}
+      </span>
       <div>
         <h1>{session.displayName}</h1>
         <p>@{session.username} · {copy.accountLabel}</p>
@@ -84,7 +86,7 @@ const avatarInitial = (session.displayName || session.username).trim().slice(0, 
       <div class="settings-content-panel">
         <div class="settings-content-head">
           <h2>{title}</h2>
-          <p>{description}</p>
+          {description && <p>{description}</p>}
         </div>
         <slot />
       </div>

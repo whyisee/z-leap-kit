@@ -120,13 +120,107 @@ main > .auth-page {
   width: 48px;
   height: 48px;
   border: 1px solid rgba(138, 180, 248, 0.26);
-  border-radius: 999px;
+  border-radius: 11px;
   background:
     radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.18), transparent 32%),
     rgba(138, 180, 248, 0.13);
   color: var(--text);
   font-size: 18px;
   font-weight: 950;
+}
+
+.settings-avatar img,
+.avatar-picker-preview img,
+.avatar-option img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.avatar-picker {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.avatar-picker-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 76px;
+  height: 76px;
+  border: 1px solid rgba(138, 180, 248, 0.28);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.18), transparent 32%),
+    rgba(138, 180, 248, 0.13);
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 950;
+}
+
+.avatar-picker-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.avatar-picker-body strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.avatar-picker-body p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.avatar-option-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+  gap: 8px;
+  max-width: 430px;
+}
+
+.avatar-option {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 10px;
+  padding: 2px;
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+}
+
+.avatar-option:hover,
+.avatar-option.is-selected {
+  border-color: rgba(138, 180, 248, 0.72);
+  background: rgba(138, 180, 248, 0.12);
+  box-shadow: 0 0 0 3px rgba(138, 180, 248, 0.08);
+}
+
+.avatar-picker-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.avatar-upload-status {
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
 }
 
 .settings-head h1 {

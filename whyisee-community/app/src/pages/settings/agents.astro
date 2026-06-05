@@ -102,14 +102,13 @@ function canEnableDevice(device: UserAgentDevice) {
 }
 ---
 
-<SettingsShell title={copy.title} description={copy.description} current="agents" lang={lang} session={session}>
+<SettingsShell title={copy.title} current="agents" lang={lang} session={session}>
   {saved && <p class="auth-message muted">{copy.saved}</p>}
 
   <div class="agent-settings-card">
     <div class="agent-bind-command-card">
       <div>
         <strong>{copy.promptTitle}</strong>
-        <p>{copy.promptHint}</p>
       </div>
       <div class="agent-copy-row">
         <pre class="agent-copy-text" data-agent-copy-text>{agentInstruction}</pre>

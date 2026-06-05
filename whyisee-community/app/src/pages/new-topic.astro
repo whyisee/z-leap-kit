@@ -3,6 +3,7 @@ import AdminTopicForm from "@components/AdminTopicForm.astro";
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { getSessionFromAstro } from "@lib/auth";
 import { getLangFromAstro } from "@lib/i18n";
+import type { TopicType } from "@lib/types";
 import { listCategories, listTags } from "@server/services/categories";
 
 export const prerender = false;
@@ -11,7 +12,7 @@ const lang = getLangFromAstro(Astro);
 const session = await getSessionFromAstro(Astro);
 
 if (!session) {
-  return Astro.redirect("/login?redirect=/new-topic", 303);
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(`${Astro.url.pathname}${Astro.url.search}`)}`, 303);
 }
 
 const categories = await listCategories(lang);
@@ -19,6 +20,7 @@ const tags = await listTags(lang);
 const error = Astro.url.searchParams.get("error") === "1";
 const requestedCategorySlug = Astro.url.searchParams.get("category") || "";
 const requestedTagSlug = Astro.url.searchParams.get("tag") || "";
+const requestedType = readTopicType(Astro.url.searchParams.get("type"));
 const defaultCategorySlug = categories.some((category) => category.slug === requestedCategorySlug)
   ? requestedCategorySlug
   : undefined;
@@ -34,6 +36,16 @@ const copy = lang === "en"
       description: "提交话题后进入审核，通过后公开展示。",
       submit: "提交审核",
     };
+
+function readTopicType(value: string | null): TopicType | undefined {
+  return value === "discussion" ||
+    value === "question" ||
+    value === "article" ||
+    value === "project" ||
+    value === "resource"
+    ? value
+    : undefined;
+}
 ---
 
 <BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
@@ -50,6 +62,7 @@ const copy = lang === "en"
       forcedStatus="pending"
       defaultCategorySlug={defaultCategorySlug}
       defaultTagSlugs={defaultTagSlugs}
+      defaultType={requestedType}
     />
   </section>
 </BaseLayout>
