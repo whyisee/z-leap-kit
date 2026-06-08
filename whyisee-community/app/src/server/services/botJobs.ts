@@ -2,6 +2,12 @@ import { createHash } from "node:crypto";
 import { renderMarkdown } from "../../lib/markdown.ts";
 import { query, queryOne, withTransaction } from "../db/client.ts";
 import { generateAiText } from "./ai.ts";
+import {
+  normalizeExternalHotScanConfig,
+  scanExternalHotSource,
+  type ExternalHotScanConfig,
+  type ExternalHotScanMetrics,
+} from "./externalHotSources.ts";
 import { createNotification } from "./notifications.ts";
 
 interface BotJobRow {
@@ -160,7 +166,7 @@ export interface BotTaskListItem {
   triggerType: string;
   status: string;
   scheduleIntervalSeconds: number;
-  config: AutoReviewTaskConfig;
+  config: BotTaskConfig;
   nextRunAt: string | null;
   lockedAt: string | null;
   lastRunAt: string | null;
@@ -210,6 +216,8 @@ export interface AutoReviewTaskConfig {
   dryRun: boolean;
 }
 
+export type BotTaskConfig = AutoReviewTaskConfig | ExternalHotScanConfig;
+
 interface AutoReviewDecision {
   decision: "approve" | "needs_human" | "reject";
   riskScore: number;
@@ -228,13 +236,15 @@ interface AutoReviewMetrics {
   failed: number;
 }
 
+type BotTaskMetrics = AutoReviewMetrics | ExternalHotScanMetrics;
+
 interface BotTaskProcessResult {
   id: number;
   taskKey: string;
   status: "succeeded" | "failed";
   outputSummary?: string;
   error?: string;
-  metrics?: AutoReviewMetrics;
+  metrics?: BotTaskMetrics;
 }
 
 export async function listBotJobs(status = "all", limit = 100): Promise<BotJobListItem[]> {
@@ -413,13 +423,21 @@ export async function updateBotTaskSettings(input: {
   autoApproveMaxRisk: number;
   batchSize: number;
   dryRun: boolean;
+  sourceUrl?: string;
+  maxItems?: number;
+  timeoutMs?: number;
+  userAgent?: string;
 }) {
-  const config: AutoReviewTaskConfig = {
-    scope: "pending_topics",
-    batchSize: clampInteger(input.batchSize, 1, 20, 5),
-    autoApproveMaxRisk: clampInteger(input.autoApproveMaxRisk, 0, 80, 25),
-    dryRun: input.dryRun,
-  };
+  const existing = await queryOne<{ task_type: string; config_json: string }>(
+    "SELECT task_type, config_json FROM bot_tasks WHERE id = $1 LIMIT 1",
+    [input.id],
+  );
+
+  if (!existing) {
+    throw new Error("Bot task not found.");
+  }
+
+  const config = buildUpdatedTaskConfig(existing.task_type, parseObjectJson(existing.config_json), input);
   const now = new Date().toISOString();
   const interval = clampInteger(input.scheduleIntervalSeconds, 30, 86_400, 60);
 
@@ -624,29 +642,57 @@ async function processClaimedBotTask(task: BotTaskListItem): Promise<BotTaskProc
   const runId = await createBotTaskRun(task);
 
   try {
-    if (task.taskType !== "auto_review") {
-      throw new Error(`Unsupported bot task type: ${task.taskType}`);
+    if (task.taskType === "auto_review") {
+      const metrics = await processAutoReviewTask(task, runId);
+      const outputSummary = [
+        `扫描 ${metrics.scanned}`,
+        `审核 ${metrics.reviewed}`,
+        `自动通过 ${metrics.autoApproved}`,
+        `人工复核 ${metrics.needsHuman}`,
+        `失败 ${metrics.failed}`,
+      ].join(" · ");
+
+      await completeBotTaskRun(runId, "succeeded", outputSummary, undefined, metrics);
+      await releaseBotTask(task, "succeeded");
+
+      return {
+        id: task.id,
+        taskKey: task.taskKey,
+        status: "succeeded",
+        outputSummary,
+        metrics,
+      };
     }
 
-    const metrics = await processAutoReviewTask(task, runId);
-    const outputSummary = [
-      `扫描 ${metrics.scanned}`,
-      `审核 ${metrics.reviewed}`,
-      `自动通过 ${metrics.autoApproved}`,
-      `人工复核 ${metrics.needsHuman}`,
-      `失败 ${metrics.failed}`,
-    ].join(" · ");
+    if (task.taskType === "external_hot_scan") {
+      const config = normalizeExternalHotScanConfig(task.config);
+      const metrics = await scanExternalHotSource({
+        taskId: task.id,
+        runId,
+        botUserId: task.botUserId,
+        config,
+      });
+      const outputSummary = [
+        `抓取 ${metrics.fetched}`,
+        `新增 ${metrics.inserted}`,
+        `更新 ${metrics.updated}`,
+        `跳过 ${metrics.skipped}`,
+        `失败 ${metrics.failed}`,
+      ].join(" · ");
 
-    await completeBotTaskRun(runId, "succeeded", outputSummary, undefined, metrics);
-    await releaseBotTask(task, "succeeded");
+      await completeBotTaskRun(runId, "succeeded", outputSummary, undefined, metrics);
+      await releaseBotTask(task, "succeeded");
 
-    return {
-      id: task.id,
-      taskKey: task.taskKey,
-      status: "succeeded",
-      outputSummary,
-      metrics,
-    };
+      return {
+        id: task.id,
+        taskKey: task.taskKey,
+        status: "succeeded",
+        outputSummary,
+        metrics,
+      };
+    }
+
+    throw new Error(`Unsupported bot task type: ${task.taskType}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const metrics: AutoReviewMetrics = {
@@ -695,7 +741,7 @@ async function completeBotTaskRun(
   status: "succeeded" | "failed",
   outputSummary: string,
   error: string | undefined,
-  metrics: AutoReviewMetrics,
+  metrics: BotTaskMetrics,
 ) {
   await query(
     `
@@ -1225,13 +1271,52 @@ function mapBotTaskRow(row: BotTaskRow): BotTaskListItem {
     triggerType: row.trigger_type,
     status: row.status,
     scheduleIntervalSeconds: row.schedule_interval_seconds,
-    config: normalizeAutoReviewConfig(parseObjectJson(row.config_json)),
+    config: normalizeBotTaskConfig(row.task_type, parseObjectJson(row.config_json)),
     nextRunAt: row.next_run_at,
     lockedAt: row.locked_at,
     lastRunAt: row.last_run_at,
     lastStatus: row.last_status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function normalizeBotTaskConfig(taskType: string, value: unknown): BotTaskConfig {
+  if (taskType === "external_hot_scan") {
+    return normalizeExternalHotScanConfig(value);
+  }
+
+  return normalizeAutoReviewConfig(value);
+}
+
+function buildUpdatedTaskConfig(
+  taskType: string,
+  current: Record<string, unknown>,
+  input: {
+    autoApproveMaxRisk: number;
+    batchSize: number;
+    dryRun: boolean;
+    sourceUrl?: string;
+    maxItems?: number;
+    timeoutMs?: number;
+    userAgent?: string;
+  },
+): BotTaskConfig {
+  if (taskType === "external_hot_scan") {
+    return normalizeExternalHotScanConfig({
+      ...current,
+      sourceUrl: input.sourceUrl,
+      maxItems: input.maxItems ?? input.batchSize,
+      timeoutMs: input.timeoutMs,
+      userAgent: input.userAgent,
+    });
+  }
+
+  return {
+    scope: "pending_topics",
+    batchSize: clampInteger(input.batchSize, 1, 20, 5),
+    autoApproveMaxRisk: clampInteger(input.autoApproveMaxRisk, 0, 80, 25),
+    dryRun: input.dryRun,
   };
 }
 

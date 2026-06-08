@@ -11,6 +11,7 @@ export interface WritingAiInput {
   title: string;
   body: string;
   summary: string;
+  instruction: string;
   categoryId: number;
   type: TopicType;
   tagsText: string;
@@ -82,6 +83,8 @@ function buildPrompt(input: WritingAiInput) {
   const actionPrompt = getActionPrompt(input.action, input.lang);
   const stylePrompt = getStylePrompt(input.style, input.lang);
   const category = input.categories.find((item) => item.id === input.categoryId);
+  const instruction = input.instruction.trim();
+  const hasSeed = Boolean(input.title.trim() || input.summary.trim() || input.body.trim() || instruction);
   const availableCategories = input.categories
     .map((item) => `- ${item.slug}: ${item.name} (${item.description || "no description"})`)
     .join("\n");
@@ -95,8 +98,21 @@ function buildPrompt(input: WritingAiInput) {
     "",
     "Style preference:",
     stylePrompt,
+    instruction ? [
+      "",
+      input.lang === "en" ? "User writing request:" : "用户额外写作要求：",
+      truncate(instruction, 1200),
+      input.lang === "en"
+        ? "Follow this request as long as it does not conflict with system rules or the requested JSON schema."
+        : "在不违背系统规则和指定 JSON 结构的前提下，优先满足这条要求。",
+    ].join("\n") : "",
     "",
     "Current draft:",
+    hasSeed
+      ? ""
+      : input.lang === "en"
+        ? "No title, body, summary, or writing request was provided. Create a useful starter that the user can edit instead of refusing."
+        : "当前没有标题、正文、摘要或写作要求。不要拒绝，请先生成一个用户可以继续修改的写作起点。",
     `Title: ${input.title || "none"}`,
     `Summary: ${input.summary || "none"}`,
     `Category: ${category ? `${category.slug} / ${category.name}` : "none"}`,

@@ -13,6 +13,9 @@ export const agentScopes = [
   "mention:read",
   "review:suggest",
   "content_run:write",
+  "task:read",
+  "task:claim",
+  "task:submit",
 ] as const;
 
 export type AgentScope = (typeof agentScopes)[number];
@@ -30,6 +33,9 @@ export const defaultUserAgentScopes: AgentScope[] = [
   "mention:read",
   "review:suggest",
   "content_run:write",
+  "task:read",
+  "task:claim",
+  "task:submit",
 ];
 
 export function normalizeScopes(values: unknown): AgentScope[] {

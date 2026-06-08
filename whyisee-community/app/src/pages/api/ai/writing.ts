@@ -32,10 +32,6 @@ export const POST: APIRoute = async (context) => {
     return json({ error: "invalid_action" }, 400);
   }
 
-  if (!title && !contentMarkdown) {
-    return json({ error: "empty_draft" }, 400);
-  }
-
   try {
     const [categories, tags] = await Promise.all([listCategories(lang), listTags(lang)]);
     const result = await runWritingAiAction({
@@ -44,6 +40,7 @@ export const POST: APIRoute = async (context) => {
       title,
       body: contentMarkdown,
       summary: String(readBodyValue(body, "summary") || ""),
+      instruction: String(readBodyValue(body, "instruction") || "").trim().slice(0, 1200),
       categoryId: Number(readBodyValue(body, "categoryId") || 0),
       type: readTopicType(String(readBodyValue(body, "type") || "discussion")),
       tagsText: String(readBodyValue(body, "tags") || ""),

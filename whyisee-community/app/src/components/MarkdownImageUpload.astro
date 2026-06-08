@@ -52,12 +52,13 @@ const copy = lang === "en"
       const button = root.querySelector("[data-upload-button]");
       const status = root.querySelector("[data-upload-status]");
       const form = root.closest("form");
-      const textarea = form?.querySelector('textarea[name="contentMarkdown"]');
       const isIconUpload = root.dataset.uploadVariant === "icon";
 
       if (!input || !button || !status) {
         return;
       }
+
+      const getTextarea = () => form?.querySelector('textarea[name="contentMarkdown"]');
 
       const setStatus = (message) => {
         status.textContent = message || "";
@@ -77,6 +78,8 @@ const copy = lang === "en"
       };
 
       button.addEventListener("click", () => {
+        const textarea = getTextarea();
+
         if (!textarea) {
           setStatus(copy.noEditor);
           return;
@@ -87,6 +90,7 @@ const copy = lang === "en"
 
       input.addEventListener("change", async () => {
         const file = input.files?.[0];
+        const textarea = getTextarea();
 
         if (!file || !textarea) {
           return;

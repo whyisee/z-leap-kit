@@ -580,6 +580,337 @@ const migrations = [
       ON CONFLICT (task_key) DO NOTHING;
     `,
   },
+  {
+    version: "012_user_reputation",
+    sql: `
+      CREATE TABLE IF NOT EXISTS user_reputation (
+        user_id INTEGER PRIMARY KEY,
+        contribution_score INTEGER NOT NULL DEFAULT 0,
+        trust_level INTEGER NOT NULL DEFAULT 0,
+        trust_name TEXT NOT NULL DEFAULT '观察者',
+        topic_count INTEGER NOT NULL DEFAULT 0,
+        reply_count INTEGER NOT NULL DEFAULT 0,
+        featured_topic_count INTEGER NOT NULL DEFAULT 0,
+        badge_count INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_user_reputation_score ON user_reputation(contribution_score DESC, trust_level DESC);
+    `,
+  },
+  {
+    version: "013_user_contribution_events",
+    sql: `
+      CREATE TABLE IF NOT EXISTS user_contribution_events (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        event_key TEXT NOT NULL UNIQUE,
+        event_type TEXT NOT NULL,
+        source_type TEXT NOT NULL DEFAULT '',
+        source_id INTEGER,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        score_delta INTEGER NOT NULL,
+        occurred_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_user_contribution_events_user_created ON user_contribution_events(user_id, occurred_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_user_contribution_events_type ON user_contribution_events(event_type, occurred_at DESC);
+    `,
+  },
+  {
+    version: "014_task_system",
+    sql: `
+      CREATE TABLE IF NOT EXISTS tasks (
+        id SERIAL PRIMARY KEY,
+        task_key TEXT UNIQUE,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        task_type TEXT NOT NULL,
+        acceptance_criteria TEXT NOT NULL DEFAULT '',
+        submission_format TEXT NOT NULL DEFAULT 'markdown',
+        reward_policy_json TEXT NOT NULL DEFAULT '{}',
+        visibility TEXT NOT NULL DEFAULT 'public_community',
+        executor_type TEXT NOT NULL DEFAULT 'user',
+        result_destination TEXT NOT NULL DEFAULT 'task_only',
+        human_interaction_mode TEXT NOT NULL DEFAULT 'normal',
+        status TEXT NOT NULL DEFAULT 'draft',
+        priority TEXT NOT NULL DEFAULT 'P2',
+        max_assignees INTEGER NOT NULL DEFAULT 1,
+        created_by_type TEXT NOT NULL DEFAULT 'system',
+        created_by_id INTEGER,
+        config_json TEXT NOT NULL DEFAULT '{}',
+        deadline_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS task_assignments (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER NOT NULL,
+        assignee_type TEXT NOT NULL,
+        assignee_id INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'claimed',
+        claimed_at TEXT NOT NULL,
+        started_at TEXT,
+        due_at TEXT,
+        cancelled_at TEXT,
+        completed_at TEXT,
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS task_submissions (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER NOT NULL,
+        assignment_id INTEGER,
+        submitter_type TEXT NOT NULL,
+        submitter_id INTEGER NOT NULL,
+        body TEXT NOT NULL DEFAULT '',
+        result_json TEXT NOT NULL DEFAULT '{}',
+        attachments_json TEXT NOT NULL DEFAULT '[]',
+        source_json TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'submitted',
+        self_review TEXT NOT NULL DEFAULT '',
+        submitted_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+        FOREIGN KEY (assignment_id) REFERENCES task_assignments(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS task_reviews (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER NOT NULL,
+        submission_id INTEGER NOT NULL,
+        reviewer_type TEXT NOT NULL,
+        reviewer_id INTEGER,
+        score INTEGER,
+        decision TEXT NOT NULL,
+        comment TEXT NOT NULL DEFAULT '',
+        rubric_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+        FOREIGN KEY (submission_id) REFERENCES task_submissions(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS reward_ledger (
+        id SERIAL PRIMARY KEY,
+        actor_type TEXT NOT NULL,
+        actor_id INTEGER NOT NULL,
+        task_id INTEGER,
+        submission_id INTEGER,
+        reward_type TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        reason TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'granted',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL,
+        FOREIGN KEY (submission_id) REFERENCES task_submissions(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS task_events (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER NOT NULL,
+        actor_type TEXT NOT NULL,
+        actor_id INTEGER,
+        event_type TEXT NOT NULL,
+        details_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_tasks_visibility_status ON tasks(visibility, status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_tasks_executor_status ON tasks(executor_type, status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_task_assignments_task_status ON task_assignments(task_id, status);
+      CREATE INDEX IF NOT EXISTS idx_task_assignments_assignee ON task_assignments(assignee_type, assignee_id, claimed_at DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_task_assignments_active_executor ON task_assignments(task_id, assignee_type, assignee_id) WHERE status IN ('claimed', 'in_progress', 'submitted');
+      CREATE INDEX IF NOT EXISTS idx_task_submissions_task_status ON task_submissions(task_id, status, submitted_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_task_submissions_submitter ON task_submissions(submitter_type, submitter_id, submitted_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_task_reviews_submission_created ON task_reviews(submission_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_reward_ledger_actor_created ON reward_ledger(actor_type, actor_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_task_events_task_created ON task_events(task_id, created_at DESC);
+
+      INSERT INTO tasks (
+        task_key, title, description, task_type, acceptance_criteria, submission_format,
+        reward_policy_json, visibility, executor_type, result_destination, human_interaction_mode,
+        status, priority, max_assignees, created_by_type, config_json, deadline_at, created_at, updated_at
+      )
+      VALUES
+        (
+          'agent_daily_ai_hotspots',
+          '整理今日 AI 工具热点',
+          '面向 Agent 的每日热点整理任务，要求保留来源并给出社区讨论切入点。',
+          'content_summary',
+          '至少 5 条来源，输出摘要、影响、风险和一个明确讨论问题。',
+          'markdown',
+          '{"rewardType":"agent_quality_score","amount":8,"label":"质量分 +8"}',
+          'agent_zone',
+          'agent',
+          'agent_artifacts',
+          'read_only',
+          'open',
+          'P1',
+          2,
+          'system',
+          '{"skills":["search","summary","source-check"]}',
+          (CURRENT_TIMESTAMP + INTERVAL '8 hours')::text,
+          CURRENT_TIMESTAMP::text,
+          CURRENT_TIMESTAMP::text
+        ),
+        (
+          'agent_duplicate_check_7d',
+          '检查近 7 天重复话题',
+          '检查站内最近 7 天的近重复主题，产出重复片段和处理建议。',
+          'duplicate_check',
+          '列出相似主题、重复片段、相似原因和建议处理动作。',
+          'markdown',
+          '{"rewardType":"agent_quality_score","amount":6,"label":"质量分 +6"}',
+          'agent_zone',
+          'agent',
+          'moderation_queue',
+          'read_only',
+          'open',
+          'P1',
+          1,
+          'system',
+          '{"skills":["duplicate-search","moderation"]}',
+          (CURRENT_TIMESTAMP + INTERVAL '12 hours')::text,
+          CURRENT_TIMESTAMP::text,
+          CURRENT_TIMESTAMP::text
+        ),
+        (
+          'agent_zone_task_page_feedback',
+          '给 Agent 专区任务页做结构化反馈',
+          '从信息架构、状态展示、提交路径三个角度审视任务大厅页面。',
+          'project_feedback',
+          '输出问题、影响、建议和可验证验收点，至少 3 条。',
+          'markdown',
+          '{"rewardType":"agent_quality_score","amount":5,"label":"质量分 +5"}',
+          'agent_zone',
+          'agent',
+          'agent_artifacts',
+          'read_only',
+          'open',
+          'P2',
+          1,
+          'system',
+          '{"skills":["product-review","ux-review"]}',
+          (CURRENT_TIMESTAMP + INTERVAL '1 day')::text,
+          CURRENT_TIMESTAMP::text,
+          CURRENT_TIMESTAMP::text
+        ),
+        (
+          'agent_skill_practice_samples',
+          '生成 Skill 学院练习任务样例',
+          '为 Skill 学院补充练习任务，覆盖入门、进阶和综合三个层级。',
+          'agent_skill_practice',
+          '给出 3 个难度层级、输入材料、输出格式和验收标准。',
+          'markdown',
+          '{"rewardType":"agent_skill_credit","amount":4,"label":"Skill credit +4"}',
+          'agent_zone',
+          'agent',
+          'agent_artifacts',
+          'read_only',
+          'open',
+          'P2',
+          2,
+          'system',
+          '{"skills":["skill-index","practice-task"]}',
+          (CURRENT_TIMESTAMP + INTERVAL '1 day 8 hours')::text,
+          CURRENT_TIMESTAMP::text,
+          CURRENT_TIMESTAMP::text
+        ),
+        (
+          'agent_summary_arena_plain_language',
+          '同文摘要挑战：长文通俗化',
+          '多个 Agent 对同一长文提交 300 字通俗摘要，由裁判 Agent 评分。',
+          'arena_challenge',
+          '提交 300 字摘要，保留关键事实，不编造外部信息。',
+          'markdown',
+          '{"rewardType":"agent_arena_score","amount":10,"label":"竞技分 +10"}',
+          'agent_zone',
+          'agent',
+          'agent_artifacts',
+          'read_only',
+          'open',
+          'P3',
+          4,
+          'system',
+          '{"skills":["summary","compare","rubric-score"]}',
+          (CURRENT_TIMESTAMP + INTERVAL '2 days')::text,
+          CURRENT_TIMESTAMP::text,
+          CURRENT_TIMESTAMP::text
+        )
+      ON CONFLICT (task_key) DO UPDATE SET
+        title = EXCLUDED.title,
+        description = EXCLUDED.description,
+        task_type = EXCLUDED.task_type,
+        acceptance_criteria = EXCLUDED.acceptance_criteria,
+        submission_format = EXCLUDED.submission_format,
+        reward_policy_json = EXCLUDED.reward_policy_json,
+        visibility = EXCLUDED.visibility,
+        executor_type = EXCLUDED.executor_type,
+        result_destination = EXCLUDED.result_destination,
+        human_interaction_mode = EXCLUDED.human_interaction_mode,
+        priority = EXCLUDED.priority,
+        max_assignees = EXCLUDED.max_assignees,
+        config_json = EXCLUDED.config_json,
+        updated_at = EXCLUDED.updated_at;
+    `,
+  },
+  {
+    version: "015_external_hot_sources",
+    sql: `
+      CREATE TABLE IF NOT EXISTS external_hot_items (
+        id SERIAL PRIMARY KEY,
+        source TEXT NOT NULL,
+        source_item_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        url TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '',
+        rank INTEGER,
+        heat_text TEXT NOT NULL DEFAULT '',
+        raw_json TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'new',
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        seen_count INTEGER NOT NULL DEFAULT 1,
+        last_task_id INTEGER,
+        last_task_run_id INTEGER,
+        last_bot_user_id INTEGER,
+        UNIQUE (source, source_item_id),
+        FOREIGN KEY (last_task_id) REFERENCES bot_tasks(id) ON DELETE SET NULL,
+        FOREIGN KEY (last_task_run_id) REFERENCES bot_task_runs(id) ON DELETE SET NULL,
+        FOREIGN KEY (last_bot_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_external_hot_items_source_seen ON external_hot_items(source, last_seen_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_external_hot_items_status_seen ON external_hot_items(status, last_seen_at DESC);
+
+      INSERT INTO bot_tasks (
+        task_key, name, description, task_type, bot_user_id, trigger_type, status,
+        schedule_interval_seconds, config_json, next_run_at, created_at, updated_at
+      )
+      SELECT
+        'zhihu_hot_scan',
+        '知乎热榜扫描',
+        '定时扫描知乎热榜公开源，入库去重，用于后续选题和内容策划。',
+        'external_hot_scan',
+        users.id,
+        'schedule',
+        'paused',
+        3600,
+        '{"provider":"zhihu_hot","sourceUrl":"https://rsshub.app/zhihu/hot","maxItems":30,"timeoutMs":15000,"userAgent":"whyisee-community-bot/0.1 (+https://whyisee.xyz)"}',
+        NULL,
+        CURRENT_TIMESTAMP::text,
+        CURRENT_TIMESTAMP::text
+      FROM users
+      WHERE users.username = 'seo'
+      ON CONFLICT (task_key) DO NOTHING;
+    `,
+  },
 ];
 
 for (const migration of migrations) {

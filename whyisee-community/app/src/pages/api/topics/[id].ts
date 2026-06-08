@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { getSessionFromAstro, isAdmin } from "@lib/auth";
-import type { TopicType } from "@lib/types";
+import type { TopicStatus, TopicType } from "@lib/types";
 import { getTopicByIdForAdmin, updateTopic, updateTopicAdminState } from "@server/services/topics";
 
 export const prerender = false;
@@ -36,7 +36,7 @@ export const POST: APIRoute = async (context) => {
       authorId: topic.authorId,
       categoryId: Number(formData.get("categoryId") || 0),
       type: readTopicType(formData),
-      status: isAdmin(session) && topic.status === "published" ? "published" : "pending",
+      status: readSubmissionStatus(formData, isAdmin(session)),
       isPinned: topic.isPinned,
       isFeatured: topic.isFeatured,
       tags: [String(formData.get("tags") || "")],
@@ -64,4 +64,19 @@ function readTopicType(formData: FormData): TopicType {
   }
 
   return "discussion";
+}
+
+function readSubmissionStatus(formData: FormData, canPublish: boolean): TopicStatus {
+  const values = formData.getAll("status").map((value) => String(value || ""));
+  const value = values[values.length - 1] || "pending";
+
+  if (value === "draft" || value === "pending") {
+    return value;
+  }
+
+  if (canPublish && value === "published") {
+    return value;
+  }
+
+  return "pending";
 }

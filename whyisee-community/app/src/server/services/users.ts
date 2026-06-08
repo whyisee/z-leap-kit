@@ -5,6 +5,7 @@ import { createUserSession } from "@lib/auth";
 import { query, queryOne, withTransaction } from "@server/db/client";
 import type { Topic } from "@lib/types";
 import { listTopics } from "./topics";
+import { refreshUserReputation } from "./reputation";
 
 export interface PublicUser {
   id: number;
@@ -179,6 +180,8 @@ export async function updateUserProfile(
       userId,
     ],
   );
+
+  await refreshUserReputation(userId);
 }
 
 export async function changeUserPassword(userId: number, currentPassword: string, nextPassword: string) {

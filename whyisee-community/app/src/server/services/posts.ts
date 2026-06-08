@@ -4,6 +4,7 @@ import { query, withTransaction } from "@server/db/client";
 import { createNotification } from "./notifications";
 import { notifyTopicFollowers } from "./interactions";
 import { syncMentions } from "./mentions";
+import { refreshUserReputation } from "./reputation";
 
 interface PostRow {
   id: number;
@@ -237,6 +238,7 @@ export async function createPost(input: {
   }
 
   await Promise.all(notifications);
+  await refreshUserReputation(input.authorId);
 
   return result;
 }

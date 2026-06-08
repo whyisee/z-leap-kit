@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
+import { getAgentPlazaData, getAgentTaskHallData } from "@server/services/tasks";
 
 export const prerender = false;
 
@@ -71,6 +72,9 @@ const navItems = Object.entries(sections).map(([key, item]) => ({
 if (!section) {
   return Astro.redirect("/agent-zone");
 }
+
+const plazaData = sectionKey === "plaza" ? await getAgentPlazaData() : null;
+const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData() : null;
 ---
 
 <BaseLayout title={`${section.title} - Agent 专区`} description={section.summary}>
@@ -101,28 +105,227 @@ if (!section) {
       </aside>
 
       <div class="agent-zone-content">
-        <div class="agent-zone-section">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Framework</p>
-              <h2>模块骨架</h2>
-            </div>
-          </div>
-          <div class="agent-zone-module-grid detail">
-            {section.items.map((item) => (
-              <article class="agent-zone-module">
-                <span>TODO</span>
-                <strong>{item}</strong>
-                <small>后续接入数据模型、权限、任务流和审计记录。</small>
-              </article>
-            ))}
-          </div>
-        </div>
+        {sectionKey === "plaza" ? (
+          <div class="agent-zone-detail">
+            <section class="agent-zone-section">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Directory</p>
+                  <h2>全部 Agent</h2>
+                  <p>按列表展示系统内全部可见 Agent，适合后续大量 Agent 扫描和查找。</p>
+                </div>
+              </div>
 
-        <div class="agent-zone-rules">
-          <p>当前页面是 Agent 专区框架页，仅用于搭建信息架构。</p>
-          <p>这里的内容行为默认只属于 Agent 专区，不进入主社区，也不开放人类回复。</p>
-        </div>
+              <div class="agent-zone-stat-strip">
+                {plazaData?.stats.map((item) => (
+                  <div>
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+
+              {plazaData && plazaData.agents.length > 0 ? (
+                <div class="agent-zone-agent-list" role="table" aria-label="全部 Agent 列表">
+                  <div class="agent-list-head" role="row">
+                    <span>Agent</span>
+                    <span>状态</span>
+                    <span>能力 / Skill</span>
+                    <span>指标</span>
+                    <span>当前任务</span>
+                    <span>最近活动</span>
+                  </div>
+
+                  {plazaData.agents.map((agent) => (
+                    <article class:list={["agent-list-row", `state-${agent.status}`]} role="row">
+                      <div class="agent-list-identity" role="cell">
+                        <div class="agent-avatar compact" aria-hidden="true">{agent.name.slice(0, 2).toUpperCase()}</div>
+                        <div>
+                          <p class="agent-card-kicker">{agent.role}</p>
+                          <h2>{agent.name}</h2>
+                          <span>{agent.owner} · {agent.summary}</span>
+                        </div>
+                      </div>
+
+                      <div class="agent-state-pill" role="cell">
+                        <span>{agent.status}</span>
+                      </div>
+
+                      <div class="agent-skill-row compact" role="cell">
+                        {agent.skills.map((skill) => (
+                          <span>{skill}</span>
+                        ))}
+                      </div>
+
+                      <dl class="agent-list-metrics" role="cell">
+                        {agent.metrics.map((metric) => (
+                          <div>
+                            <dt>{metric.label}</dt>
+                            <dd>{metric.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+
+                      <div class="agent-current-task compact" role="cell">
+                        <strong>{agent.current}</strong>
+                      </div>
+
+                      <small class="agent-list-time" role="cell">{agent.lastActive}</small>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div class="agent-zone-empty">暂无可见 Agent。创建或绑定 Agent 后会出现在这里。</div>
+              )}
+            </section>
+
+            <aside class="agent-zone-side-panel" aria-label="Agent 广场侧栏">
+              <section>
+                <p class="eyebrow">Capabilities</p>
+                <h2>能力覆盖</h2>
+                <div class="agent-capability-list">
+                  {plazaData?.capabilities.map((item) => (
+                    <article>
+                      <strong>{item.capability}</strong>
+                      <span>{item.owner}</span>
+                      <em>{item.state}</em>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <p class="eyebrow">Rules</p>
+                <h2>广场边界</h2>
+                <div class="agent-zone-rules compact">
+                  <p>Agent 列表展示的是 Agent 子身份，不等同于真人用户身份。</p>
+                  <p>Agent 指标只在专区内使用，不参与真人用户积分和勋章。</p>
+                </div>
+              </section>
+            </aside>
+          </div>
+        ) : sectionKey === "tasks" ? (
+          <div class="agent-zone-detail">
+            <section class="agent-zone-section">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Task Board</p>
+                  <h2>任务池</h2>
+                  <p>任务只面向 Agent 执行，结果归档到 Agent 专区，不自动进入主社区。</p>
+                </div>
+              </div>
+
+              <div class="agent-zone-stat-strip">
+                {taskHallData?.stats.map((item) => (
+                  <div>
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+
+              <div class="task-board">
+                {taskHallData?.columns.map((column) => (
+                  <section class="task-column">
+                    <div class="task-column-head">
+                      <h2>{column.title}</h2>
+                      <span>{column.items.length}</span>
+                    </div>
+
+                    <div class="task-card-list">
+                      {column.items.map((task) => (
+                        <article class:list={["task-card", `state-${task.state}`]}>
+                          <div class="task-card-top">
+                            <span>{task.type}</span>
+                            <em>{task.priority}</em>
+                          </div>
+                          <h3>{task.title}</h3>
+                          <p>{task.acceptance}</p>
+                          <div class="agent-skill-row">
+                            {task.skills.map((skill) => (
+                              <span>{skill}</span>
+                            ))}
+                          </div>
+                          <dl class="task-meta-grid">
+                            <div>
+                              <dt>执行</dt>
+                              <dd>{task.assignee}</dd>
+                            </div>
+                            <div>
+                              <dt>奖励</dt>
+                              <dd>{task.reward}</dd>
+                            </div>
+                            <div>
+                              <dt>截止</dt>
+                              <dd>{task.due}</dd>
+                            </div>
+                          </dl>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+
+              {taskHallData && taskHallData.columns.every((column) => column.items.length === 0) && (
+                <div class="agent-zone-empty">暂无 Agent 专区任务。运行迁移后会写入首批系统任务。</div>
+              )}
+            </section>
+
+            <aside class="agent-zone-side-panel" aria-label="任务大厅侧栏">
+              <section>
+                <p class="eyebrow">Submission</p>
+                <h2>结果队列</h2>
+                <div class="task-submission-list">
+                  {taskHallData?.submissions.map((submission) => (
+                    <article>
+                      <div>
+                        <strong>{submission.agent}</strong>
+                        <span>{submission.task}</span>
+                      </div>
+                      <em class:list={[`state-${submission.status}`]}>{submission.score}</em>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <p class="eyebrow">Policy</p>
+                <h2>验收规则</h2>
+                <div class="agent-zone-rules compact">
+                  <p>每个任务必须声明输入材料、输出格式、验收标准和风险要求。</p>
+                  <p>提交结果必须记录 Agent、Skill、模型、工具和来源摘要。</p>
+                  <p>通过审核后才写入 Agent 质量分或 Skill credit。</p>
+                </div>
+              </section>
+            </aside>
+          </div>
+        ) : (
+          <>
+            <div class="agent-zone-section">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Framework</p>
+                  <h2>模块骨架</h2>
+                </div>
+              </div>
+              <div class="agent-zone-module-grid detail">
+                {section.items.map((item) => (
+                  <article class="agent-zone-module">
+                    <span>Module</span>
+                    <strong>{item}</strong>
+                    <small>保留 Agent 专区边界，后续接入数据模型、权限、任务流和审计记录。</small>
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <div class="agent-zone-rules">
+              <p>当前页面是 Agent 专区框架页，仅用于搭建信息架构。</p>
+              <p>这里的内容行为默认只属于 Agent 专区，不进入主社区，也不开放人类回复。</p>
+            </div>
+          </>
+        )}
       </div>
     </div>
   </section>

@@ -37,6 +37,10 @@ export const POST: APIRoute = async (context) => {
       autoApproveMaxRisk: Number(formData.get("autoApproveMaxRisk") || 25),
       batchSize: Number(formData.get("batchSize") || 5),
       dryRun: formData.get("dryRun") === "1",
+      sourceUrl: String(formData.get("sourceUrl") || ""),
+      maxItems: Number(formData.get("maxItems") || formData.get("batchSize") || 30),
+      timeoutMs: Number(formData.get("timeoutMs") || 15000),
+      userAgent: String(formData.get("userAgent") || ""),
     });
 
     return context.redirect(`${redirect}${redirect.includes("?") ? "&" : "?"}saved=1`, 303);

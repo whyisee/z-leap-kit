@@ -283,6 +283,29 @@ CREATE TABLE IF NOT EXISTS content_review_results (
   UNIQUE (target_type, target_id, content_hash)
 );
 
+CREATE TABLE IF NOT EXISTS external_hot_items (
+  id SERIAL PRIMARY KEY,
+  source TEXT NOT NULL,
+  source_item_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  url TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  rank INTEGER,
+  heat_text TEXT NOT NULL DEFAULT '',
+  raw_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'new',
+  first_seen_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  seen_count INTEGER NOT NULL DEFAULT 1,
+  last_task_id INTEGER,
+  last_task_run_id INTEGER,
+  last_bot_user_id INTEGER,
+  UNIQUE (source, source_item_id),
+  FOREIGN KEY (last_task_id) REFERENCES bot_tasks(id) ON DELETE SET NULL,
+  FOREIGN KEY (last_task_run_id) REFERENCES bot_task_runs(id) ON DELETE SET NULL,
+  FOREIGN KEY (last_bot_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS reports (
   id SERIAL PRIMARY KEY,
   reporter_id INTEGER NOT NULL,
@@ -333,6 +356,34 @@ CREATE TABLE IF NOT EXISTS uploaded_files (
   public_url TEXT NOT NULL,
   mime_type TEXT NOT NULL,
   size_bytes INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS user_reputation (
+  user_id INTEGER PRIMARY KEY,
+  contribution_score INTEGER NOT NULL DEFAULT 0,
+  trust_level INTEGER NOT NULL DEFAULT 0,
+  trust_name TEXT NOT NULL DEFAULT '观察者',
+  topic_count INTEGER NOT NULL DEFAULT 0,
+  reply_count INTEGER NOT NULL DEFAULT 0,
+  featured_topic_count INTEGER NOT NULL DEFAULT 0,
+  badge_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS user_contribution_events (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  event_key TEXT NOT NULL UNIQUE,
+  event_type TEXT NOT NULL,
+  source_type TEXT NOT NULL DEFAULT '',
+  source_id INTEGER,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  score_delta INTEGER NOT NULL,
+  occurred_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -487,6 +538,103 @@ CREATE TABLE IF NOT EXISTS agent_idempotency_keys (
   FOREIGN KEY (agent_profile_id) REFERENCES agent_profiles(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS tasks (
+  id SERIAL PRIMARY KEY,
+  task_key TEXT UNIQUE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  task_type TEXT NOT NULL,
+  acceptance_criteria TEXT NOT NULL DEFAULT '',
+  submission_format TEXT NOT NULL DEFAULT 'markdown',
+  reward_policy_json TEXT NOT NULL DEFAULT '{}',
+  visibility TEXT NOT NULL DEFAULT 'public_community',
+  executor_type TEXT NOT NULL DEFAULT 'user',
+  result_destination TEXT NOT NULL DEFAULT 'task_only',
+  human_interaction_mode TEXT NOT NULL DEFAULT 'normal',
+  status TEXT NOT NULL DEFAULT 'draft',
+  priority TEXT NOT NULL DEFAULT 'P2',
+  max_assignees INTEGER NOT NULL DEFAULT 1,
+  created_by_type TEXT NOT NULL DEFAULT 'system',
+  created_by_id INTEGER,
+  config_json TEXT NOT NULL DEFAULT '{}',
+  deadline_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_assignments (
+  id SERIAL PRIMARY KEY,
+  task_id INTEGER NOT NULL,
+  assignee_type TEXT NOT NULL,
+  assignee_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'claimed',
+  claimed_at TEXT NOT NULL,
+  started_at TEXT,
+  due_at TEXT,
+  cancelled_at TEXT,
+  completed_at TEXT,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS task_submissions (
+  id SERIAL PRIMARY KEY,
+  task_id INTEGER NOT NULL,
+  assignment_id INTEGER,
+  submitter_type TEXT NOT NULL,
+  submitter_id INTEGER NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  result_json TEXT NOT NULL DEFAULT '{}',
+  attachments_json TEXT NOT NULL DEFAULT '[]',
+  source_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'submitted',
+  self_review TEXT NOT NULL DEFAULT '',
+  submitted_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+  FOREIGN KEY (assignment_id) REFERENCES task_assignments(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_reviews (
+  id SERIAL PRIMARY KEY,
+  task_id INTEGER NOT NULL,
+  submission_id INTEGER NOT NULL,
+  reviewer_type TEXT NOT NULL,
+  reviewer_id INTEGER,
+  score INTEGER,
+  decision TEXT NOT NULL,
+  comment TEXT NOT NULL DEFAULT '',
+  rubric_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+  FOREIGN KEY (submission_id) REFERENCES task_submissions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS reward_ledger (
+  id SERIAL PRIMARY KEY,
+  actor_type TEXT NOT NULL,
+  actor_id INTEGER NOT NULL,
+  task_id INTEGER,
+  submission_id INTEGER,
+  reward_type TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'granted',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL,
+  FOREIGN KEY (submission_id) REFERENCES task_submissions(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_events (
+  id SERIAL PRIMARY KEY,
+  task_id INTEGER NOT NULL,
+  actor_type TEXT NOT NULL,
+  actor_id INTEGER,
+  event_type TEXT NOT NULL,
+  details_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_topics_status_published_at ON topics(status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_topics_category_id ON topics(category_id);
 CREATE INDEX IF NOT EXISTS idx_topics_type ON topics(type);
@@ -511,10 +659,15 @@ CREATE INDEX IF NOT EXISTS idx_bot_tasks_status_next ON bot_tasks(status, next_r
 CREATE INDEX IF NOT EXISTS idx_bot_task_runs_task_started ON bot_task_runs(task_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_review_results_target ON content_review_results(target_type, target_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_review_results_status_created ON content_review_results(result_status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_external_hot_items_source_seen ON external_hot_items(source, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_external_hot_items_status_seen ON external_hot_items(status, last_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reports_status_created ON reports(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_page_views_created ON page_views(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_page_views_path_created ON page_views(path, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_uploaded_files_user_created ON uploaded_files(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_reputation_score ON user_reputation(contribution_score DESC, trust_level DESC);
+CREATE INDEX IF NOT EXISTS idx_user_contribution_events_user_created ON user_contribution_events(user_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_contribution_events_type ON user_contribution_events(event_type, occurred_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_model_configs_default ON ai_model_configs ((is_default)) WHERE is_default = TRUE;
 CREATE INDEX IF NOT EXISTS idx_ai_model_configs_provider ON ai_model_configs(provider, is_enabled);
 CREATE INDEX IF NOT EXISTS idx_agent_profiles_user ON agent_profiles(user_id);
@@ -532,6 +685,16 @@ CREATE INDEX IF NOT EXISTS idx_agent_action_logs_resource ON agent_action_logs(r
 CREATE INDEX IF NOT EXISTS idx_content_runs_agent_created ON content_runs(agent_profile_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_run_items_item ON content_run_items(item_type, item_id);
 CREATE INDEX IF NOT EXISTS idx_agent_idempotency_agent_key ON agent_idempotency_keys(agent_profile_id, idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_tasks_visibility_status ON tasks(visibility, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_executor_status ON tasks(executor_type, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_task_assignments_task_status ON task_assignments(task_id, status);
+CREATE INDEX IF NOT EXISTS idx_task_assignments_assignee ON task_assignments(assignee_type, assignee_id, claimed_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_task_assignments_active_executor ON task_assignments(task_id, assignee_type, assignee_id) WHERE status IN ('claimed', 'in_progress', 'submitted');
+CREATE INDEX IF NOT EXISTS idx_task_submissions_task_status ON task_submissions(task_id, status, submitted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_task_submissions_submitter ON task_submissions(submitter_type, submitter_id, submitted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_task_reviews_submission_created ON task_reviews(submission_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reward_ledger_actor_created ON reward_ledger(actor_type, actor_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_task_events_task_created ON task_events(task_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_topics_search ON topics USING GIN (to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content_markdown, '')));
 CREATE INDEX IF NOT EXISTS idx_posts_search ON posts USING GIN (to_tsvector('simple', coalesce(content_markdown, '')));
 `;

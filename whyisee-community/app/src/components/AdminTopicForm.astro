@@ -95,9 +95,12 @@ function getCopy(lang: Lang) {
       tagsHelp: "Select multiple tags, or type a custom tag and press Enter.",
       body: "Body",
       bodyPlaceholder: "Write the body here. Markdown and image upload are supported.",
+      wordCount: "Words",
       pinned: "Pinned",
       featured: "Featured",
       save: "Save Topic",
+      saveDraft: "Save draft",
+      submitReview: "Submit for review",
       cancel: "Cancel",
       error: "Failed to save. Check title, body, category, and database connection.",
       statusDraft: "Draft",
@@ -112,6 +115,11 @@ function getCopy(lang: Lang) {
       typeAnnouncement: "Announcement",
       aiWriting: "AI writing",
       aiStyle: "Writing style",
+      aiInstruction: "Request",
+      aiInstructionPlaceholder: "e.g. make it practical, less formal, focus on pitfalls",
+      aiHistory: "History",
+      aiHistoryEmpty: "No AI writing history yet.",
+      aiHistoryTip: "Pick a history item to reopen its result.",
       aiStyleCommunity: "Community",
       aiStyleTechnical: "Technical",
       aiStyleStory: "Story",
@@ -128,7 +136,7 @@ function getCopy(lang: Lang) {
       aiSummary: "Generate summary",
       aiRecommend: "Recommend settings",
       aiLoading: "AI is writing...",
-      aiEmpty: "Add a title or body before using AI.",
+      aiEmpty: "You can type a writing request, add a title/body, or let AI start from blank.",
       aiError: "AI request failed. Please try again later.",
       aiLoginRequired: "Please log in before using AI tools.",
       aiNotConfigured: "AI model is not configured yet.",
@@ -164,9 +172,12 @@ function getCopy(lang: Lang) {
     tagsHelp: "可多选标签，也可以输入自定义标签后回车添加。",
     body: "正文",
     bodyPlaceholder: "直接写正文，支持 Markdown 和图片上传。",
+    wordCount: "字数",
     pinned: "置顶",
     featured: "精选",
     save: "保存话题",
+    saveDraft: "保存草稿",
+    submitReview: "提交审核",
     cancel: "取消",
     error: "保存失败。请检查标题、正文、分类和数据库连接。",
     statusDraft: "草稿",
@@ -181,6 +192,11 @@ function getCopy(lang: Lang) {
     typeAnnouncement: "公告",
     aiWriting: "AI 写作",
     aiStyle: "写作风格",
+    aiInstruction: "写作要求",
+    aiInstructionPlaceholder: "例如：少点官腔，像复盘，重点写踩坑和解决过程",
+    aiHistory: "历史记录",
+    aiHistoryEmpty: "还没有 AI 写作历史。",
+    aiHistoryTip: "选择一条历史记录即可重新查看结果。",
     aiStyleCommunity: "社区自然",
     aiStyleTechnical: "技术解析",
     aiStyleStory: "复盘故事",
@@ -197,7 +213,7 @@ function getCopy(lang: Lang) {
     aiSummary: "生成摘要",
     aiRecommend: "推荐分类标签",
     aiLoading: "AI 正在写...",
-    aiEmpty: "先写一点标题或正文，再使用 AI。",
+    aiEmpty: "可以输入写作要求，也可以补充标题/正文，或让 AI 从空白开始。",
     aiError: "AI 请求失败，请稍后再试。",
     aiLoginRequired: "请先登录后再使用 AI 工具。",
     aiNotConfigured: "还没有配置 AI 模型。",
@@ -328,83 +344,42 @@ function normalizeTagValue(value: string) {
     </>
   ) : (
     <>
-      <div class="public-topic-editor">
-        <div
-          class="writing-ai-box"
-          data-writing-ai
-          data-loading={copy.aiLoading}
-          data-empty={copy.aiEmpty}
-          data-error={copy.aiError}
-          data-login-required={copy.aiLoginRequired}
-          data-not-configured={copy.aiNotConfigured}
-          data-key-missing={copy.aiKeyMissing}
-          data-timeout={copy.aiTimeout}
-          data-copied={copy.aiCopied}
-          data-copy={copy.aiCopy}
-        >
-          <div class="writing-ai-toolbar">
-            <label class="writing-ai-style">
-              <span>{copy.aiStyle}</span>
-              <select data-writing-ai-style aria-label={copy.aiStyle}>
-                {writingStyleOptions.map((option) => (
-                  <option value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <button
-              class="writing-ai-button"
-              type="button"
-              aria-haspopup="menu"
-              aria-expanded="false"
-              data-writing-ai-button
-            >
-              <span class="writing-ai-mark" aria-hidden="true">AI</span>
-              <span>{copy.aiWriting}</span>
-              <span class="writing-ai-chevron" aria-hidden="true">⌄</span>
-            </button>
-            <div class="writing-ai-menu" role="menu" data-writing-ai-menu hidden>
-              <button type="button" role="menuitem" data-writing-ai-action="draft">{copy.aiDraft}</button>
-              <button type="button" role="menuitem" data-writing-ai-action="outline">{copy.aiOutline}</button>
-              <button type="button" role="menuitem" data-writing-ai-action="continue">{copy.aiContinue}</button>
-              <button type="button" role="menuitem" data-writing-ai-action="polish">{copy.aiPolish}</button>
-              <button type="button" role="menuitem" data-writing-ai-action="humanize">{copy.aiHumanize}</button>
-              <button type="button" role="menuitem" data-writing-ai-action="title">{copy.aiTitle}</button>
-              <button type="button" role="menuitem" data-writing-ai-action="summary">{copy.aiSummary}</button>
-              <button type="button" role="menuitem" data-writing-ai-action="recommend">{copy.aiRecommend}</button>
-            </div>
-          </div>
-          <section class="writing-ai-result" data-writing-ai-result hidden>
-            <header>
-              <h2 data-writing-ai-title>{copy.aiWriting}</h2>
-              <button class="action-button compact" type="button" data-writing-ai-close>{copy.aiClose}</button>
-            </header>
-            <pre data-writing-ai-output></pre>
-            <div class="writing-ai-title-list" data-writing-ai-title-list hidden></div>
-            <div class="writing-ai-result-actions">
-              <button class="action-button compact" type="button" data-writing-ai-apply-summary hidden>{copy.aiApplySummary}</button>
-              <button class="action-button compact" type="button" data-writing-ai-replace-body hidden>{copy.aiReplaceBody}</button>
-              <button class="action-button compact" type="button" data-writing-ai-append-body hidden>{copy.aiAppendBody}</button>
-              <button class="action-button compact" type="button" data-writing-ai-apply-meta hidden>{copy.aiApplyMeta}</button>
-              <button class="action-button compact" type="button" data-writing-ai-copy>{copy.aiCopy}</button>
-            </div>
-          </section>
+      <div class="writing-composer-toolbar" aria-label={copy.aiWriting}>
+        <button type="button" data-writing-tool="undo" title="撤销" aria-label="撤销">↶</button>
+        <button type="button" data-writing-tool="redo" title="重做" aria-label="重做">↷</button>
+        <span class="writing-toolbar-divider" aria-hidden="true"></span>
+        <button type="button" data-writing-wrap="## " title="标题" aria-label="标题">H</button>
+        <button type="button" data-writing-wrap="**" data-writing-wrap-close="**" title="加粗" aria-label="加粗">B</button>
+        <button type="button" data-writing-wrap="*" data-writing-wrap-close="*" title="斜体" aria-label="斜体"><em>I</em></button>
+        <button type="button" data-writing-wrap="- " title="列表" aria-label="列表">☰</button>
+        <button type="button" data-writing-wrap="> " title="引用" aria-label="引用">“</button>
+        <button type="button" data-writing-wrap="```&#10;" data-writing-wrap-close="&#10;```" title="代码块" aria-label="代码块">&lt;/&gt;</button>
+        <button type="button" data-writing-wrap="[](" data-writing-wrap-close=")" title="链接" aria-label="链接">🔗</button>
+        <MarkdownImageUpload lang={lang} variant="icon" />
+        <button type="button" data-writing-wrap="---&#10;" title="分割线" aria-label="分割线">—</button>
+        <span class="writing-toolbar-divider" aria-hidden="true"></span>
+        <div class="writing-ai-toolbar">
+          <button
+            class="writing-ai-button"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-label={copy.aiWriting}
+            title={copy.aiWriting}
+            data-writing-ai-button
+          >
+            <span class="writing-ai-mark" aria-hidden="true">AI</span>
+          </button>
         </div>
-
-        <label>
-          {copy.title}
-          <input name="title" type="text" value={topic?.title || ""} placeholder={copy.titlePlaceholder} required />
-        </label>
-
-        <label class="topic-body-label">
-          {copy.body}
-          <textarea name="contentMarkdown" rows="22" placeholder={copy.bodyPlaceholder} required>{topic?.contentMarkdown || ""}</textarea>
-          <MarkdownImageUpload lang={lang} />
-        </label>
       </div>
 
-      <aside class="public-topic-sidebar" aria-label={copy.settings}>
-        <input name="status" type="hidden" value={selectedStatus} />
+      <aside class="public-topic-settings" aria-label={copy.settings} data-writing-settings-panel data-collapsed="true">
+        <button class="public-topic-settings-tab" type="button" data-writing-settings-toggle aria-expanded="false">
+          <span>{copy.settings}</span>
+          <span aria-hidden="true">›</span>
+        </button>
         <div class="public-topic-panel">
+          <input name="status" type="hidden" value={selectedStatus} data-writing-status-input />
           <p class="public-topic-panel-title">{copy.settings}</p>
           <label>
             {copy.category}
@@ -451,12 +426,118 @@ function normalizeTagValue(value: string) {
             <small>{copy.summaryHelp}</small>
           </details>
         </div>
+      </aside>
 
-        <div class="form-actions public-topic-actions">
-          <button class="button primary" type="submit">{submitLabel || copy.save}</button>
-          <a class="button secondary" href={cancelHref}>{copy.cancel}</a>
+      <div
+        class="public-topic-editor"
+        data-writing-ai
+        data-loading={copy.aiLoading}
+        data-empty={copy.aiEmpty}
+        data-error={copy.aiError}
+        data-login-required={copy.aiLoginRequired}
+        data-not-configured={copy.aiNotConfigured}
+        data-key-missing={copy.aiKeyMissing}
+        data-timeout={copy.aiTimeout}
+        data-copied={copy.aiCopied}
+        data-copy={copy.aiCopy}
+        data-draft-label={copy.aiDraft}
+        data-history-label={copy.aiHistory}
+        data-history-empty={copy.aiHistoryEmpty}
+        data-history-tip={copy.aiHistoryTip}
+      >
+        <div class="form-field topic-title-field">
+          <div class="topic-title-ai-line">
+            <input name="title" type="text" value={topic?.title || ""} placeholder={copy.titlePlaceholder} required />
+          </div>
+        </div>
+
+        <label class="topic-body-label">
+          <textarea name="contentMarkdown" rows="22" placeholder={copy.bodyPlaceholder} required>{topic?.contentMarkdown || ""}</textarea>
+        </label>
+      </div>
+
+      <aside class="public-topic-ai-panel" aria-label={copy.aiWriting} data-writing-ai-menu>
+        <div class="writing-ai-menu-head">
+          <strong>{copy.aiWriting}</strong>
+          <div class="writing-ai-head-actions">
+            <button class="writing-ai-icon-button" type="button" data-writing-ai-history aria-label={copy.aiHistory} title={copy.aiHistory}>↺</button>
+            <button class="writing-ai-close" type="button" data-writing-ai-close aria-label={copy.aiClose}>×</button>
+          </div>
+        </div>
+        <section class="writing-ai-result" data-writing-ai-result hidden>
+          <div class="writing-ai-chat-stream" data-writing-ai-stream>
+            <article class="writing-ai-message is-ai">
+              <div class="writing-ai-message-meta">
+                <span data-writing-ai-title>{copy.aiWriting}</span>
+              </div>
+              <pre data-writing-ai-output></pre>
+              <button class="writing-ai-copy-icon" type="button" data-writing-ai-copy aria-label={copy.aiCopy} title={copy.aiCopy}>⧉</button>
+            </article>
+          </div>
+          <div class="writing-ai-title-list" data-writing-ai-title-list hidden></div>
+          <div class="writing-ai-result-actions">
+            <button class="action-button compact" type="button" data-writing-ai-apply-summary hidden>{copy.aiApplySummary}</button>
+            <button class="action-button compact" type="button" data-writing-ai-replace-body hidden>{copy.aiReplaceBody}</button>
+            <button class="action-button compact" type="button" data-writing-ai-append-body hidden>{copy.aiAppendBody}</button>
+            <button class="action-button compact" type="button" data-writing-ai-apply-meta hidden>{copy.aiApplyMeta}</button>
+          </div>
+        </section>
+        <div class="writing-ai-prompt-bar">
+          <label class="writing-ai-instruction">
+            <span>{copy.aiInstruction}</span>
+            <input
+              type="text"
+              data-writing-ai-instruction
+              placeholder={copy.aiInstructionPlaceholder}
+            />
+          </label>
+          <div class="writing-ai-prompt-actions">
+            <div class="writing-ai-choice" data-writing-ai-choice>
+              <input type="hidden" data-writing-ai-action-select value="draft" />
+              <button class="writing-ai-select-chip" type="button" data-writing-ai-action-trigger aria-haspopup="menu" aria-expanded="false">
+                <span data-writing-ai-action-label>{copy.aiDraft}</span>
+                <span aria-hidden="true">⌃</span>
+              </button>
+              <div class="writing-ai-choice-menu" data-writing-ai-action-menu hidden>
+                <button type="button" data-writing-ai-action-option data-value="draft">{copy.aiDraft}</button>
+                <button type="button" data-writing-ai-action-option data-value="outline">{copy.aiOutline}</button>
+                <button type="button" data-writing-ai-action-option data-value="continue">{copy.aiContinue}</button>
+                <button type="button" data-writing-ai-action-option data-value="polish">{copy.aiPolish}</button>
+                <button type="button" data-writing-ai-action-option data-value="humanize">{copy.aiHumanize}</button>
+                <button type="button" data-writing-ai-action-option data-value="title">{copy.aiTitle}</button>
+                <button type="button" data-writing-ai-action-option data-value="summary">{copy.aiSummary}</button>
+                <button type="button" data-writing-ai-action-option data-value="recommend">{copy.aiRecommend}</button>
+              </div>
+            </div>
+            <div class="writing-ai-choice" data-writing-ai-choice>
+              <input type="hidden" data-writing-ai-style value="community" />
+              <button class="writing-ai-select-chip writing-ai-style-chip" type="button" data-writing-ai-style-trigger aria-haspopup="menu" aria-expanded="false">
+                <span data-writing-ai-style-label>{writingStyleOptions[0]?.label || copy.aiStyle}</span>
+                <span aria-hidden="true">⌃</span>
+              </button>
+              <div class="writing-ai-choice-menu" data-writing-ai-style-menu hidden>
+                {writingStyleOptions.map((option) => (
+                  <button type="button" data-writing-ai-style-option data-value={option.value}>{option.label}</button>
+                ))}
+              </div>
+            </div>
+            <button class="writing-ai-send-button" type="button" data-writing-ai-send aria-label={copy.aiWriting}>↑</button>
+          </div>
         </div>
       </aside>
+
+      <div class="writing-composer-footer">
+        <button class="writing-footer-settings" type="button" data-writing-settings-toggle>
+          {copy.settings}
+          <span aria-hidden="true">⌄</span>
+        </button>
+        <span class="writing-footer-count" data-writing-word-count data-label={copy.wordCount}>0</span>
+        <span class="writing-footer-mode">Markdown</span>
+        <span class="writing-footer-status">{copy.statusDraft} / {copy.statusPending}</span>
+        <a class="button secondary" href={cancelHref}>{copy.cancel}</a>
+        <button class="button secondary" type="submit" name="status" value="draft" data-submit-status="draft">{copy.saveDraft}</button>
+        <button class="button primary" type="submit" name="status" value="pending" data-submit-status="pending">{submitLabel || copy.submitReview}</button>
+      </div>
     </>
   )}
 </form>
@@ -591,19 +672,29 @@ function normalizeTagValue(value: string) {
     }
 
     const form = root.closest("[data-topic-form]");
-    const button = root.querySelector("[data-writing-ai-button]");
-    const menu = root.querySelector("[data-writing-ai-menu]");
-    const result = root.querySelector("[data-writing-ai-result]");
-    const resultTitle = root.querySelector("[data-writing-ai-title]");
-    const output = root.querySelector("[data-writing-ai-output]");
-    const titleList = root.querySelector("[data-writing-ai-title-list]");
-    const closeButton = root.querySelector("[data-writing-ai-close]");
-    const copyButton = root.querySelector("[data-writing-ai-copy]");
-    const styleSelect = root.querySelector("[data-writing-ai-style]");
-    const applySummaryButton = root.querySelector("[data-writing-ai-apply-summary]");
-    const replaceBodyButton = root.querySelector("[data-writing-ai-replace-body]");
-    const appendBodyButton = root.querySelector("[data-writing-ai-append-body]");
-    const applyMetaButton = root.querySelector("[data-writing-ai-apply-meta]");
+    const button = form?.querySelector("[data-writing-ai-button]");
+    const menu = form?.querySelector("[data-writing-ai-menu]");
+    const result = form?.querySelector("[data-writing-ai-result]");
+    const resultTitle = form?.querySelector("[data-writing-ai-title]");
+    const output = form?.querySelector("[data-writing-ai-output]");
+    const titleList = form?.querySelector("[data-writing-ai-title-list]");
+    const closeButton = form?.querySelector("[data-writing-ai-close]");
+    const copyButton = form?.querySelector("[data-writing-ai-copy]");
+    const styleSelect = form?.querySelector("[data-writing-ai-style]");
+    const instructionInput = form?.querySelector("[data-writing-ai-instruction]");
+    const historyButton = form?.querySelector("[data-writing-ai-history]");
+    const actionSelect = form?.querySelector("[data-writing-ai-action-select]");
+    const actionTrigger = form?.querySelector("[data-writing-ai-action-trigger]");
+    const actionLabel = form?.querySelector("[data-writing-ai-action-label]");
+    const actionMenu = form?.querySelector("[data-writing-ai-action-menu]");
+    const styleTrigger = form?.querySelector("[data-writing-ai-style-trigger]");
+    const styleLabel = form?.querySelector("[data-writing-ai-style-label]");
+    const styleMenu = form?.querySelector("[data-writing-ai-style-menu]");
+    const sendButton = form?.querySelector("[data-writing-ai-send]");
+    const applySummaryButton = form?.querySelector("[data-writing-ai-apply-summary]");
+    const replaceBodyButton = form?.querySelector("[data-writing-ai-replace-body]");
+    const appendBodyButton = form?.querySelector("[data-writing-ai-append-body]");
+    const applyMetaButton = form?.querySelector("[data-writing-ai-apply-meta]");
 
     if (!form || !button || !menu || !result || !resultTitle || !output || !titleList || !closeButton || !copyButton) {
       return;
@@ -617,13 +708,84 @@ function normalizeTagValue(value: string) {
     const tagsInput = form.querySelector("input[name='tags']");
     const tagPicker = form.querySelector("[data-tag-picker]");
     const actions = Array.from(menu.querySelectorAll("[data-writing-ai-action]"));
+    const writingTools = Array.from(form.querySelectorAll("[data-writing-wrap], [data-writing-tool]"));
+    const wordCount = form.querySelector("[data-writing-word-count]");
+    const statusInput = form.querySelector("[data-writing-status-input]");
+    const settingsPanel = form.querySelector("[data-writing-settings-panel]");
+    const settingsToggles = Array.from(form.querySelectorAll("[data-writing-settings-toggle]"));
+    const historyKey = "whyisee:writing-ai-history:v1";
     let activeController;
     let latestData = {};
+
+    const scrollContainer = form.closest(".article-page") || document.scrollingElement;
+    const syncComposerGeometry = () => {
+      const header = document.querySelector(".site-header");
+
+      if (!(header instanceof HTMLElement)) {
+        return;
+      }
+
+      const rect = header.getBoundingClientRect();
+      const style = document.documentElement.style;
+      style.setProperty("--composer-toolbar-top", `${Math.max(0, Math.round(rect.bottom))}px`);
+      style.setProperty("--composer-shell-left", `${Math.max(0, Math.round(rect.left))}px`);
+      style.setProperty("--composer-shell-right", `${Math.max(0, Math.round(window.innerWidth - rect.right))}px`);
+    };
+    const syncComposerScrollState = () => {
+      const scrollTop = scrollContainer instanceof HTMLElement
+        ? scrollContainer.scrollTop
+        : window.scrollY;
+      document.documentElement.dataset.composerScrolled = scrollTop > 18 ? "true" : "false";
+      syncComposerGeometry();
+    };
+
+    const readHistory = () => {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(historyKey) || "[]");
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    };
+
+    const writeHistory = (items) => {
+      try {
+        localStorage.setItem(historyKey, JSON.stringify(items.slice(0, 8)));
+      } catch {
+        // Ignore private mode or storage quota failures.
+      }
+    };
+
+    const addHistory = (title, data) => {
+      if (!data?.outputMarkdown) {
+        return;
+      }
+
+      const next = [{
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title,
+        createdAt: new Date().toISOString(),
+        data,
+      }, ...readHistory()];
+
+      writeHistory(next);
+    };
 
     const setMenuOpen = (open) => {
       menu.hidden = !open;
       button.setAttribute("aria-expanded", String(open));
       root.dataset.open = open ? "true" : "false";
+    };
+
+    const setSettingsOpen = (open) => {
+      if (!settingsPanel) {
+        return;
+      }
+
+      settingsPanel.dataset.collapsed = open ? "false" : "true";
+      settingsToggles.forEach((toggle) => {
+        toggle.setAttribute("aria-expanded", String(open));
+      });
     };
 
     const readDraft = () => ({
@@ -634,12 +796,76 @@ function normalizeTagValue(value: string) {
       type: typeSelect?.value || "discussion",
       tags: tagsInput?.value || "",
       style: styleSelect?.value || "community",
+      instruction: instructionInput?.value || "",
     });
+
+    const updateWordCount = () => {
+      if (!wordCount || !bodyInput) {
+        return;
+      }
+
+      const titleLength = titleInput?.value.trim().length || 0;
+      const bodyLength = bodyInput.value.trim().replace(/\s+/g, "").length;
+      wordCount.textContent = `${titleLength + bodyLength}`;
+    };
+
+    const wrapSelection = (prefix, suffix = "") => {
+      if (!(bodyInput instanceof HTMLTextAreaElement)) {
+        return;
+      }
+
+      const start = bodyInput.selectionStart;
+      const end = bodyInput.selectionEnd;
+      const selected = bodyInput.value.slice(start, end);
+      const next = `${prefix}${selected}${suffix}`;
+      bodyInput.setRangeText(next, start, end, "select");
+      bodyInput.selectionStart = start + prefix.length;
+      bodyInput.selectionEnd = start + prefix.length + selected.length;
+      bodyInput.focus();
+      updateWordCount();
+    };
 
     const setActionsDisabled = (disabled) => {
       actions.forEach((item) => {
         item.disabled = disabled;
       });
+      if (sendButton) {
+        sendButton.disabled = disabled;
+      }
+    };
+
+    const selectedActionLabel = () => {
+      return actionLabel?.textContent?.trim() || root.dataset.draftLabel || "AI";
+    };
+
+    const runSelectedAction = () => {
+      const action = actionSelect?.value || "draft";
+      runAction(action, selectedActionLabel());
+    };
+
+    const closePromptMenus = (except) => {
+      [
+        [actionMenu, actionTrigger],
+        [styleMenu, styleTrigger],
+      ].forEach(([currentMenu, currentTrigger]) => {
+        if (!currentMenu || currentMenu === except) {
+          return;
+        }
+
+        currentMenu.hidden = true;
+        currentTrigger?.setAttribute("aria-expanded", "false");
+      });
+    };
+
+    const togglePromptMenu = (targetMenu, targetTrigger) => {
+      if (!targetMenu || !targetTrigger) {
+        return;
+      }
+
+      const nextOpen = targetMenu.hidden;
+      closePromptMenus(targetMenu);
+      targetMenu.hidden = !nextOpen;
+      targetTrigger.setAttribute("aria-expanded", String(nextOpen));
     };
 
     const showResult = (title, state, text) => {
@@ -665,27 +891,7 @@ function normalizeTagValue(value: string) {
       setActionsDisabled(true);
     };
 
-    const renderResult = (title, data) => {
-      latestData = data || {};
-      showResult(title, "ready", data.outputMarkdown || "");
-
-      if (Array.isArray(data.titles) && data.titles.length) {
-        titleList.hidden = false;
-        data.titles.forEach((item) => {
-          const option = document.createElement("button");
-          option.className = "writing-ai-title-option";
-          option.type = "button";
-          option.textContent = item;
-          option.addEventListener("click", () => {
-            if (titleInput) {
-              titleInput.value = item;
-              titleInput.focus();
-            }
-          });
-          titleList.append(option);
-        });
-      }
-
+    const renderResultActions = (data) => {
       if (data.summary && applySummaryButton) {
         applySummaryButton.hidden = false;
       }
@@ -700,13 +906,65 @@ function normalizeTagValue(value: string) {
       }
     };
 
-    const runAction = async (action, title) => {
-      const draft = readDraft();
+    const renderResult = (title, data) => {
+      latestData = data || {};
+      showResult(title, "ready", latestData.outputMarkdown || "");
+      addHistory(title, latestData);
 
-      if (!draft.title.trim() && !draft.contentMarkdown.trim()) {
-        showResult(title, "error", root.dataset.empty || "Add a title or body before using AI.");
+      if (Array.isArray(latestData.titles) && latestData.titles.length) {
+        titleList.hidden = false;
+        latestData.titles.forEach((item) => {
+          const option = document.createElement("button");
+          option.className = "writing-ai-title-option";
+          option.type = "button";
+          option.textContent = item;
+          option.addEventListener("click", () => {
+            if (titleInput) {
+              titleInput.value = item;
+              titleInput.focus();
+            }
+          });
+          titleList.append(option);
+        });
+      }
+
+      renderResultActions(latestData);
+    };
+
+    const renderStoredResult = (item) => {
+      latestData = item.data || {};
+      showResult(item.title || root.dataset.historyLabel || "History", "ready", latestData.outputMarkdown || "");
+      renderResultActions(latestData);
+    };
+
+    const renderHistory = () => {
+      const items = readHistory();
+      const title = root.dataset.historyLabel || "History";
+      showResult(title, "ready", items.length ? root.dataset.historyTip || "" : root.dataset.historyEmpty || "");
+      latestData = {};
+
+      if (!items.length) {
         return;
       }
+
+      titleList.hidden = false;
+      items.forEach((item) => {
+        const option = document.createElement("button");
+        const date = item.createdAt ? new Date(item.createdAt) : null;
+        const time = date && !Number.isNaN(date.getTime())
+          ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          : "";
+        const preview = String(item.data?.outputMarkdown || "").replace(/\s+/g, " ").slice(0, 42);
+        option.className = "writing-ai-title-option writing-ai-history-option";
+        option.type = "button";
+        option.textContent = `${time ? `${time} · ` : ""}${item.title || title}${preview ? ` · ${preview}` : ""}`;
+        option.addEventListener("click", () => renderStoredResult(item));
+        titleList.append(option);
+      });
+    };
+
+    const runAction = async (action, title) => {
+      const draft = readDraft();
 
       activeController?.abort();
       activeController = new AbortController();
@@ -743,15 +1001,122 @@ function normalizeTagValue(value: string) {
       setMenuOpen(menu.hidden);
     });
 
-    actions.forEach((actionButton) => {
-      actionButton.addEventListener("click", () => {
-        setMenuOpen(false);
-        runAction(actionButton.dataset.writingAiAction || "", actionButton.textContent?.trim() || "AI");
+    writingTools.forEach((tool) => {
+      tool.addEventListener("click", () => {
+        const command = tool.dataset.writingTool || "";
+
+        if (command === "undo" || command === "redo") {
+          bodyInput?.focus();
+          document.execCommand(command);
+          updateWordCount();
+          return;
+        }
+
+        wrapSelection(tool.dataset.writingWrap || "", tool.dataset.writingWrapClose || "");
       });
     });
 
+    titleInput?.addEventListener("input", updateWordCount);
+    bodyInput?.addEventListener("input", updateWordCount);
+    form.addEventListener("submit", (event) => {
+      const submitter = event.submitter;
+      const status = submitter instanceof HTMLElement ? submitter.dataset.submitStatus : "";
+
+      if (statusInput instanceof HTMLInputElement && (status === "draft" || status === "pending")) {
+        statusInput.value = status;
+      }
+    });
+    updateWordCount();
+    setMenuOpen(!menu.hidden);
+    setSettingsOpen(false);
+    syncComposerScrollState();
+    scrollContainer?.addEventListener("scroll", syncComposerScrollState, { passive: true });
+    window.addEventListener("resize", syncComposerScrollState, { passive: true });
+    window.addEventListener("beforeunload", () => {
+      delete document.documentElement.dataset.composerScrolled;
+      document.documentElement.style.removeProperty("--composer-toolbar-top");
+      document.documentElement.style.removeProperty("--composer-shell-left");
+      document.documentElement.style.removeProperty("--composer-shell-right");
+    });
+
+    settingsToggles.forEach((toggle) => {
+      toggle.addEventListener("click", () => {
+        const open = settingsPanel?.dataset.collapsed !== "false";
+        setSettingsOpen(open);
+      });
+    });
+
+    actions.forEach((actionButton) => {
+      actionButton.addEventListener("click", () => {
+        const styleValue = actionButton.dataset.writingAiStyleOption || "";
+        const styleLabel = actionButton.dataset.writingAiStyleLabel || "";
+
+        if (styleValue && styleSelect) {
+          styleSelect.value = styleValue;
+        }
+
+        runAction(
+          actionButton.dataset.writingAiAction || "",
+          styleLabel ? `${root.dataset.draftLabel || "Draft"} · ${styleLabel}` : actionButton.textContent?.trim() || "AI",
+        );
+      });
+    });
+
+    actionTrigger?.addEventListener("click", () => {
+      togglePromptMenu(actionMenu, actionTrigger);
+    });
+
+    styleTrigger?.addEventListener("click", () => {
+      togglePromptMenu(styleMenu, styleTrigger);
+    });
+
+    actionMenu?.querySelectorAll("[data-writing-ai-action-option]").forEach((option) => {
+      option.addEventListener("click", () => {
+        if (actionSelect) {
+          actionSelect.value = option.dataset.value || "draft";
+        }
+        if (actionLabel) {
+          actionLabel.textContent = option.textContent?.trim() || root.dataset.draftLabel || "AI";
+        }
+        closePromptMenus();
+      });
+    });
+
+    styleMenu?.querySelectorAll("[data-writing-ai-style-option]").forEach((option) => {
+      option.addEventListener("click", () => {
+        if (styleSelect) {
+          styleSelect.value = option.dataset.value || "community";
+        }
+        if (styleLabel) {
+          styleLabel.textContent = option.textContent?.trim() || "";
+        }
+        closePromptMenus();
+      });
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!(event.target instanceof Node) || form.contains(event.target)) {
+        return;
+      }
+
+      closePromptMenus();
+    });
+
+    sendButton?.addEventListener("click", runSelectedAction);
+
+    instructionInput?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        runSelectedAction();
+      }
+    });
+
+    historyButton?.addEventListener("click", () => {
+      renderHistory();
+    });
+
     closeButton.addEventListener("click", () => {
-      result.hidden = true;
+      setMenuOpen(false);
     });
 
     copyButton.addEventListener("click", async () => {
@@ -763,12 +1128,12 @@ function normalizeTagValue(value: string) {
 
       try {
         await navigator.clipboard.writeText(text);
-        copyButton.textContent = root.dataset.copied || "Copied";
+        copyButton.textContent = "✓";
         window.setTimeout(() => {
-          copyButton.textContent = root.dataset.copy || "Copy";
+          copyButton.textContent = "⧉";
         }, 1400);
       } catch {
-        copyButton.textContent = root.dataset.copy || "Copy";
+        copyButton.textContent = "⧉";
       }
     });
 
@@ -808,12 +1173,6 @@ function normalizeTagValue(value: string) {
         tagPicker.dispatchEvent(new CustomEvent("whyisee:set-tags", {
           detail: { tags: latestData.tags },
         }));
-      }
-    });
-
-    document.addEventListener("click", (event) => {
-      if (event.target instanceof Node && !root.contains(event.target)) {
-        setMenuOpen(false);
       }
     });
 

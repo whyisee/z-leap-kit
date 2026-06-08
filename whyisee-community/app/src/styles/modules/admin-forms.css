@@ -42,7 +42,7 @@
 }
 
 .admin-table-row {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(136px, max-content) auto;
   align-items: center;
 }
 
@@ -63,6 +63,29 @@
 .admin-inline-form.wide {
   grid-template-columns: 120px 120px 180px 90px 80px 100px auto;
   grid-auto-flow: row;
+}
+
+.admin-user-growth {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  min-width: 136px;
+  border: 1px solid rgba(138, 180, 248, 0.2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(138, 180, 248, 0.055);
+}
+
+.admin-user-growth strong {
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.admin-user-growth span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
 }
 
 .category-dot {

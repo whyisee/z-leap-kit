@@ -5,6 +5,7 @@ import { getSessionFromAstro, isAdmin } from "@lib/auth";
 import { formatRelative } from "@lib/format";
 import { getLangFromAstro } from "@lib/i18n";
 import { listAdminUsers } from "@server/services/admin";
+import { listUserGrowthProfiles } from "@server/services/reputation";
 
 export const prerender = false;
 
@@ -21,6 +22,7 @@ if (!isAdmin(session)) {
 
 const search = Astro.url.searchParams.get("q") || "";
 const users = await listAdminUsers(search, 200);
+const growthProfiles = await listUserGrowthProfiles(users.map((user) => user.id));
 const error = Astro.url.searchParams.get("error") === "1";
 const copy = lang === "en"
   ? {
@@ -34,6 +36,9 @@ const copy = lang === "en"
       status: "Status",
       created: "Created",
       lastLogin: "Last login",
+      growth: "Growth",
+      contribution: "contribution",
+      badges: "badges",
     }
   : {
       title: "用户管理",
@@ -46,6 +51,9 @@ const copy = lang === "en"
       status: "状态",
       created: "创建",
       lastLogin: "最后登录",
+      growth: "成长",
+      contribution: "贡献",
+      badges: "勋章",
     };
 const roles = ["admin", "moderator", "member", "new_user"];
 const statuses = ["active", "pending", "suspended", "banned"];
@@ -75,6 +83,15 @@ const statuses = ["active", "pending", "suspended", "banned"];
       <div class="admin-table">
         {users.map((user) => (
           <article class="admin-table-row">
+            {(() => {
+              const growth = growthProfiles.get(user.id);
+              return growth ? (
+                <div class="admin-user-growth">
+                  <strong>L{growth.trustLevel} · {growth.trustName}</strong>
+                  <span>{growth.contributionScore} {copy.contribution} · {growth.badgeCount} {copy.badges}</span>
+                </div>
+              ) : null;
+            })()}
             <div>
               <strong>{user.displayName}</strong>
               <span>@{user.username} · {user.email || "no email"}</span>

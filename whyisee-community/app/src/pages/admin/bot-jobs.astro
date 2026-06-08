@@ -5,6 +5,7 @@ import { getSessionFromAstro, isAdmin } from "@lib/auth";
 import { formatRelative } from "@lib/format";
 import { getLangFromAstro } from "@lib/i18n";
 import { listBotJobs, listBotTaskRuns, listBotTasks, listContentReviewResults } from "@server/services/botJobs";
+import { listExternalHotItems } from "@server/services/externalHotSources";
 
 export const prerender = false;
 
@@ -24,6 +25,7 @@ const reviewStatus = Astro.url.searchParams.get("reviewStatus") || "all";
 const tasks = await listBotTasks();
 const runs = await listBotTaskRuns(20);
 const reviews = await listContentReviewResults(reviewStatus, 60);
+const externalHotItems = await listExternalHotItems("all", 80);
 const jobs = await listBotJobs(status, 200);
 const processed = Astro.url.searchParams.get("processed") === "1";
 const taskProcessed = Astro.url.searchParams.get("taskProcessed") === "1";
@@ -36,6 +38,8 @@ const copy = lang === "en"
       autoTasks: "Automatic Tasks",
       autoTasksDescription: "Scheduled jobs run without @mentions. The first task reviews pending topics.",
       reviewResults: "AI Review Results",
+      externalHot: "External Hot Lists",
+      externalHotDescription: "Scanned external trends. Current provider: Zhihu Hot List.",
       recentRuns: "Recent Runs",
       mentionJobs: "Mention Jobs",
       all: "All",
@@ -57,6 +61,10 @@ const copy = lang === "en"
       status: "Status",
       interval: "Interval seconds",
       batchSize: "Batch size",
+      sourceUrl: "Source URL",
+      maxItems: "Max items",
+      timeoutMs: "Timeout ms",
+      userAgent: "User-Agent",
       autoApproveMaxRisk: "Auto approve max risk",
       dryRun: "Dry run only",
       empty: "No bot jobs in this status.",
@@ -78,6 +86,11 @@ const copy = lang === "en"
       topic: "Topic",
       editTopic: "Edit topic",
       dryRunHint: "When enabled, AI writes suggestions but never publishes content.",
+      hotEmpty: "No external hot list items yet.",
+      heat: "Heat",
+      firstSeen: "First seen",
+      lastSeen: "Last seen",
+      openSource: "Open source",
     }
   : {
       title: "机器人任务",
@@ -85,6 +98,8 @@ const copy = lang === "en"
       autoTasks: "自动任务",
       autoTasksDescription: "无需 @ 的后台任务。第一版先用于自动审核待发布话题。",
       reviewResults: "AI 审核结果",
+      externalHot: "外部热榜",
+      externalHotDescription: "外部趋势扫描结果。当前先接入知乎热榜。",
       recentRuns: "最近运行",
       mentionJobs: "提及任务",
       all: "全部",
@@ -106,6 +121,10 @@ const copy = lang === "en"
       status: "状态",
       interval: "间隔秒数",
       batchSize: "批量数量",
+      sourceUrl: "来源 URL",
+      maxItems: "最大条数",
+      timeoutMs: "超时毫秒",
+      userAgent: "User-Agent",
       autoApproveMaxRisk: "自动通过最高风险分",
       dryRun: "只建议不执行",
       empty: "当前状态下没有机器人任务。",
@@ -127,6 +146,11 @@ const copy = lang === "en"
       topic: "话题",
       editTopic: "编辑话题",
       dryRunHint: "开启后只记录 AI 建议，不会自动发布内容。",
+      hotEmpty: "暂无外部热榜条目。",
+      heat: "热度",
+      firstSeen: "首次发现",
+      lastSeen: "最近发现",
+      openSource: "打开来源",
     };
 
 const filters = ["all", "queued", "running", "succeeded", "failed"] as const;
@@ -153,6 +177,23 @@ function formatSeconds(value: number) {
   if (value % 3600 === 0) return `${value / 3600}h`;
   if (value % 60 === 0) return `${value / 60}m`;
   return `${value}s`;
+}
+
+function autoReviewConfig(task: (typeof tasks)[number]) {
+  return task.taskType === "auto_review" ? task.config as {
+    batchSize: number;
+    autoApproveMaxRisk: number;
+    dryRun: boolean;
+  } : undefined;
+}
+
+function externalHotConfig(task: (typeof tasks)[number]) {
+  return task.taskType === "external_hot_scan" ? task.config as {
+    sourceUrl: string;
+    maxItems: number;
+    timeoutMs: number;
+    userAgent: string;
+  } : undefined;
 }
 ---
 
@@ -215,19 +256,43 @@ function formatSeconds(value: number) {
                 {copy.interval}
                 <input name="scheduleIntervalSeconds" inputmode="numeric" value={task.scheduleIntervalSeconds} />
               </label>
-              <label>
-                {copy.batchSize}
-                <input name="batchSize" inputmode="numeric" value={task.config.batchSize} />
-              </label>
-              <label>
-                {copy.autoApproveMaxRisk}
-                <input name="autoApproveMaxRisk" inputmode="numeric" value={task.config.autoApproveMaxRisk} />
-              </label>
-              <label class="bot-task-checkbox">
-                <input type="checkbox" name="dryRun" value="1" checked={task.config.dryRun} />
-                <span>{copy.dryRun}</span>
-              </label>
-              <small>{copy.dryRunHint}</small>
+              {task.taskType === "auto_review" && (
+                <>
+                  <label>
+                    {copy.batchSize}
+                    <input name="batchSize" inputmode="numeric" value={autoReviewConfig(task)?.batchSize || 5} />
+                  </label>
+                  <label>
+                    {copy.autoApproveMaxRisk}
+                    <input name="autoApproveMaxRisk" inputmode="numeric" value={autoReviewConfig(task)?.autoApproveMaxRisk || 25} />
+                  </label>
+                  <label class="bot-task-checkbox">
+                    <input type="checkbox" name="dryRun" value="1" checked={Boolean(autoReviewConfig(task)?.dryRun)} />
+                    <span>{copy.dryRun}</span>
+                  </label>
+                  <small>{copy.dryRunHint}</small>
+                </>
+              )}
+              {task.taskType === "external_hot_scan" && (
+                <>
+                  <label class="bot-task-wide">
+                    {copy.sourceUrl}
+                    <input name="sourceUrl" value={externalHotConfig(task)?.sourceUrl || ""} />
+                  </label>
+                  <label>
+                    {copy.maxItems}
+                    <input name="maxItems" inputmode="numeric" value={externalHotConfig(task)?.maxItems || 30} />
+                  </label>
+                  <label>
+                    {copy.timeoutMs}
+                    <input name="timeoutMs" inputmode="numeric" value={externalHotConfig(task)?.timeoutMs || 15000} />
+                  </label>
+                  <label class="bot-task-wide">
+                    {copy.userAgent}
+                    <input name="userAgent" value={externalHotConfig(task)?.userAgent || ""} />
+                  </label>
+                </>
+              )}
               <div class="bot-task-actions">
                 <button class="button secondary" type="submit">{copy.saveTask}</button>
               </div>
@@ -240,6 +305,42 @@ function formatSeconds(value: number) {
           </article>
         ))}
       </div>
+    </section>
+
+    <section class="admin-panel-section">
+      <div class="section-head compact">
+        <div>
+          <h2>{copy.externalHot}</h2>
+          <p>{copy.externalHotDescription}</p>
+        </div>
+        <span class="count-pill">{externalHotItems.length}</span>
+      </div>
+
+      {externalHotItems.length > 0 ? (
+        <div class="admin-table external-hot-list">
+          {externalHotItems.map((item) => (
+            <article class="admin-table-row external-hot-row">
+              <div>
+                <div class="topic-meta">
+                  <span>{item.source}</span>
+                  {item.rank && <span>#{item.rank}</span>}
+                  {item.heatText && <span>{copy.heat}: {item.heatText}</span>}
+                  <span>{copy.lastSeen}: {formatRelative(item.lastSeenAt, lang)}</span>
+                  <span>{copy.firstSeen}: {formatRelative(item.firstSeenAt, lang)}</span>
+                  <span>{item.seenCount}x</span>
+                </div>
+                <strong>{item.title}</strong>
+                {item.summary && <p>{item.summary}</p>}
+              </div>
+              <div class="admin-row-actions">
+                <a class="button secondary" href={item.url} target="_blank" rel="noreferrer">{copy.openSource}</a>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p class="auth-message muted">{copy.hotEmpty}</p>
+      )}
     </section>
 
     <section class="admin-panel-section">

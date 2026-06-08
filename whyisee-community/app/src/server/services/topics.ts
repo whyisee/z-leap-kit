@@ -4,6 +4,7 @@ import { renderMarkdown } from "@lib/markdown";
 import { slugify } from "@lib/slug";
 import type { Category, Tag, Topic, TopicListOptions, TopicStatus, TopicType } from "@lib/types";
 import { syncMentions } from "./mentions";
+import { refreshUserReputation } from "./reputation";
 
 interface TopicRow {
   id: number;
@@ -218,6 +219,7 @@ export async function createTopic(input: TopicWriteInput): Promise<number> {
       body: title,
       href: topicHref(created.topicId, created.slug),
     });
+    await refreshUserReputation(input.authorId);
   }
 
   return created.topicId;
@@ -325,7 +327,7 @@ export async function updateTopicAdminState(
 
   await query(`UPDATE topics SET ${sets.join(", ")} WHERE id = $${values.length}`, values);
 
-  if (patch.status === "published") {
+  if (patch.status === "published" || typeof patch.isFeatured === "boolean") {
     const topic = await queryOne<{
       id: number;
       slug: string;
@@ -335,15 +337,18 @@ export async function updateTopicAdminState(
     }>("SELECT id, slug, title, content_markdown, author_id FROM topics WHERE id = $1 LIMIT 1", [id]);
 
     if (topic) {
-      await syncMentions({
-        sourceType: "topic",
-        sourceId: topic.id,
-        actorId: topic.author_id,
-        markdown: topic.content_markdown,
-        title: topic.title,
-        body: topic.title,
-        href: topicHref(topic.id, topic.slug),
-      });
+      if (patch.status === "published") {
+        await syncMentions({
+          sourceType: "topic",
+          sourceId: topic.id,
+          actorId: topic.author_id,
+          markdown: topic.content_markdown,
+          title: topic.title,
+          body: topic.title,
+          href: topicHref(topic.id, topic.slug),
+        });
+      }
+      await refreshUserReputation(topic.author_id);
     }
   }
 }

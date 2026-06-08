@@ -661,9 +661,30 @@
   }
 
   main > .article-page > .draft-form.public-topic-form {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 14px;
-    padding: 14px;
+    grid-template-columns: minmax(18px, 1fr) 52px minmax(0, 760px) 300px minmax(18px, 1fr);
+    gap: 0 10px;
+    padding: 112px 0 0;
+  }
+
+  main > .article-page > .draft-form.public-topic-form:has(.public-topic-settings[data-collapsed="false"]) {
+    grid-template-columns: minmax(18px, 1fr) 260px minmax(0, 760px) 300px minmax(18px, 1fr);
+  }
+
+  main > .article-page > .draft-form.public-topic-form:has(.public-topic-ai-panel[hidden]) {
+    grid-template-columns: minmax(18px, 1fr) 52px minmax(0, 760px) 300px minmax(18px, 1fr);
+  }
+
+  main > .article-page > .draft-form.public-topic-form:has(.public-topic-settings[data-collapsed="false"]):has(.public-topic-ai-panel[hidden]) {
+    grid-template-columns: minmax(18px, 1fr) 260px minmax(0, 760px) 300px minmax(18px, 1fr);
+  }
+
+  main > .article-page > .draft-form.public-topic-form > .public-topic-settings {
+    grid-column: 2;
+  }
+
+  main > .article-page > .draft-form.public-topic-form > .public-topic-editor,
+  main > .article-page > .draft-form.public-topic-form:has(.public-topic-ai-panel[hidden]) > .public-topic-editor {
+    grid-column: 3;
   }
 
   .public-topic-sidebar {
@@ -675,17 +696,13 @@
   }
 
   .public-topic-form textarea[name="contentMarkdown"] {
-    min-height: 320px;
+    height: max(300px, calc(100vh - var(--composer-toolbar-top, 75px) - 200px));
+    min-height: 300px;
   }
 
   .writing-ai-toolbar {
     flex-wrap: wrap;
-    justify-content: flex-start;
-  }
-
-  .writing-ai-style {
-    grid-template-columns: auto minmax(96px, 1fr);
-    max-width: 100%;
+    justify-content: flex-end;
   }
 
   .writing-ai-menu {

@@ -9,6 +9,7 @@ import { topicPath } from "@lib/routes";
 import { listCategories, listTags } from "@server/services/categories";
 import { listFeaturedTopics } from "@server/services/topics";
 import { getUserByUsername, listUserTopics } from "@server/services/users";
+import { getUserGrowthProfile, listUserContributionEvents } from "@server/services/reputation";
 
 export const prerender = false;
 
@@ -22,6 +23,11 @@ const featuredTopics = await listFeaturedTopics(4, lang);
 const submitted = Astro.url.searchParams.get("submitted") === "1";
 const canEditProfile = Boolean(user && session && (session.userId === user.id || isAdmin(session)));
 const topics = user ? await listUserTopics(user.id, lang, canEditProfile) : [];
+const growth = user ? await getUserGrowthProfile(user.id) : undefined;
+const contributionEvents = user ? await listUserContributionEvents(user.id, 10) : [];
+const requestedTab = Astro.url.searchParams.get("tab") || "topics";
+const activeTab = ["topics", "badges", "contribution"].includes(requestedTab) ? requestedTab : "topics";
+const profilePath = `/u/${encodeURIComponent(username)}`;
 const copy = lang === "en"
   ? {
       notFound: "User not found",
@@ -32,8 +38,21 @@ const copy = lang === "en"
       submitted: "Topic submitted. It will appear after review.",
       deleted: "Topic deleted.",
       settings: "Settings",
-      newTopic: "New topic",
       joined: "Joined",
+      contribution: "Contribution",
+      trustLevel: "Trust level",
+      nextLevel: "To {level}",
+      topicsMetric: "topics",
+      repliesMetric: "replies",
+      featuredMetric: "featured",
+      badges: "Badges",
+      noBadges: "No badges yet.",
+      contributionHistory: "Contribution history",
+      noContributionHistory: "No contribution records yet.",
+      tabTopics: "Topics",
+      tabBadges: "Badges",
+      tabContribution: "Contribution",
+      activeBadges: "Active badges",
       noTopics: "No public topics yet.",
       edit: "Edit",
       view: "View",
@@ -52,8 +71,21 @@ const copy = lang === "en"
       submitted: "话题已提交，通过审核后会展示。",
       deleted: "话题已删除。",
       settings: "资料设置",
-      newTopic: "新建话题",
       joined: "加入时间",
+      contribution: "贡献值",
+      trustLevel: "信任等级",
+      nextLevel: "距离 {level}",
+      topicsMetric: "主题",
+      repliesMetric: "回复",
+      featuredMetric: "精选",
+      badges: "勋章",
+      noBadges: "还没有获得勋章。",
+      contributionHistory: "贡献明细",
+      noContributionHistory: "还没有贡献记录。",
+      tabTopics: "话题",
+      tabBadges: "勋章",
+      tabContribution: "贡献",
+      activeBadges: "已点亮勋章",
       noTopics: "暂无公开话题。",
       edit: "编辑",
       view: "查看",
@@ -72,9 +104,12 @@ const avatarInitial = (user?.displayName || user?.username || "W").trim().slice(
     <ForumFrame categories={categories} tags={tags} featuredTopics={featuredTopics} lang={lang}>
       <section class="user-profile-head">
         <div class="user-profile-main">
-          <span class="user-profile-avatar" aria-hidden="true">
-            {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : avatarInitial}
-          </span>
+          <div class="user-profile-avatar-stack">
+            <span class="user-profile-avatar" aria-hidden="true">
+              {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : avatarInitial}
+            </span>
+            {canEditProfile && <a class="user-profile-settings" href="/settings/profile">{copy.settings}</a>}
+          </div>
           <div>
             <p class="eyebrow">@{user.username}</p>
             <h1>{user.displayName}</h1>
@@ -85,11 +120,51 @@ const avatarInitial = (user?.displayName || user?.username || "W").trim().slice(
               {user.githubUrl && <a class="text-link" href={user.githubUrl} rel="noreferrer" target="_blank">GitHub</a>}
             </div>
           </div>
+          {growth && (
+            <div class="user-profile-badge-strip" aria-label={copy.activeBadges}>
+              <span class="user-profile-badge-strip-title">{copy.activeBadges}</span>
+              <div class="user-profile-badge-icons">
+                {growth.badges.length > 0 ? (
+                  growth.badges.slice(0, 10).map((badge) => (
+                    <a
+                      class={`badge-icon is-lit ${badge.tone} ${badge.id}`}
+                      href={`${profilePath}?tab=badges`}
+                      title={`${badge.name}：${badge.description}`}
+                      aria-label={badge.name}
+                    >
+                      <span>{badge.icon}</span>
+                    </a>
+                  ))
+                ) : (
+                  <span class="user-profile-badge-empty">{copy.noBadges}</span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
-        {canEditProfile && (
-          <div class="profile-actions">
-            <a class="button primary" href="/new-topic">{copy.newTopic}</a>
-            <a class="button secondary" href="/settings/profile">{copy.settings}</a>
+        {growth && (
+          <div class="user-profile-growth">
+            <div class="user-profile-score">
+              <span>{copy.contribution}</span>
+              <strong>{growth.contributionScore}</strong>
+            </div>
+            <div class="user-profile-rank">
+              <span>{copy.trustLevel}</span>
+              <strong>L{growth.trustLevel} · {growth.trustName}</strong>
+              <p>{growth.trustDescription}</p>
+              {growth.nextLevelScore !== null && (
+                <small>
+                  {copy.nextLevel.replace("{level}", `L${growth.trustLevel + 1} · ${growth.nextLevelName}`)}：
+                  {Math.max(0, growth.nextLevelScore - growth.contributionScore)}
+                </small>
+              )}
+            </div>
+            <div class="user-profile-metrics">
+              <span><strong>{growth.topicCount}</strong>{copy.topicsMetric}</span>
+              <span><strong>{growth.replyCount}</strong>{copy.repliesMetric}</span>
+              <span><strong>{growth.featuredTopicCount}</strong>{copy.featuredMetric}</span>
+              <span><strong>{growth.badgeCount}</strong>{copy.badges}</span>
+            </div>
           </div>
         )}
       </section>
@@ -97,44 +172,115 @@ const avatarInitial = (user?.displayName || user?.username || "W").trim().slice(
       {submitted && <p class="auth-message muted">{copy.submitted}</p>}
       {deleted && <p class="auth-message muted">{copy.deleted}</p>}
 
-      <div class="section-head" id="topics">
-        <div>
-          <p class="eyebrow">{canEditProfile ? copy.myTopics : copy.topics}</p>
-          <h2>{canEditProfile ? copy.myTopics : copy.topics}</h2>
-        </div>
-        <span class="count-pill">{topics.length}</span>
-      </div>
+      <nav class="user-profile-tabs" aria-label={copy.profileDescription}>
+        <a class:list={[activeTab === "topics" && "is-active"]} href={profilePath}>{copy.tabTopics}<span>{topics.length}</span></a>
+        <a class:list={[activeTab === "badges" && "is-active"]} href={`${profilePath}?tab=badges`}>{copy.tabBadges}<span>{growth?.badgeCount || 0}</span></a>
+        <a class:list={[activeTab === "contribution" && "is-active"]} href={`${profilePath}?tab=contribution`}>{copy.tabContribution}<span>{contributionEvents.length}</span></a>
+      </nav>
 
-      {topics.length > 0 && canEditProfile ? (
-        <div class="admin-topic-list">
-          {topics.map((topic) => (
-            <article class="admin-topic-row">
+      <section class="user-profile-tab-panel">
+        {activeTab === "topics" && (
+          <>
+            <div class="section-head" id="topics">
               <div>
-                <div class="topic-meta">
-                  <span class={`admin-status ${topic.status}`}>
-                    {topic.status === "deleted" ? copy.deletedStatus : copy[topic.status]}
-                  </span>
-                  <span>{topic.category.name}</span>
-                  <span>{topic.type}</span>
-                </div>
-                <h2>{topic.title}</h2>
-                <p>{topic.summary}</p>
+                <p class="eyebrow">{canEditProfile ? copy.myTopics : copy.topics}</p>
+                <h2>{canEditProfile ? copy.myTopics : copy.topics}</h2>
               </div>
-              <div class="admin-row-actions">
-                <a class="button secondary" href={`/topics/${topic.id}/edit`}>{copy.edit}</a>
-                {topic.status === "published" && <a class="button secondary" href={topicPath(topic)}>{copy.view}</a>}
+              <span class="count-pill">{topics.length}</span>
+            </div>
+
+            {topics.length > 0 && canEditProfile ? (
+              <div class="admin-topic-list">
+                {topics.map((topic) => (
+                  <article class="admin-topic-row">
+                    <div>
+                      <div class="topic-meta">
+                        <span class={`admin-status ${topic.status}`}>
+                          {topic.status === "deleted" ? copy.deletedStatus : copy[topic.status]}
+                        </span>
+                        <span>{topic.category.name}</span>
+                        <span>{topic.type}</span>
+                      </div>
+                      <h2>{topic.title}</h2>
+                      <p>{topic.summary}</p>
+                    </div>
+                    <div class="admin-row-actions">
+                      <a class="button secondary" href={`/topics/${topic.id}/edit`}>{copy.edit}</a>
+                      {topic.status === "published" && <a class="button secondary" href={topicPath(topic)}>{copy.view}</a>}
+                    </div>
+                  </article>
+                ))}
               </div>
-            </article>
-          ))}
-        </div>
-      ) : topics.length > 0 ? (
-        <div class="topic-list">
-          <TopicListHeader lang={lang} />
-          {topics.map((topic) => <TopicCard topic={topic} lang={lang} />)}
-        </div>
-      ) : (
-        <p class="auth-message muted">{copy.noTopics}</p>
-      )}
+            ) : topics.length > 0 ? (
+              <div class="topic-list">
+                <TopicListHeader lang={lang} />
+                {topics.map((topic) => <TopicCard topic={topic} lang={lang} />)}
+              </div>
+            ) : (
+              <p class="auth-message muted">{copy.noTopics}</p>
+            )}
+          </>
+        )}
+
+        {activeTab === "badges" && growth && (
+          <section class="user-badge-panel">
+            <div class="section-head compact">
+              <div>
+                <p class="eyebrow">{copy.badges}</p>
+                <h2>{copy.badges}</h2>
+              </div>
+              <span class="count-pill">{growth.badgeCount}</span>
+            </div>
+            {growth.badges.length > 0 ? (
+              <div class="user-badge-grid">
+                {growth.badges.map((badge) => (
+                  <article class={`user-badge-card ${badge.tone}`}>
+                    <span class={`badge-icon is-lit ${badge.tone} ${badge.id}`} aria-hidden="true">
+                      <span>{badge.icon}</span>
+                    </span>
+                    <div>
+                      <strong>{badge.name}</strong>
+                      <p>{badge.description}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p class="auth-message muted">{copy.noBadges}</p>
+            )}
+          </section>
+        )}
+
+        {activeTab === "contribution" && growth && (
+          <section class="user-contribution-panel">
+            <div class="section-head compact">
+              <div>
+                <p class="eyebrow">{copy.contributionHistory}</p>
+                <h2>{copy.contributionHistory}</h2>
+              </div>
+              <span class="count-pill">{contributionEvents.length}</span>
+            </div>
+            {contributionEvents.length > 0 ? (
+              <div class="user-contribution-list">
+                {contributionEvents.map((event) => (
+                  <article class="user-contribution-row">
+                    <div>
+                      <strong>{event.title}</strong>
+                      <p>{event.description}</p>
+                    </div>
+                    <div class="user-contribution-side">
+                      <span>+{event.scoreDelta}</span>
+                      <small>{new Date(event.occurredAt).toLocaleDateString(lang === "en" ? "en-US" : "zh-CN")}</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p class="auth-message muted">{copy.noContributionHistory}</p>
+            )}
+          </section>
+        )}
+      </section>
     </ForumFrame>
   ) : (
     <section class="article-page">
