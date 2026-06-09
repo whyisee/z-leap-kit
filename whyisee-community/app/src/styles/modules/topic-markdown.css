@@ -25,6 +25,7 @@
   display: grid;
   gap: 10px;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .topic-title-stack h1 {
@@ -33,6 +34,8 @@
   font-size: clamp(24px, 2.5vw, 32px);
   line-height: 1.22;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .topic-taxonomy-row {
@@ -219,6 +222,8 @@
   display: grid;
   gap: 14px;
   min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .topic-post-head {
@@ -872,8 +877,19 @@ button.topic-floating-avatar {
 }
 
 .markdown-content {
+  min-width: 0;
+  max-width: 100%;
   padding: 28px 0;
   color: #dce3ed;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.markdown-content :where(h1, h2, h3, h4, h5, h6, p, li, blockquote, a, strong, em, span, td, th) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .markdown-content h2 {
@@ -890,14 +906,28 @@ button.topic-floating-avatar {
   border-radius: 6px;
   padding: 2px 5px;
   background: rgba(255, 255, 255, 0.06);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .markdown-content pre {
   overflow: auto;
+  box-sizing: border-box;
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 16px;
   background: #090d13;
+}
+
+.markdown-content pre code {
+  white-space: inherit;
+}
+
+.markdown-content table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
 }
 
 .markdown-image-grid {
