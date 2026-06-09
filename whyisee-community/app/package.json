@@ -21,6 +21,7 @@
   "dependencies": {
     "@astrojs/node": "latest",
     "astro": "latest",
+    "flatpickr": "^4.6.13",
     "hono": "latest",
     "marked": "latest",
     "pg": "latest"

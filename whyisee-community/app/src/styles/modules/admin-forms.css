@@ -408,6 +408,106 @@
   filter: invert(0.82);
 }
 
+.flatpickr-calendar {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: #05070b;
+  box-shadow:
+    0 22px 64px rgba(0, 0, 0, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  color: var(--text);
+}
+
+.flatpickr-calendar.arrowTop::before,
+.flatpickr-calendar.arrowTop::after,
+.flatpickr-calendar.arrowBottom::before,
+.flatpickr-calendar.arrowBottom::after {
+  border-top-color: #05070b;
+  border-bottom-color: #05070b;
+}
+
+.flatpickr-calendar::before,
+.flatpickr-calendar::after {
+  border-top-color: #05070b;
+  border-bottom-color: #05070b;
+}
+
+.flatpickr-months .flatpickr-month,
+.flatpickr-current-month .flatpickr-monthDropdown-months,
+.flatpickr-weekdays,
+span.flatpickr-weekday {
+  background: transparent;
+  color: var(--text);
+}
+
+.flatpickr-current-month input.cur-year,
+.flatpickr-current-month .flatpickr-monthDropdown-months {
+  color: var(--text);
+  font-weight: 900;
+}
+
+.flatpickr-current-month .flatpickr-monthDropdown-months .flatpickr-monthDropdown-month {
+  background: #0b0e14;
+}
+
+.flatpickr-day {
+  border-color: transparent;
+  color: color-mix(in srgb, var(--text) 86%, transparent);
+}
+
+.flatpickr-day:hover,
+.flatpickr-day:focus {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: #121722;
+  color: var(--text);
+}
+
+.flatpickr-day.today {
+  border-color: rgba(243, 201, 105, 0.55);
+}
+
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange,
+.flatpickr-day.selected:hover {
+  border-color: rgba(102, 208, 140, 0.66);
+  background: #123522;
+  color: var(--text);
+}
+
+.flatpickr-day.flatpickr-disabled,
+.flatpickr-day.prevMonthDay,
+.flatpickr-day.nextMonthDay {
+  color: color-mix(in srgb, var(--subtle) 62%, transparent);
+}
+
+.flatpickr-time {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.flatpickr-time input,
+.flatpickr-time .flatpickr-am-pm {
+  color: var(--text);
+  font-weight: 900;
+}
+
+.flatpickr-time input:hover,
+.flatpickr-time .flatpickr-am-pm:hover,
+.flatpickr-time input:focus {
+  background: rgba(138, 180, 248, 0.08);
+}
+
+.flatpickr-months .flatpickr-prev-month,
+.flatpickr-months .flatpickr-next-month {
+  fill: var(--muted);
+  color: var(--muted);
+}
+
+.flatpickr-months .flatpickr-prev-month:hover svg,
+.flatpickr-months .flatpickr-next-month:hover svg {
+  fill: var(--text);
+}
+
 .admin-task-form {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   align-items: start;

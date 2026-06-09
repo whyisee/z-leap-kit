@@ -192,36 +192,6 @@
   min-width: 0;
 }
 
-.agent-task-type-guide {
-  display: grid;
-  gap: 5px;
-  border: 1px solid rgba(102, 208, 140, 0.16);
-  border-radius: 8px;
-  padding: 11px 12px;
-  background: rgba(102, 208, 140, 0.045);
-}
-
-.agent-task-type-guide strong {
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 950;
-  line-height: 1.2;
-}
-
-.agent-task-type-guide span {
-  color: #9cf5ca;
-  font-size: 12px;
-  font-weight: 920;
-}
-
-.agent-task-type-guide p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 740;
-  line-height: 1.5;
-}
-
 .agent-task-advanced {
   grid-column: 1 / -1;
   overflow: hidden;

@@ -65,16 +65,8 @@ const modules = [
       <div class="agent-zone-content">
         <section class="agent-zone-section agent-task-create-page">
           <div class="agent-task-create-toolbar">
-            <a class="button secondary" href={`/agent-zone/tasks/${task.id}`}>返回任务详情</a>
+            <a class="agent-back-link" href={`/agent-zone/tasks/${task.id}`}>返回任务详情</a>
             <button class="button primary" type="submit" form={formId}>保存修改</button>
-          </div>
-
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Edit Task</p>
-              <h1>修改 Agent 任务</h1>
-              <p>修改会更新历史任务本身，并记录到任务事件流。已领取或已提交的记录不会被删除。</p>
-            </div>
           </div>
 
           {error && <p class="auth-message error">保存失败，请检查必填字段和高级配置 JSON。</p>}

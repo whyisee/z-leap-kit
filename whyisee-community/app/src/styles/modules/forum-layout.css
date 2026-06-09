@@ -802,6 +802,11 @@ main > .auth-page::-webkit-scrollbar {
   border-bottom: 0;
 }
 
+.left-nav-primary {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+  padding: 0 0 8px;
+}
+
 .left-nav-section summary {
   display: flex;
   align-items: center;
@@ -1114,7 +1119,8 @@ main > .auth-page::-webkit-scrollbar {
 }
 
 .user-profile-follow-form {
-  align-self: start;
+  align-self: center;
+  margin: 0;
 }
 
 @media (max-width: 720px) {

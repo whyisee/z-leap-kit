@@ -5,14 +5,15 @@ import MarkdownContent from "@components/MarkdownContent.astro";
 import TopicAiController from "@components/TopicAiController.astro";
 import TopicReplyController from "@components/TopicReplyController.astro";
 import TopicReplySection from "@components/TopicReplySection.astro";
+import UserHoverPopover from "@components/UserHoverPopover.astro";
 import { getAnonymousInitial } from "@lib/anonymous";
 import { getSessionFromAstro } from "@lib/auth";
 import { categoryPath, tagPath, topicPath } from "@lib/routes";
-import { formatDate, formatRelative } from "@lib/format";
+import { formatRelative } from "@lib/format";
 import { getLangFromAstro, t } from "@lib/i18n";
 import { enhanceMarkdownHtml } from "@lib/markdown";
 import { listCategories, listTags } from "@server/services/categories";
-import { countTargetLikes, getTopicInteractionState, userFollowsTarget, userLikedTarget } from "@server/services/interactions";
+import { countTargetLikes, getTopicInteractionState, getUserFollowStats, userFollowsTarget, userLikedTarget } from "@server/services/interactions";
 import { listPostsForTopic } from "@server/services/posts";
 import { getTopicById, listRelatedTopics } from "@server/services/topics";
 
@@ -56,6 +57,10 @@ const topicAuthorFollowed = topic && !isAnonymousTopic
   : false;
 const showTopicAuthorFollowButton = Boolean(topic && !isAnonymousTopic && session?.userId !== topic.author.id && !topicAuthorFollowed);
 const showTopicAuthorFollowedState = Boolean(topic && !isAnonymousTopic && session?.userId !== topic.author.id && topicAuthorFollowed);
+const showTopicAuthorFollowControl = Boolean(topic && !isAnonymousTopic && session?.userId !== topic.author.id);
+const topicAuthorFollowStats = topic && !isAnonymousTopic
+  ? await getUserFollowStats(topic.author.id)
+  : { followingCount: 0, followerCount: 0 };
 const allReplyItems = posts.map((post) => {
   const interaction = postInteractions.get(post.id);
   const createdAtMs = Date.parse(post.createdAt);
@@ -146,6 +151,8 @@ const copy = lang === "en"
       joined: "Joined",
       profile: "View profile",
       role: "Role",
+      followingCount: "Following",
+      followersCount: "Followers",
       anonymousUser: "Anonymous",
       anonymousBadge: "Tree Hole",
       anonymousBio: "Identity is hidden in this Tree Hole topic.",
@@ -202,6 +209,8 @@ const copy = lang === "en"
       joined: "加入",
       profile: "查看主页",
       role: "身份",
+      followingCount: "关注",
+      followersCount: "粉丝",
       anonymousUser: "匿名用户",
       anonymousBadge: "树洞匿名",
       anonymousBio: "树洞板块已隐藏作者和评论者身份。",
@@ -249,28 +258,6 @@ const aiActions = lang === "en"
                 </div>
               </div>
 
-              <div class="topic-ai-menu" data-topic-ai-menu data-topic-id={topic.id}>
-                <button
-                  class="ai-tool-button"
-                  type="button"
-                  aria-haspopup="menu"
-                  aria-expanded="false"
-                  aria-label={copy.aiMenuLabel}
-                  data-topic-ai-button
-                >
-                  <span class="ai-tool-mark" aria-hidden="true">AI</span>
-                  <span>{copy.aiButton}</span>
-                  <span class="ai-tool-chevron" aria-hidden="true">⌄</span>
-                </button>
-                <div class="topic-ai-panel" role="menu" aria-label={copy.aiMenuLabel} data-topic-ai-panel hidden>
-                  {aiActions.map(([id, label, description]) => (
-                    <button class="topic-ai-option" type="button" role="menuitem" data-ai-action={id}>
-                      <strong>{label}</strong>
-                      <span>{description}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
           </header>
 
@@ -289,25 +276,16 @@ const aiActions = lang === "en"
                         : topicAuthorInitial}
                     </span>
                   </button>
-                  <div class="topic-author-popover" role="dialog" aria-label={topic.author.displayName}>
-                    <div class="topic-author-popover-head">
-                      <span class="topic-author-popover-avatar" aria-hidden="true">
-                        {topic.author.avatarUrl
-                          ? <img src={topic.author.avatarUrl} alt="" loading="lazy" />
-                          : topicAuthorInitial}
-                      </span>
-                      <div>
-                        <strong>{topic.author.displayName}</strong>
-                        <span>@{topic.author.username}</span>
-                      </div>
-                    </div>
-                    <p>{topic.author.bio || copy.signatureFallback}</p>
-                    <div class="topic-author-popover-meta">
-                      <span>{copy.role}: {topic.author.role}</span>
-                      {topic.author.createdAt && <span>{copy.joined}: {formatDate(topic.author.createdAt, lang)}</span>}
-                    </div>
-                    <a class="button secondary compact" href={`/u/${topic.author.username}`}>{copy.profile}</a>
-                  </div>
+                  <UserHoverPopover
+                    author={topic.author}
+                    authorInitial={topicAuthorInitial}
+                    copy={copy}
+                    currentPath={Astro.url.pathname}
+                    followed={topicAuthorFollowed}
+                    lang={lang}
+                    showFollowControl={showTopicAuthorFollowControl}
+                    stats={topicAuthorFollowStats}
+                  />
                 </div>
               )}
             </div>
@@ -322,25 +300,16 @@ const aiActions = lang === "en"
                       <button class="topic-author-name-trigger" type="button" aria-haspopup="dialog">
                         {topic.author.displayName}
                       </button>
-                      <div class="topic-author-popover" role="dialog" aria-label={topic.author.displayName}>
-                        <div class="topic-author-popover-head">
-                          <span class="topic-author-popover-avatar" aria-hidden="true">
-                            {topic.author.avatarUrl
-                              ? <img src={topic.author.avatarUrl} alt="" loading="lazy" />
-                              : topicAuthorInitial}
-                          </span>
-                          <div>
-                            <strong>{topic.author.displayName}</strong>
-                            <span>@{topic.author.username}</span>
-                          </div>
-                        </div>
-                        <p>{topic.author.bio || copy.signatureFallback}</p>
-                        <div class="topic-author-popover-meta">
-                          <span>{copy.role}: {topic.author.role}</span>
-                          {topic.author.createdAt && <span>{copy.joined}: {formatDate(topic.author.createdAt, lang)}</span>}
-                        </div>
-                        <a class="button secondary compact" href={`/u/${topic.author.username}`}>{copy.profile}</a>
-                      </div>
+                      <UserHoverPopover
+                        author={topic.author}
+                        authorInitial={topicAuthorInitial}
+                        copy={copy}
+                        currentPath={Astro.url.pathname}
+                        followed={topicAuthorFollowed}
+                        lang={lang}
+                        showFollowControl={showTopicAuthorFollowControl}
+                        stats={topicAuthorFollowStats}
+                      />
                     </div>
                   )}
                   <span class="topic-author-username">{isAnonymousTopic ? copy.anonymousBadge : `@${topic.author.username}`}</span>
@@ -400,15 +369,48 @@ const aiActions = lang === "en"
       </div>
 
       <nav class="topic-floating-actions" aria-label={lang === "en" ? "Topic actions" : "帖子操作"} data-topic-floating-actions>
+        <div class="topic-ai-menu topic-floating-ai-menu" data-topic-ai-menu data-topic-id={topic.id}>
+          <button
+            class="ai-tool-button topic-floating-ai-button"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-label={copy.aiMenuLabel}
+            data-topic-ai-button
+          >
+            <span class="ai-tool-mark" aria-hidden="true">AI</span>
+          </button>
+          <div class="topic-ai-panel" role="menu" aria-label={copy.aiMenuLabel} data-topic-ai-panel hidden>
+            {aiActions.map(([id, label, description]) => (
+              <button class="topic-ai-option" type="button" role="menuitem" data-ai-action={id}>
+                <strong>{label}</strong>
+                <span>{description}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div class="topic-floating-author">
           {isAnonymousTopic ? (
             <span class="topic-floating-avatar is-anonymous" aria-label={copy.anonymousUser}>{topicAuthorInitial}</span>
           ) : (
-            <a class="topic-floating-avatar" href={`/u/${topic.author.username}`} aria-label={topic.author.displayName}>
-              {topic.author.avatarUrl
-                ? <img src={topic.author.avatarUrl} alt="" loading="lazy" />
-                : topicAuthorInitial}
-            </a>
+            <div class="topic-author-hover topic-floating-author-hover">
+              <button class="topic-floating-avatar topic-floating-avatar-trigger" type="button" aria-haspopup="dialog" aria-label={topic.author.displayName}>
+                {topic.author.avatarUrl
+                  ? <img src={topic.author.avatarUrl} alt="" loading="lazy" />
+                  : topicAuthorInitial}
+              </button>
+              <UserHoverPopover
+                author={topic.author}
+                authorInitial={topicAuthorInitial}
+                copy={copy}
+                currentPath={Astro.url.pathname}
+                followed={topicAuthorFollowed}
+                lang={lang}
+                showFollowControl={showTopicAuthorFollowControl}
+                stats={topicAuthorFollowStats}
+              />
+            </div>
           )}
 
           {showTopicAuthorFollowButton && (
@@ -519,6 +521,8 @@ const aiActions = lang === "en"
     const hero = page.querySelector(".topic-hero");
     const postBody = page.querySelector(".topic-post-body");
     const header = document.querySelector(".site-header");
+    const headerLeft = header?.querySelector(".header-left");
+    const headerActions = header?.querySelector(".header-actions");
     const title = page.querySelector(".topic-title-stack h1")?.textContent?.trim() || "";
     const replies = page.querySelector("[data-topic-replies]");
     const commentToggle = page.querySelector("[data-topic-comment-toggle]");
@@ -553,8 +557,16 @@ const aiActions = lang === "en"
     const syncTitlePosition = () => {
       const headerRect = header.getBoundingClientRect();
       const bodyRect = postBody.getBoundingClientRect();
-      const left = Math.max(16, bodyRect.left - headerRect.left);
-      const width = Math.max(180, headerRect.right - bodyRect.left - 24);
+      const headerLeftRect = headerLeft?.getBoundingClientRect();
+      const headerActionsRect = headerActions?.getBoundingClientRect();
+      const safeLeft = headerLeftRect
+        ? headerLeftRect.right - headerRect.left + 18
+        : 16;
+      const safeRight = headerActionsRect
+        ? headerActionsRect.left - headerRect.left - 18
+        : headerRect.width - 16;
+      const left = Math.max(16, bodyRect.left - headerRect.left, safeLeft);
+      const width = Math.max(0, safeRight - left);
 
       header.style.setProperty("--reading-title-left", `${left}px`);
       header.style.setProperty("--reading-title-width", `${width}px`);
@@ -611,12 +623,14 @@ const aiActions = lang === "en"
 
     const sidebarObserver = new MutationObserver(() => {
       requestUpdate();
+      window.setTimeout(requestUpdate, 120);
       window.setTimeout(requestUpdate, 360);
+      window.setTimeout(requestUpdate, 460);
     });
 
     sidebarObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-sidebar"],
+      attributeFilter: ["data-sidebar", "data-sidebar-animating"],
     });
 
     const revealReplies = (shouldScroll = true) => {

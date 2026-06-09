@@ -293,7 +293,7 @@
 
 .user-profile-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 480px);
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
   gap: 16px 22px;
   align-items: stretch;
   border: 1px solid var(--line);
@@ -308,6 +308,60 @@
 .user-profile-head h1 {
   margin-bottom: 8px;
   font-size: clamp(28px, 3vw, 42px);
+}
+
+.user-profile-name-block {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.user-profile-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.user-profile-title-row h1 {
+  min-width: 0;
+  margin: 0;
+}
+
+.user-profile-title-row .user-profile-follow-form {
+  flex: 0 0 auto;
+  align-self: center;
+  margin: 2px 0 0;
+}
+
+.user-profile-follow-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.user-profile-follow-stats span {
+  display: inline-flex;
+  gap: 5px;
+  align-items: baseline;
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 5px 9px;
+  background: rgba(255, 255, 255, 0.026);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.user-profile-follow-stats strong {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1;
 }
 
 .user-profile-main {
@@ -673,6 +727,32 @@
 
 .user-profile-tab-panel {
   min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .user-profile-head {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  .user-profile-main {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .user-profile-avatar {
+    width: 72px;
+    height: 72px;
+    font-size: 20px;
+  }
+
+  .user-profile-growth {
+    grid-template-columns: 1fr;
+  }
+
+  .user-profile-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .user-growth-panel {

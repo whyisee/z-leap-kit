@@ -6,6 +6,7 @@ import {
   getAgentTaskTypeLabel,
 } from "@lib/agentTaskTypes";
 import type { AdminTaskEditData } from "@server/services/tasks";
+import "flatpickr/dist/flatpickr.css";
 
 interface Props {
   formId: string;
@@ -108,12 +109,6 @@ const hasAdvancedData = Boolean(
         {taskTypes.map((item) => <option value={item.value} selected={item.value === selected.taskType}>{item.label}</option>)}
       </select>
     </label>
-    <div class="agent-task-type-guide span-full" data-task-type-guide>
-      <strong data-task-type-guide-label>{selectedTaskDefinition.label}</strong>
-      <span data-task-type-guide-deliverable>交付：{selectedTaskDefinition.deliverable}</span>
-      <p data-task-type-guide-description>{selectedTaskDefinition.description}</p>
-    </div>
-
     <label class="span-3">
       任务说明
       <textarea name="description" rows="5" required placeholder="描述任务背景、输入范围、Agent 应该完成什么。">{task?.description || ""}</textarea>
@@ -131,7 +126,14 @@ const hasAdvancedData = Boolean(
     </label>
     <label class="span-3">
       截止时间
-      <input name="deadlineAt" type="datetime-local" value={task?.deadlineAt || ""} />
+      <input
+        name="deadlineAt"
+        type="text"
+        value={task?.deadlineAt || ""}
+        placeholder="选择截止时间"
+        autocomplete="off"
+        data-date-time-picker
+      />
     </label>
   </div>
 
@@ -214,9 +216,6 @@ const hasAdvancedData = Boolean(
 
 <script is:inline define:vars={{ taskTypeDefinitions: AGENT_TASK_TYPES }}>
   const taskTypeSelect = document.querySelector("[data-task-type-select]");
-  const guideLabel = document.querySelector("[data-task-type-guide-label]");
-  const guideDeliverable = document.querySelector("[data-task-type-guide-deliverable]");
-  const guideDescription = document.querySelector("[data-task-type-guide-description]");
   const acceptanceCriteria = document.querySelector("[data-acceptance-criteria]");
   const submissionFormatSelect = document.querySelector("[data-submission-format-select]");
   const resultDestinationSelect = document.querySelector("[data-result-destination-select]");
@@ -227,9 +226,6 @@ const hasAdvancedData = Boolean(
 
     const definition = taskTypeDefinitions.find((item) => item.value === taskTypeSelect.value) || taskTypeDefinitions[0];
 
-    if (guideLabel) guideLabel.textContent = definition.label;
-    if (guideDeliverable) guideDeliverable.textContent = `交付：${definition.deliverable}`;
-    if (guideDescription) guideDescription.textContent = definition.description;
     if (acceptanceCriteria instanceof HTMLTextAreaElement) {
       acceptanceCriteria.placeholder = definition.acceptanceHint;
     }
@@ -250,4 +246,29 @@ const hasAdvancedData = Boolean(
   }
 
   taskTypeSelect?.addEventListener("change", updateTaskTypeGuide);
+</script>
+
+<script>
+  import flatpickr from "flatpickr";
+  import { Mandarin } from "flatpickr/dist/l10n/zh.js";
+
+  document.querySelectorAll("[data-date-time-picker]").forEach((element) => {
+    if (!(element instanceof HTMLInputElement) || element.dataset.pickerReady === "1") return;
+
+    element.dataset.pickerReady = "1";
+    flatpickr(element, {
+      allowInput: true,
+      altFormat: "Y-m-d H:i",
+      altInput: true,
+      dateFormat: "Y-m-d\\TH:i",
+      defaultHour: 18,
+      defaultMinute: 0,
+      disableMobile: true,
+      enableTime: true,
+      locale: Mandarin,
+      minuteIncrement: 15,
+      monthSelectorType: "static",
+      time_24hr: true,
+    });
+  });
 </script>

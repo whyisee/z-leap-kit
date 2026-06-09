@@ -328,6 +328,12 @@
   left: calc(100% + 12px);
 }
 
+.topic-floating-author-hover .topic-author-popover {
+  top: 0;
+  right: calc(100% + 12px);
+  left: auto;
+}
+
 .topic-author-hover:hover .topic-author-popover,
 .topic-author-hover:focus-within .topic-author-popover {
   display: grid;
@@ -390,6 +396,43 @@
   gap: 8px 12px;
 }
 
+.topic-author-popover-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.topic-author-popover-stats span {
+  display: grid;
+  gap: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.032);
+  color: var(--subtle);
+  font-size: 12px;
+  font-weight: 820;
+  line-height: 1.15;
+}
+
+.topic-author-popover-stats strong {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.topic-author-popover-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.topic-author-popover-actions form {
+  display: inline-flex;
+}
+
 .topic-post-meta {
   display: flex;
   justify-content: flex-end;
@@ -420,15 +463,64 @@
   bottom: max(56px, env(safe-area-inset-bottom));
   z-index: 82;
   display: grid;
-  gap: 7px;
+  gap: 4px;
+}
+
+.topic-floating-ai-menu {
+  display: grid;
+  justify-items: center;
+  margin-bottom: 2px;
+}
+
+.topic-floating-ai-button {
+  width: 42px;
+  min-height: 48px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.topic-floating-ai-button:hover,
+.topic-floating-ai-menu[data-open="true"] .topic-floating-ai-button,
+.topic-floating-ai-button:focus-visible {
+  background: transparent;
+  color: color-mix(in srgb, var(--blue) 86%, #ffffff 8%);
+}
+
+.topic-floating-ai-button .ai-tool-mark {
+  min-width: 28px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: currentColor;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.topic-floating-ai-button:hover .ai-tool-mark,
+.topic-floating-ai-menu[data-open="true"] .ai-tool-mark {
+  box-shadow: none;
+}
+
+.topic-floating-ai-menu .topic-ai-panel {
+  top: 0;
+  right: calc(100% + 10px);
+  width: min(320px, calc(100vw - 72px));
 }
 
 .topic-floating-author {
   position: relative;
   display: grid;
   justify-items: center;
-  margin-bottom: 7px;
-  padding-bottom: 9px;
+  margin-bottom: 2px;
+  padding-bottom: 8px;
+}
+
+.topic-floating-author-hover {
+  justify-self: center;
 }
 
 .topic-floating-avatar {
@@ -438,17 +530,25 @@
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 32% 22%, rgba(255, 255, 255, 0.22), transparent 34%),
-    rgba(138, 180, 248, 0.16);
+  background: rgba(138, 180, 248, 0.14);
   color: var(--text);
   font-size: 14px;
   font-weight: 950;
   line-height: 1;
   text-transform: uppercase;
-  box-shadow:
-    0 12px 26px rgba(0, 0, 0, 0.3),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22);
+}
+
+button.topic-floating-avatar {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.topic-floating-avatar:focus-visible {
+  outline: 2px solid rgba(138, 180, 248, 0.8);
+  outline-offset: 4px;
 }
 
 .topic-floating-avatar img {
@@ -459,9 +559,7 @@
 }
 
 .topic-floating-avatar.is-anonymous {
-  background:
-    radial-gradient(circle at 32% 22%, rgba(255, 255, 255, 0.16), transparent 34%),
-    linear-gradient(135deg, rgba(154, 166, 178, 0.24), rgba(138, 180, 248, 0.1));
+  background: rgba(154, 166, 178, 0.16);
   color: rgba(235, 241, 255, 0.9);
 }
 
@@ -536,12 +634,12 @@
   display: grid;
   grid-template-rows: 21px 12px;
   place-items: center;
-  gap: 3px;
-  width: 46px;
+  gap: 1px;
+  width: 42px;
   min-height: 48px;
   border: 0;
   border-radius: 8px;
-  padding: 7px 5px 6px;
+  padding: 4px 4px 3px;
   background: transparent;
   box-shadow: none;
   color: var(--muted);
@@ -596,13 +694,24 @@
   .topic-floating-actions {
     right: var(--topic-actions-right, max(10px, env(safe-area-inset-right)));
     bottom: max(42px, env(safe-area-inset-bottom));
-    gap: 5px;
+    gap: 4px;
   }
 
   .topic-floating-action {
-    width: 42px;
-    min-height: 44px;
-    padding: 6px 4px 5px;
+    width: 38px;
+    min-height: 48px;
+    padding: 4px 3px 3px;
+  }
+
+  .topic-floating-ai-button {
+    width: 38px;
+    min-height: 48px;
+  }
+
+  .topic-floating-ai-button .ai-tool-mark {
+    min-width: 26px;
+    height: 23px;
+    font-size: 10px;
   }
 
   .topic-floating-action svg {

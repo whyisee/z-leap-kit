@@ -12,6 +12,11 @@ export interface TopicInteractionState {
   followed: boolean;
 }
 
+export interface UserFollowStats {
+  followingCount: number;
+  followerCount: number;
+}
+
 export async function getTopicInteractionState(topicId: number, userId?: number): Promise<TopicInteractionState> {
   const counts = await queryOne<{ like_count: string; bookmark_count: string }>(
     `
@@ -88,6 +93,22 @@ export async function userFollowsTarget(targetType: TargetType, targetId: number
   );
 
   return Boolean(row?.followed);
+}
+
+export async function getUserFollowStats(userId: number): Promise<UserFollowStats> {
+  const row = await queryOne<{ following_count: string; follower_count: string }>(
+    `
+    SELECT
+      (SELECT COUNT(*)::text FROM follows WHERE user_id = $1 AND target_type = 'user') AS following_count,
+      (SELECT COUNT(*)::text FROM follows WHERE target_type = 'user' AND target_id = $1) AS follower_count
+    `,
+    [userId],
+  );
+
+  return {
+    followingCount: Number(row?.following_count || 0),
+    followerCount: Number(row?.follower_count || 0),
+  };
 }
 
 export async function toggleReaction(input: {

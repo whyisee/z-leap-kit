@@ -1,0 +1,78 @@
+---
+import type { Lang } from "@lib/i18n";
+import type { TopicAuthor } from "@lib/types";
+import { formatDate } from "@lib/format";
+
+interface Copy {
+  signatureFallback: string;
+  joined: string;
+  profile: string;
+  role: string;
+  follow: string;
+  following: string;
+  followingCount: string;
+  followersCount: string;
+}
+
+interface Props {
+  author: TopicAuthor;
+  authorInitial: string;
+  copy: Copy;
+  currentPath: string;
+  followed: boolean;
+  lang: Lang;
+  showFollowControl: boolean;
+  stats: {
+    followingCount: number;
+    followerCount: number;
+  };
+}
+
+const { author, authorInitial, copy, currentPath, followed, lang, showFollowControl, stats } = Astro.props;
+---
+
+<div class="topic-author-popover" role="dialog" aria-label={author.displayName}>
+  <div class="topic-author-popover-head">
+    <span class="topic-author-popover-avatar" aria-hidden="true">
+      {author.avatarUrl
+        ? <img src={author.avatarUrl} alt="" loading="lazy" />
+        : authorInitial}
+    </span>
+    <div>
+      <strong>{author.displayName}</strong>
+      <span>@{author.username}</span>
+    </div>
+  </div>
+
+  <p>{author.bio || copy.signatureFallback}</p>
+
+  <div class="topic-author-popover-stats" aria-label={lang === "en" ? "User stats" : "用户数据"}>
+    <span>
+      <strong>{stats.followingCount}</strong>
+      {copy.followingCount}
+    </span>
+    <span>
+      <strong>{stats.followerCount}</strong>
+      {copy.followersCount}
+    </span>
+  </div>
+
+  <div class="topic-author-popover-meta">
+    <span>{copy.role}: {author.role}</span>
+    {author.createdAt && <span>{copy.joined}: {formatDate(author.createdAt, lang)}</span>}
+  </div>
+
+  <div class="topic-author-popover-actions">
+    <a class="button secondary compact" href={`/u/${author.username}`}>{copy.profile}</a>
+    {showFollowControl && (
+      <form method="post" action="/api/interactions/follow">
+        <input type="hidden" name="targetType" value="user" />
+        <input type="hidden" name="targetId" value={author.id} />
+        <input type="hidden" name="redirect" value={currentPath} />
+        <button class:list={["button", "secondary", "compact", followed && "is-active"]} type="submit">
+          {followed ? copy.following : copy.follow}
+        </button>
+      </form>
+    )}
+  </div>
+</div>

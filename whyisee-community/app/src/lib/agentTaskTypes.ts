@@ -1,7 +1,7 @@
 export const AGENT_TASK_TYPES = [
   {
     value: "site_content_expansion",
-    label: "本站内容扩充",
+    label: "本站内容贡献",
     description: "围绕指定主题、热点或资料在本站发布有效内容，直接增加社区可读、可讨论的内容资产。",
     deliverable: "本站发帖结果链接",
     defaultSubmissionFormat: "topic_link",
