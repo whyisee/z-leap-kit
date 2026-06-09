@@ -15,7 +15,8 @@ import { enhanceMarkdownHtml } from "@lib/markdown";
 import { listCategories, listTags } from "@server/services/categories";
 import { countTargetLikes, getTopicInteractionState, getUserFollowStats, userFollowsTarget, userLikedTarget } from "@server/services/interactions";
 import { listPostsForTopic } from "@server/services/posts";
-import { getTopicById, listRelatedTopics } from "@server/services/topics";
+import { listReadingRecommendations } from "@server/services/recommendations";
+import { getTopicById } from "@server/services/topics";
 
 export const prerender = false;
 
@@ -30,8 +31,18 @@ if (!topic) {
   Astro.response.status = 404;
 }
 
-const related = topic ? await listRelatedTopics(topic, 4, lang) : [];
-const nextTopic = related[0];
+const readingRecommendations = topic
+  ? await listReadingRecommendations({ topic, userId: session?.userId, lang, limit: 12 })
+  : [];
+const nextTopic = readingRecommendations[0]?.topic;
+const nextTopicUrls = readingRecommendations.map((item) => item.href);
+const readingRecommendationItems = readingRecommendations.map((item) => ({
+  targetType: item.targetType,
+  targetId: item.targetId,
+  href: item.href,
+  score: item.score,
+  reasons: item.reasons,
+}));
 const posts = topic ? await listPostsForTopic(topic.id, session?.userId, lang) : [];
 const topicInteraction = topic ? await getTopicInteractionState(topic.id, session?.userId) : undefined;
 const postInteractionEntries = await Promise.all(
@@ -153,6 +164,8 @@ const copy = lang === "en"
       role: "Role",
       followingCount: "Following",
       followersCount: "Followers",
+      noPreviousTopic: "Nothing above.",
+      noNextTopic: "Nothing below.",
       anonymousUser: "Anonymous",
       anonymousBadge: "Tree Hole",
       anonymousBio: "Identity is hidden in this Tree Hole topic.",
@@ -211,6 +224,8 @@ const copy = lang === "en"
       role: "身份",
       followingCount: "关注",
       followersCount: "粉丝",
+      noPreviousTopic: "上面没有了",
+      noNextTopic: "下面没有了",
       anonymousUser: "匿名用户",
       anonymousBadge: "树洞匿名",
       anonymousBio: "树洞板块已隐藏作者和评论者身份。",
@@ -239,8 +254,13 @@ const aiActions = lang === "en"
     <section
       class="page-grid topic-layout no-right-sidebar"
       data-topic-reading-page
+      data-topic-id={topic.id}
       data-next-topic-url={nextTopic ? topicPath(nextTopic) : ""}
       data-next-topic-title={nextTopic?.title ?? ""}
+      data-next-topic-urls={JSON.stringify(nextTopicUrls)}
+      data-reading-recommendations={JSON.stringify(readingRecommendationItems)}
+      data-no-prev-message={copy.noPreviousTopic}
+      data-no-next-message={copy.noNextTopic}
     >
       <LeftNav categories={categories} tags={tags} lang={lang} activeCategorySlug={topic.category.slug} />
 
@@ -528,11 +548,110 @@ const aiActions = lang === "en"
     const commentToggle = page.querySelector("[data-topic-comment-toggle]");
     const floatingActions = page.querySelector("[data-topic-floating-actions]");
     const shareButton = page.querySelector("[data-topic-share]");
+    const topicId = Number(page.getAttribute("data-topic-id") || 0);
     const nextTopicUrl = page.getAttribute("data-next-topic-url") || "";
+    const noPreviousTopicMessage = page.getAttribute("data-no-prev-message") || "";
+    const noNextTopicMessage = page.getAttribute("data-no-next-message") || "";
+    const recommendationItems = (() => {
+      try {
+        const parsed = JSON.parse(page.getAttribute("data-reading-recommendations") || "[]");
+
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    })();
 
     if (!scrollRoot || !hero || !postBody || !header) {
+      document.documentElement.removeAttribute("data-reading-arriving");
       return;
     }
+
+    const rememberSessionOnce = (key) => {
+      try {
+        if (window.sessionStorage.getItem(key)) {
+          return false;
+        }
+
+        window.sessionStorage.setItem(key, "1");
+      } catch {
+        return true;
+      }
+
+      return true;
+    };
+
+    const trackRecommendationEvent = (payload, keepalive = false) => {
+      const body = JSON.stringify(payload);
+
+      if (keepalive && navigator.sendBeacon) {
+        navigator.sendBeacon("/api/recommendations/events", new Blob([body], { type: "application/json" }));
+        return;
+      }
+
+      window.fetch("/api/recommendations/events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+        keepalive,
+      }).catch(() => {});
+    };
+
+    if (topicId > 0 && rememberSessionOnce(`whyisee_topic_view_${topicId}`)) {
+      trackRecommendationEvent({
+        eventType: "view",
+        targetType: "topic",
+        targetId: topicId,
+        sourceSurface: "reading",
+      });
+    }
+
+    if (recommendationItems.length > 0) {
+      const impressionKey = `whyisee_topic_reading_impressions_${topicId}_${recommendationItems.map((item) => item.targetId).join("_")}`;
+
+      if (rememberSessionOnce(impressionKey)) {
+        trackRecommendationEvent({
+          surface: "reading",
+          items: recommendationItems.map((item) => ({
+            targetType: "topic",
+            targetId: Number(item.targetId || 0),
+            score: Number(item.score || 0),
+            reasons: Array.isArray(item.reasons) ? item.reasons : [],
+          })),
+        });
+      }
+    }
+
+    const pageOpenedAt = Date.now();
+    let dwellSent = false;
+
+    const sendDwellEvent = () => {
+      if (dwellSent || topicId <= 0) {
+        return;
+      }
+
+      const dwellSeconds = Math.round((Date.now() - pageOpenedAt) / 1000);
+
+      if (dwellSeconds < 8) {
+        return;
+      }
+
+      dwellSent = true;
+      trackRecommendationEvent({
+        eventType: "dwell",
+        targetType: "topic",
+        targetId: topicId,
+        sourceSurface: "reading",
+        dwellSeconds,
+      }, true);
+    };
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        sendDwellEvent();
+      }
+    });
+    window.addEventListener("pagehide", sendDwellEvent);
 
     let titleIndicator = header.querySelector(".reading-header-title");
 
@@ -595,7 +714,7 @@ const aiActions = lang === "en"
       syncTitlePosition();
       syncFloatingActionPosition();
 
-      const scrolled = getScrollTop() > 64;
+      const scrolled = getScrollTop() > 16;
       const headerRect = header.getBoundingClientRect();
       const heroRect = hero.getBoundingClientRect();
       const titleStuck = scrolled && heroRect.bottom <= headerRect.bottom + 10;
@@ -730,47 +849,426 @@ const aiActions = lang === "en"
       return activeScroller.scrollHeight - activeScroller.scrollTop - activeScroller.clientHeight;
     };
 
-    let navigatingToNext = false;
-    const navigateToNextTopic = () => {
-      if (!nextTopicUrl || navigatingToNext) {
-        return;
-      }
+    const currentTopicPath = window.location.pathname;
+    const historyStorageKey = "whyisee_topic_reading_stack";
+    const forwardHistoryStorageKey = "whyisee_topic_reading_forward_stack";
+    const readingArrivalStorageKey = "whyisee_topic_reading_arrival";
 
-      navigatingToNext = true;
-      window.location.assign(nextTopicUrl);
+    const queueReadingArrival = (targetUrl, direction) => {
+      try {
+        const parsed = new URL(targetUrl, window.location.origin);
+
+        if (parsed.origin !== window.location.origin || !/^\/t\/\d+/.test(parsed.pathname)) {
+          return;
+        }
+
+        window.sessionStorage.setItem(readingArrivalStorageKey, JSON.stringify({
+          path: parsed.pathname,
+          direction,
+          createdAt: Date.now(),
+        }));
+      } catch {
+        // The marker only preserves immersive reading position after navigation.
+      }
     };
 
-    const isReadingAtBottom = () => getRemainingScroll() <= 4;
+    const readReadingArrival = () => {
+      try {
+        const parsed = JSON.parse(window.sessionStorage.getItem(readingArrivalStorageKey) || "{}");
 
-    const handleContinuedWheel = (event) => {
-      if (!nextTopicUrl || navigatingToNext || event.deltaY <= 18) {
+        if (!parsed || parsed.path !== currentTopicPath || Date.now() - Number(parsed.createdAt || 0) > 10000) {
+          return undefined;
+        }
+
+        return parsed;
+      } catch {
+        return undefined;
+      }
+    };
+
+    const clearReadingArrival = () => {
+      try {
+        window.sessionStorage.removeItem(readingArrivalStorageKey);
+      } catch {
+        // Ignore unavailable session storage.
+      }
+    };
+
+    const scrollToReadingPosition = () => {
+      const maxScrollTop = Math.max(0, scrollRoot.scrollHeight - scrollRoot.clientHeight);
+      const titleElement = page.querySelector(".topic-title-stack h1");
+      const titleRect = titleElement?.getBoundingClientRect();
+      const headerRect = header.getBoundingClientRect();
+      const targetScrollTop = Math.max(0, Math.min(
+        titleRect ? getScrollTop() + titleRect.top - headerRect.bottom - 8 : hero.offsetTop + 20,
+        maxScrollTop,
+      ));
+
+      scrollRoot.scrollTo({ top: targetScrollTop, left: 0, behavior: "auto" });
+      document.documentElement.dataset.readingMode = "true";
+      setState();
+    };
+
+    const restoreReadingArrival = () => {
+      const arrival = readReadingArrival();
+
+      if (!arrival) {
+        document.documentElement.removeAttribute("data-reading-arriving");
+        return false;
+      }
+
+      clearReadingArrival();
+
+      if ("scrollRestoration" in window.history) {
+        window.history.scrollRestoration = "manual";
+      }
+
+      document.documentElement.dataset.readingMode = "true";
+      window.requestAnimationFrame(() => {
+        scrollToReadingPosition();
+        window.requestAnimationFrame(() => {
+          scrollToReadingPosition();
+          document.documentElement.removeAttribute("data-reading-arriving");
+        });
+      });
+
+      return true;
+    };
+
+    const normalizeTopicPath = (value) => {
+      if (!value) {
+        return "";
+      }
+
+      try {
+        const parsed = new URL(value, window.location.origin);
+
+        if (parsed.origin !== window.location.origin || !/^\/t\/\d+/.test(parsed.pathname)) {
+          return "";
+        }
+
+        return parsed.pathname === currentTopicPath ? "" : parsed.pathname;
+      } catch {
+        return "";
+      }
+    };
+
+    const findRecommendationByUrl = (value) => {
+      const targetPath = normalizeTopicPath(value);
+
+      if (!targetPath) {
+        return undefined;
+      }
+
+      return recommendationItems.find((item) => normalizeTopicPath(item.href) === targetPath);
+    };
+
+    const trackRecommendationClick = (targetUrl) => {
+      const item = findRecommendationByUrl(targetUrl);
+
+      if (!item) {
         return;
       }
 
-      if (isReadingAtBottom()) {
-        navigateToNextTopic();
+      trackRecommendationEvent({
+        eventType: "recommendation_click",
+        targetType: "topic",
+        targetId: Number(item.targetId || 0),
+        sourceSurface: "reading",
+        sourceReason: Array.isArray(item.reasons) ? item.reasons.join(" / ") : "",
+        metadata: {
+          href: item.href,
+          score: Number(item.score || 0),
+        },
+      }, true);
+    };
+
+    const readTopicStack = (key) => {
+      try {
+        const parsed = JSON.parse(window.sessionStorage.getItem(key) || "[]");
+
+        if (!Array.isArray(parsed)) {
+          return [];
+        }
+
+        return parsed.map((item) => normalizeTopicPath(String(item))).filter(Boolean);
+      } catch {
+        return [];
+      }
+    };
+
+    const writeTopicStack = (key, stack) => {
+      try {
+        window.sessionStorage.setItem(key, JSON.stringify(stack.slice(-50)));
+      } catch {
+        // Session storage is only used to make vertical reading reversible.
+      }
+    };
+
+    const readHistoryStack = () => readTopicStack(historyStorageKey);
+    const writeHistoryStack = (stack) => writeTopicStack(historyStorageKey, stack);
+    const readForwardHistoryStack = () => readTopicStack(forwardHistoryStorageKey);
+    const writeForwardHistoryStack = (stack) => writeTopicStack(forwardHistoryStorageKey, stack);
+
+    const readNextTopicCandidates = () => {
+      try {
+        const parsed = JSON.parse(page.getAttribute("data-next-topic-urls") || "[]");
+
+        if (!Array.isArray(parsed)) {
+          return [];
+        }
+
+        return parsed.map((item) => normalizeTopicPath(String(item))).filter(Boolean);
+      } catch {
+        return normalizeTopicPath(nextTopicUrl) ? [normalizeTopicPath(nextTopicUrl)] : [];
+      }
+    };
+
+    const getNextTopicUrl = () => {
+      const stack = readHistoryStack();
+      const seenTopics = new Set(stack);
+      const candidates = readNextTopicCandidates();
+
+      return candidates.find((candidate) => !seenTopics.has(candidate)) || "";
+    };
+
+    const pushCurrentTopicToHistory = () => {
+      const stack = readHistoryStack().filter((item) => item !== currentTopicPath);
+      stack.push(currentTopicPath);
+      writeHistoryStack(stack);
+    };
+
+    const pushCurrentTopicToForwardHistory = () => {
+      const stack = readForwardHistoryStack().filter((item) => item !== currentTopicPath);
+      stack.push(currentTopicPath);
+      writeForwardHistoryStack(stack);
+    };
+
+    const popPreviousTopicFromHistory = () => {
+      const stack = readHistoryStack();
+
+      while (stack.length > 0) {
+        const previousTopicUrl = normalizeTopicPath(stack.pop() || "");
+
+        if (previousTopicUrl) {
+          writeHistoryStack(stack);
+          return previousTopicUrl;
+        }
+      }
+
+      writeHistoryStack([]);
+      return "";
+    };
+
+    const popNextTopicFromForwardHistory = () => {
+      const stack = readForwardHistoryStack();
+
+      while (stack.length > 0) {
+        const nextTopicFromHistory = normalizeTopicPath(stack.pop() || "");
+
+        if (nextTopicFromHistory) {
+          writeForwardHistoryStack(stack);
+          return nextTopicFromHistory;
+        }
+      }
+
+      writeForwardHistoryStack([]);
+      return "";
+    };
+
+    let boundaryToast;
+    let boundaryToastTimer = 0;
+    let boundaryToastLock = 0;
+
+    const showBoundaryMessage = (message) => {
+      if (!message) {
+        return;
+      }
+
+      const now = Date.now();
+
+      if (now - boundaryToastLock < 760) {
+        return;
+      }
+
+      boundaryToastLock = now;
+
+      if (!boundaryToast) {
+        boundaryToast = document.createElement("div");
+        boundaryToast.className = "topic-reading-boundary-toast";
+        boundaryToast.setAttribute("role", "status");
+        boundaryToast.setAttribute("aria-live", "polite");
+        document.body.append(boundaryToast);
+      }
+
+      boundaryToast.textContent = message;
+      boundaryToast.dataset.visible = "true";
+      window.clearTimeout(boundaryToastTimer);
+      boundaryToastTimer = window.setTimeout(() => {
+        boundaryToast?.removeAttribute("data-visible");
+      }, 1400);
+    };
+
+    const navigateReadingTopic = (targetUrl, direction) => {
+      queueReadingArrival(targetUrl, direction);
+      window.location.assign(targetUrl);
+    };
+
+    let navigatingBetweenTopics = false;
+
+    const navigateToNextTopic = () => {
+      const restoredTopicUrl = popNextTopicFromForwardHistory();
+      const targetUrl = restoredTopicUrl || getNextTopicUrl();
+
+      if (!targetUrl) {
+        showBoundaryMessage(noNextTopicMessage);
+        return;
+      }
+
+      if (navigatingBetweenTopics) {
+        return;
+      }
+
+      navigatingBetweenTopics = true;
+      pushCurrentTopicToHistory();
+      if (!restoredTopicUrl) {
+        trackRecommendationClick(targetUrl);
+      }
+      navigateReadingTopic(targetUrl, "next");
+    };
+
+    const navigateToPreviousTopic = () => {
+      if (navigatingBetweenTopics) {
+        return;
+      }
+
+      const previousTopicUrl = popPreviousTopicFromHistory();
+
+      if (!previousTopicUrl) {
+        showBoundaryMessage(noPreviousTopicMessage);
+        return;
+      }
+
+      navigatingBetweenTopics = true;
+      pushCurrentTopicToForwardHistory();
+      navigateReadingTopic(previousTopicUrl, "previous");
+    };
+
+    const boundaryDistance = 28;
+    const wheelBoundaryThreshold = 128;
+    const touchBoundaryThreshold = 108;
+    let boundaryWheelDelta = 0;
+    let boundaryWheelDirection = "";
+    let boundaryWheelTimer = 0;
+    let touchBoundaryDelta = 0;
+    let touchBoundaryDirection = "";
+
+    const isReadingAtBottom = () => getRemainingScroll() <= boundaryDistance;
+    const isReadingAtTop = () => getScrollTop() <= boundaryDistance;
+
+    const resetWheelBoundaryDelta = () => {
+      boundaryWheelDelta = 0;
+      boundaryWheelDirection = "";
+      window.clearTimeout(boundaryWheelTimer);
+    };
+
+    const addWheelBoundaryDelta = (direction, amount) => {
+      if (boundaryWheelDirection && boundaryWheelDirection !== direction) {
+        boundaryWheelDelta = 0;
+      }
+
+      boundaryWheelDirection = direction;
+      boundaryWheelDelta += Math.abs(amount);
+      window.clearTimeout(boundaryWheelTimer);
+      boundaryWheelTimer = window.setTimeout(resetWheelBoundaryDelta, 520);
+
+      return boundaryWheelDelta >= wheelBoundaryThreshold;
+    };
+
+    const resetTouchBoundaryDelta = () => {
+      touchBoundaryDelta = 0;
+      touchBoundaryDirection = "";
+    };
+
+    const addTouchBoundaryDelta = (direction, amount) => {
+      if (touchBoundaryDirection && touchBoundaryDirection !== direction) {
+        touchBoundaryDelta = 0;
+      }
+
+      touchBoundaryDirection = direction;
+      touchBoundaryDelta += Math.abs(amount);
+      return touchBoundaryDelta >= touchBoundaryThreshold;
+    };
+
+    const handleContinuedWheel = (event) => {
+      if (event.__whyiseeReadingWheelHandled) {
+        return;
+      }
+
+      event.__whyiseeReadingWheelHandled = true;
+
+      if (navigatingBetweenTopics || Math.abs(event.deltaY) <= 1) {
+        return;
+      }
+
+      if (event.deltaY > 0 && isReadingAtBottom()) {
+        if (addWheelBoundaryDelta("next", event.deltaY)) {
+          resetWheelBoundaryDelta();
+          navigateToNextTopic();
+        }
+      } else if (event.deltaY < 0 && isReadingAtTop()) {
+        if (addWheelBoundaryDelta("previous", event.deltaY)) {
+          resetWheelBoundaryDelta();
+          navigateToPreviousTopic();
+        }
+      } else {
+        resetWheelBoundaryDelta();
       }
     };
 
     let touchStartY = 0;
+    let touchLastY = 0;
 
     page.addEventListener("touchstart", (event) => {
       touchStartY = event.touches[0]?.clientY || 0;
+      touchLastY = touchStartY;
+      resetTouchBoundaryDelta();
     }, { passive: true });
 
     page.addEventListener("touchmove", (event) => {
       const currentY = event.touches[0]?.clientY || touchStartY;
+      const deltaY = touchLastY - currentY;
+      touchLastY = currentY;
 
-      if (touchStartY - currentY > 48 && isReadingAtBottom()) {
-        navigateToNextTopic();
+      if (Math.abs(deltaY) <= 1 || navigatingBetweenTopics) {
+        return;
+      }
+
+      if (deltaY > 0 && isReadingAtBottom()) {
+        if (addTouchBoundaryDelta("next", deltaY)) {
+          resetTouchBoundaryDelta();
+          navigateToNextTopic();
+        }
+      } else if (deltaY < 0 && isReadingAtTop()) {
+        if (addTouchBoundaryDelta("previous", deltaY)) {
+          resetTouchBoundaryDelta();
+          navigateToPreviousTopic();
+        }
+      } else {
+        resetTouchBoundaryDelta();
       }
     }, { passive: true });
+
+    page.addEventListener("touchend", resetTouchBoundaryDelta, { passive: true });
+    page.addEventListener("touchcancel", resetTouchBoundaryDelta, { passive: true });
 
     scrollRoot.addEventListener("wheel", handleContinuedWheel, { passive: true });
     window.addEventListener("wheel", handleContinuedWheel, { passive: true });
     scrollRoot.addEventListener("scroll", requestUpdate, { passive: true });
     window.addEventListener("scroll", requestUpdate, { passive: true });
     window.addEventListener("resize", requestUpdate);
-    setState();
+    if (!restoreReadingArrival()) {
+      setState();
+    }
   })();
 </script>

@@ -1,6 +1,81 @@
 ---
+import { getSessionFromAstro } from "@lib/auth";
+import { getLangFromAstro } from "@lib/i18n";
+import {
+  listSeeRecommendations,
+  recordRecommendationImpressions,
+  recordUserContentEvent,
+} from "@server/services/recommendations";
+import { listTopics } from "@server/services/topics";
+
 export const prerender = false;
 
-return Astro.redirect(`/${Astro.url.search}`, 301);
----
+const seeRecentTopicsCookie = "whyisee_see_recent_topics";
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+const recommendations = await listSeeRecommendations({
+  userId: session?.userId,
+  lang,
+  sort: "recommend",
+  limit: 50,
+});
+const recentTopicIds = readRecentTopicIds(Astro.cookies.get(seeRecentTopicsCookie)?.value);
+const target = recommendations.find((topic) => !recentTopicIds.has(topic.id)) || recommendations[0];
 
+if (target) {
+  writeRecentTopicIds(target.id, recentTopicIds);
+
+  await recordRecommendationImpressions({
+    userId: session?.userId,
+    surface: "see",
+    items: recommendations.map((topic) => ({
+      targetType: "topic",
+      targetId: topic.id,
+      score: topic.recommendation.score,
+      reasons: topic.recommendation.reasons,
+    })),
+  });
+  await recordUserContentEvent({
+    userId: session?.userId,
+    eventType: "recommendation_click",
+    targetType: "topic",
+    targetId: target.id,
+    sourceSurface: "see",
+    sourceReason: target.recommendation.reasons.join(" / "),
+  });
+
+  return Astro.redirect(`/t/${target.id}`, 302);
+}
+
+const [latestTopic] = await listTopics({ limit: 1, lang });
+
+if (latestTopic) {
+  return Astro.redirect(`/t/${latestTopic.id}`, 302);
+}
+
+return Astro.redirect("/latest", 302);
+
+function readRecentTopicIds(value: string | undefined) {
+  return new Set(
+    String(value || "")
+      .split(",")
+      .map((item) => Number(item.trim()))
+      .filter((id) => Number.isFinite(id) && id > 0),
+  );
+}
+
+function writeRecentTopicIds(topicId: number, recentTopicIds: Set<number>) {
+  const ids = [
+    topicId,
+    ...[...recentTopicIds].filter((id) => id !== topicId),
+  ].slice(0, 24);
+
+  Astro.cookies.set(seeRecentTopicsCookie, ids.join(","), {
+    httpOnly: true,
+    maxAge: 60 * 60 * 24 * 14,
+    path: "/",
+    sameSite: "lax",
+    secure: import.meta.env.PROD,
+  });
+}
+---

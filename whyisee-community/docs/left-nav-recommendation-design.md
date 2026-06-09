@@ -271,23 +271,25 @@ bot_tasks
 推荐使用：
 
 ```text
-/             看见，首页推荐
-/see          看见别名，可 301 到 /
+/             最近笔记
+/see          看见，直接打开一篇推荐内容
 /go           出发，值得参与
 /following    关注，用户关注
 ```
 
 这样有几个好处：
 
-- `/` 保留首页地位，直接承载“看见”。
+- `/` 保留首页地位，展示最近笔记和最新内容列表。
+- `/see` 是“看见”推荐阅读入口，直接跳转到一篇推荐话题。
 - `/go` 短、好记，和“出发”语义一致。
 - `/following` 和已有 `follows` 表语义一致。
+- `/latest` 继续承担传统列表浏览和最新话题入口。
 - 未来需要英文界面时也不需要换路由。
 
 ### 4.2 导航激活规则
 
 ```text
-当前路径 / 或 /see：
+当前路径 /see：
   看见 is-active，aria-current="page"
 
 当前路径 /go：
@@ -303,7 +305,7 @@ bot_tasks
   对应标签 is-active
 ```
 
-如果用户在 `/` 上使用 `category` 或 `tag` 查询参数筛选内容，仍然高亮 `看见`，因为这是首页推荐页面内的过滤状态。
+`/` 展示最近笔记，不激活三大主入口；分类、标签和最新列表浏览交给 `/latest`、分类页和标签页承载。
 
 ### 4.3 计数展示
 
@@ -341,62 +343,41 @@ bot_tasks
 
 ### 5.1 页面结构
 
-`/` 页面标题从“最新话题”调整为：
+`/see` 不渲染推荐列表页面，而是作为服务端推荐入口：
 
 ```text
-看见
-根据你的关注、阅读、收藏和社区质量信号推荐内容。
+访问 /see
+  -> 调用 listSeeRecommendations({ sort: "recommend", limit: 50 })
+  -> 跳过 whyisee_see_recent_topics 中最近从看见入口打开过的文章
+  -> 记录 see 推荐曝光
+  -> 记录 see 推荐点击
+  -> 302 跳转到第一篇推荐话题 /t/:id
 ```
 
-页面主体：
+没有推荐内容时：
 
 ```text
-顶部筛选区
-  推荐 / 最新 / 热门 / 精选
-  分类筛选
-  标签筛选
-
-推荐列表
-  TopicListHeader
-  RecommendationTopicCard[]
-
-空状态
-  关注几个分类或标签
-  查看最新话题
-  去出发页参与一个问题
+优先跳转最新话题
+如果站内没有话题，则跳转 /latest
 ```
 
-保留当前首页已有的分类、标签和排序 UI，但把默认排序从 `latest` 改成 `recommend`。
+这个调整让“看见”从“列表页”变成“打开一篇值得看的内容”，更接近沉浸阅读入口。
 
-推荐排序选项：
+传统列表浏览仍由这些页面承载：
 
 ```text
-推荐
-最新
-热门
-精选
+/latest
+/c/:slug
+/tag/:slug
 ```
 
-其中：
+### 5.2 看见推荐事件
 
-- 推荐：个性化排序。
-- 最新：按 `last_activity_at`。
-- 热门：按回复、浏览、收藏、点赞综合。
-- 精选：优先 `is_featured` 和高质量内容。
+`/see` 作为推荐入口时，需要写入两类信号：
 
-### 5.2 推荐卡片展示
-
-继续复用 `TopicCard.astro` 的主结构，增加可选推荐理由行。
-
-推荐理由不要写成长解释，只显示短标签：
-
-```text
-因为你关注 #Codex
-你收藏过 AI Agent
-社区精选
-今天升温
-项目求反馈
-```
+- `recommendation_impressions`：记录本次服务端候选队列，surface 为 `see`。
+- `user_content_events`：记录第一篇推荐内容的 `recommendation_click`，source surface 为 `see`。
+- `whyisee_see_recent_topics`：记录最近从“看见”入口打开过的 24 篇，避免入口连续打开同一篇文章。
 
 数据结构：
 
@@ -453,6 +434,98 @@ see_score =
 - `seen_penalty`：用户已经看过且没有互动的内容降权。
 - `negative_feedback_penalty`：不感兴趣、举报、屏蔽相关内容降权。
 - `risk_penalty`：审核风险、举报未处理、内容质量低降权。
+
+### 5.4 阅读推荐
+
+话题详情页的沉浸阅读翻篇不再使用简单的同分类相关内容，而是使用独立推荐场景：
+
+```text
+surface = reading
+```
+
+阅读推荐服务：
+
+```text
+listReadingRecommendations({
+  topic,
+  userId,
+  lang,
+  limit,
+  excludeTopicIds
+})
+```
+
+阅读推荐目标：
+
+> 用户读完当前内容后，下一篇应该既能承接当前上下文，又能逐步学习用户兴趣，并避免短时间重复阅读。
+
+阅读推荐排序：
+
+```text
+reading_score =
+  reading_affinity_score * 0.36
+  + interest_match_score * 0.22
+  + quality_score * 0.18
+  + freshness_score * 0.10
+  + engagement_score * 0.08
+  + exploration_score * 0.04
+  + editorial_boost
+  - already_interacted_penalty
+  - negative_feedback_penalty
+  - risk_penalty
+```
+
+字段解释：
+
+- `reading_affinity_score`：当前话题与候选话题在分类、标签、内容类型、作者和标题摘要关键词上的相似度。
+- `interest_match_score`：复用用户兴趣画像，考虑分类、标签、作者、内容类型和关注源。
+- `quality_score`：复用内容质量评分，考虑精选、收藏、点赞、回复、浏览和举报。
+- `freshness_score`：新发布或最近活跃内容加分。
+- `engagement_score`：回复、浏览、点赞、收藏综合热度。
+- `exploration_score`：质量高但不完全相似的内容保留少量探索机会。
+- `editorial_boost`：精选和置顶小幅加分。
+- `already_interacted_penalty`：已回复、已收藏、已点赞内容降权。
+- `negative_feedback_penalty`：不感兴趣、举报、屏蔽相关内容降权。
+- `risk_penalty`：举报和审核风险降权。
+
+阅读推荐去重：
+
+- 当前话题永远排除。
+- 调用方传入的 `excludeTopicIds` 排除。
+- 登录用户最近 14 天内已经 `view`、`dwell`、`recommendation_click` 的话题排除。
+- 前端沉浸阅读使用 `sessionStorage` 维护本次阅读的后退栈和前进栈。
+- 下滑时优先取前进栈中的“刚才看过的下一章”，前进栈为空时才进入新的推荐下一篇。
+- 上滑返回只从后退栈取“看过的上一章”，后退栈为空时提示“上面没有了”。
+- 新推荐下一篇仍会跳过本次后退栈里已经经过的文章，避免无意重复。
+
+阅读推荐行为信号：
+
+- 进入话题页记录 `view`。
+- 推荐候选队列记录 `recommendation_impressions`，surface 为 `reading`。
+- 下滑进入下一篇记录 `recommendation_click`，source surface 为 `reading`。
+- 停留超过 8 秒记录 `dwell`。
+
+阅读推荐接口：
+
+```text
+GET /api/recommendations/reading?topicId=85&limit=12&exclude=84,83
+```
+
+返回内容包括：
+
+```ts
+{
+  targetType: "topic";
+  targetId: number;
+  href: string;
+  title: string;
+  summary: string;
+  category: Category;
+  tags: Tag[];
+  score: number;
+  reasons: string[];
+}
+```
 
 ## 6. 出发页面设计
 
@@ -1424,7 +1497,7 @@ whyisee-community/app/src/components/LeftNav.astro
 
 ```ts
 const activePrimary =
-  currentPath === "/" || currentPath === "/see" ? "see"
+  currentPath === "/see" ? "see"
   : currentPath.startsWith("/go") ? "go"
   : currentPath.startsWith("/following") ? "following"
   : "";
@@ -1458,26 +1531,33 @@ primaryCounts?: {
 whyisee-community/app/src/pages/index.astro
 ```
 
-将当前首页从：
+首页保留最近笔记列表：
 
 ```text
-最新话题
+最近笔记
+  TopicListHeader
+  TopicCard[]
 ```
 
-调整为：
+### 13.3.1 看见 see.astro
+
+文件：
 
 ```text
-看见
+whyisee-community/app/src/pages/see.astro
 ```
 
-数据来源从 `listTopics` 调整为 `listSeeRecommendations`。
-
-保留分类、标签筛选 UI，但排序增加 `recommend`：
+将 `看见` 调整为推荐跳转入口：
 
 ```ts
-function readSort(value: string | null): "recommend" | "latest" | "hot" | "featured" {
-  return value === "latest" || value === "hot" || value === "featured" ? value : "recommend";
-}
+const recommendations = await listSeeRecommendations({
+  userId: session?.userId,
+  lang,
+  sort: "recommend",
+  limit: 50,
+});
+
+return Astro.redirect(`/t/${recommendations[0].id}`, 302);
 ```
 
 ### 13.4 新增 go.astro
@@ -1907,4 +1987,3 @@ whyisee-community/app/src/pages/admin/recommendations.astro
 ```
 
 这样 `whyisee.xyz` 会从“按时间排列的话题社区”，变成一个能记住用户、推动互动、持续沉淀内容价值的智能社区入口。
-

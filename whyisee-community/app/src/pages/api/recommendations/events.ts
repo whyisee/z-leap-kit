@@ -51,7 +51,7 @@ function readString(value: unknown) {
 }
 
 function readSurface(value: unknown): RecommendationSurface {
-  return value === "go" || value === "following" || value === "related" || value === "search" ? value : "see";
+  return value === "go" || value === "following" || value === "related" || value === "reading" || value === "search" ? value : "see";
 }
 
 function json(data: unknown, status = 200) {
@@ -60,4 +60,3 @@ function json(data: unknown, status = 200) {
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
-

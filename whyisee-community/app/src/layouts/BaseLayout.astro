@@ -277,6 +277,27 @@ const canonical = new URL(Astro.url.pathname, Astro.site || "https://whyisee.xyz
       } catch {
         document.documentElement.removeAttribute("data-sidebar");
       }
+
+      try {
+        const readingArrival = JSON.parse(sessionStorage.getItem("whyisee_topic_reading_arrival") || "{}");
+
+        if (
+          readingArrival
+          && readingArrival.path === window.location.pathname
+          && /^\/t\/\d+/.test(readingArrival.path)
+          && Date.now() - Number(readingArrival.createdAt || 0) <= 10000
+        ) {
+          document.documentElement.dataset.readingArriving = "true";
+          document.documentElement.dataset.readingMode = "true";
+          document.documentElement.dataset.topicTitleStuck = "true";
+
+          if ("scrollRestoration" in window.history) {
+            window.history.scrollRestoration = "manual";
+          }
+        }
+      } catch {
+        document.documentElement.removeAttribute("data-reading-arriving");
+      }
     </script>
   </head>
   <body>

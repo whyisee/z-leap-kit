@@ -5,7 +5,7 @@ import type { Category, Tag, Topic, TopicType } from "@lib/types";
 import { execute, query, queryOne } from "@server/db/client";
 import { listTopics } from "./topics";
 
-export type RecommendationSurface = "see" | "go" | "following" | "related" | "search";
+export type RecommendationSurface = "see" | "go" | "following" | "related" | "reading" | "search";
 export type SeeSort = "recommend" | "latest" | "hot" | "featured";
 export type ParticipationFilter = "all" | "questions" | "feedback" | "tasks" | "supplement" | "stale";
 export type FollowingFilter = "all" | "topics" | "users" | "categories" | "tags";
@@ -58,6 +58,15 @@ export interface FollowingFeedItem {
   category: Category;
   tags: Tag[];
   score: number;
+}
+
+export interface ReadingRecommendation {
+  targetType: "topic";
+  targetId: number;
+  href: string;
+  topic: Topic;
+  score: number;
+  reasons: string[];
 }
 
 interface TopicAggregate {
@@ -116,6 +125,30 @@ interface TaskCandidateRow {
 }
 
 const topicCandidateLimit = 240;
+const recommendationStopWords = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "this",
+  "that",
+  "what",
+  "when",
+  "where",
+  "why",
+  "how",
+  "一个",
+  "一些",
+  "这个",
+  "那个",
+  "什么",
+  "如何",
+  "为什么",
+  "可以",
+  "需要",
+  "现在",
+]);
 
 export async function listSeeRecommendations(input: {
   userId?: number;
@@ -263,6 +296,46 @@ export async function listFollowingFeed(input: {
   return [...items.values()]
     .sort((a, b) => b.score - a.score)
     .slice(offset, offset + limit);
+}
+
+export async function listReadingRecommendations(input: {
+  topic: Topic;
+  userId?: number;
+  lang: Lang;
+  limit?: number;
+  excludeTopicIds?: number[];
+}): Promise<ReadingRecommendation[]> {
+  const limit = normalizeLimit(input.limit, 12);
+  const baseExcludedTopicIds = new Set([
+    input.topic.id,
+    ...(input.excludeTopicIds || []),
+  ].filter((id) => Number.isFinite(id) && id > 0));
+  const topics = await listTopics({ limit: topicCandidateLimit, lang: input.lang });
+  const candidateTopics = topics.filter((topic) => !baseExcludedTopicIds.has(topic.id));
+  const [aggregates, signals, recentViewedTopicIds] = await Promise.all([
+    loadTopicAggregates(candidateTopics.map((topic) => topic.id)),
+    loadUserSignals(input.userId, topics),
+    loadRecentViewedTopicIds(input.userId),
+  ]);
+
+  const recommendations = candidateTopics
+    .filter((topic) => !recentViewedTopicIds.has(topic.id))
+    .map((topic) => {
+      const aggregate = aggregates.get(topic.id) || emptyAggregate();
+      const score = scoreReadingTopic(input.topic, topic, aggregate, signals, input.lang);
+
+      return {
+        targetType: "topic" as const,
+        targetId: topic.id,
+        href: topicPath(topic),
+        topic,
+        score: score.total,
+        reasons: score.reasons,
+      };
+    })
+    .filter((item) => item.score > 8 && !signals.hiddenTopicIds.has(item.topic.id));
+
+  return diversifyReadingRecommendations(recommendations, limit);
 }
 
 export async function countParticipationRecommendations(userId?: number, lang: Lang = "zh") {
@@ -703,6 +776,28 @@ async function listFollows(userId: number) {
   );
 }
 
+async function loadRecentViewedTopicIds(userId: number | undefined) {
+  if (!userId) {
+    return new Set<number>();
+  }
+
+  const rows = await query<{ target_id: number }>(
+    `
+    SELECT DISTINCT target_id
+    FROM user_content_events
+    WHERE user_id = $1
+      AND target_type = 'topic'
+      AND event_type IN ('view', 'dwell', 'recommendation_click')
+      AND created_at >= $2
+    ORDER BY target_id DESC
+    LIMIT 500
+    `,
+    [userId, daysAgo(14)],
+  );
+
+  return new Set(rows.map((row) => Number(row.target_id || 0)).filter((id) => id > 0));
+}
+
 function scoreSeeTopic(topic: Topic, aggregate: TopicAggregate, signals: UserSignals) {
   const interest = interestScore(topic, signals);
   const quality = qualityScore(topic, aggregate);
@@ -729,6 +824,90 @@ function scoreSeeTopic(topic: Topic, aggregate: TopicAggregate, signals: UserSig
     total: clamp(total, 0, 100),
       reasons: buildSeeReasons(topic, signals, interest, quality, engagement),
   };
+}
+
+function scoreReadingTopic(currentTopic: Topic, topic: Topic, aggregate: TopicAggregate, signals: UserSignals, lang: Lang) {
+  const affinity = readingAffinityScore(currentTopic, topic);
+  const interest = interestScore(topic, signals);
+  const quality = qualityScore(topic, aggregate);
+  const fresh = aggregate.freshnessScore ?? freshnessScore(topic.lastActivityAt);
+  const engagement = aggregate.engagementScore ?? Math.min(100, topic.replyCount * 7 + topic.viewCount * 0.18 + aggregate.likeCount * 9 + aggregate.bookmarkCount * 12);
+  const exploration = affinity < 28 && quality >= 72 ? 70 : 34;
+  const alreadyInteractedPenalty =
+    (signals.repliedTopicIds.has(topic.id) ? 20 : 0)
+    + (signals.bookmarkedTopicIds.has(topic.id) ? 8 : 0)
+    + (signals.likedTopicIds.has(topic.id) ? 5 : 0);
+  const negativePenalty = negativePenaltyForTopic(topic, signals);
+  const riskPenalty = Math.max(aggregate.riskPenalty || 0, aggregate.reportCount * 18);
+  const editorialBoost = topic.isFeatured ? 6 : topic.isPinned ? 3 : 0;
+  const total = Math.round(
+    affinity * 0.36
+      + interest * 0.22
+      + quality * 0.18
+      + fresh * 0.1
+      + engagement * 0.08
+      + exploration * 0.04
+      + editorialBoost
+      - alreadyInteractedPenalty
+      - negativePenalty
+      - riskPenalty,
+  );
+
+  return {
+    total: clamp(total, 0, 100),
+    reasons: buildReadingReasons(currentTopic, topic, signals, lang, affinity, interest, quality, engagement),
+  };
+}
+
+function readingAffinityScore(currentTopic: Topic, topic: Topic) {
+  const currentTagSlugs = new Set(currentTopic.tags.map((tag) => tag.slug));
+  const sharedTags = topic.tags.filter((tag) => currentTagSlugs.has(tag.slug));
+  const sharedTerms = sharedTextTerms(`${currentTopic.title} ${currentTopic.summary}`, `${topic.title} ${topic.summary}`);
+  let score = 0;
+
+  if (topic.category.slug === currentTopic.category.slug) {
+    score += 30;
+  }
+
+  if (topic.type === currentTopic.type) {
+    score += 8;
+  }
+
+  if (sharedTags.length > 0) {
+    score += Math.min(42, 18 + sharedTags.length * 10);
+  }
+
+  if (topic.authorId === currentTopic.authorId) {
+    score += 8;
+  }
+
+  score += Math.min(12, sharedTerms * 4);
+
+  return clamp(Math.round(score), 0, 100);
+}
+
+function sharedTextTerms(left: string, right: string) {
+  const leftTerms = new Set(tokenizeRecommendationText(left));
+  const rightTerms = new Set(tokenizeRecommendationText(right));
+  let count = 0;
+
+  for (const term of leftTerms) {
+    if (rightTerms.has(term)) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+function tokenizeRecommendationText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2 && !recommendationStopWords.has(term))
+    .slice(0, 40);
 }
 
 function buildTopicParticipationCandidates(
@@ -942,6 +1121,88 @@ function buildSeeReasons(topic: Topic, signals: UserSignals, interest: number, q
   }
 
   return reasons.slice(0, 2);
+}
+
+function buildReadingReasons(
+  currentTopic: Topic,
+  topic: Topic,
+  signals: UserSignals,
+  lang: Lang,
+  affinity: number,
+  interest: number,
+  quality: number,
+  engagement: number,
+) {
+  const reasons: string[] = [];
+  const currentTagSlugs = new Set(currentTopic.tags.map((tag) => tag.slug));
+  const sharedTag = topic.tags.find((tag) => currentTagSlugs.has(tag.slug));
+  const interestTag = scoreReasonFromTag(topic, signals);
+
+  if (sharedTag) {
+    reasons.push(lang === "en" ? `More on #${sharedTag.name}` : `延续 #${sharedTag.name}`);
+  } else if (topic.category.slug === currentTopic.category.slug) {
+    reasons.push(lang === "en" ? `More in ${topic.category.name}` : `同分类延伸`);
+  } else if (topic.authorId === currentTopic.authorId) {
+    reasons.push(lang === "en" ? "Same author" : "同作者内容");
+  } else if (affinity >= 34) {
+    reasons.push(lang === "en" ? "Related context" : "语境相关");
+  }
+
+  if (interestTag && interest >= 20) {
+    reasons.push(lang === "en" ? `Matches ${interestTag}` : `匹配你的 ${interestTag}`);
+  } else if (interest >= 28) {
+    reasons.push(lang === "en" ? "Matches your interests" : "匹配你的兴趣");
+  }
+
+  if (topic.isFeatured || quality >= 76) {
+    reasons.push(lang === "en" ? "Community pick" : "社区精选");
+  }
+
+  if (engagement >= 70) {
+    reasons.push(lang === "en" ? "Trending now" : "正在升温");
+  } else if (freshnessScore(topic.publishedAt) >= 82) {
+    reasons.push(lang === "en" ? "New content" : "新内容");
+  }
+
+  if (reasons.length === 0) {
+    reasons.push(lang === "en" ? "Worth exploring" : "值得探索");
+  }
+
+  return [...new Set(reasons)].slice(0, 3);
+}
+
+function diversifyReadingRecommendations(items: ReadingRecommendation[], limit: number) {
+  const pending = [...items].sort((a, b) => b.score - a.score || timestamp(b.topic.lastActivityAt) - timestamp(a.topic.lastActivityAt));
+  const selected: ReadingRecommendation[] = [];
+  const categoryCounts = new Map<string, number>();
+  const authorCounts = new Map<number, number>();
+
+  while (pending.length > 0 && selected.length < limit) {
+    let bestIndex = 0;
+    let bestScore = Number.NEGATIVE_INFINITY;
+
+    for (const [index, item] of pending.entries()) {
+      const categoryPenalty = (categoryCounts.get(item.topic.category.slug) || 0) * 7;
+      const authorPenalty = (authorCounts.get(item.topic.authorId) || 0) * 5;
+      const adjustedScore = item.score - categoryPenalty - authorPenalty;
+
+      if (adjustedScore > bestScore) {
+        bestScore = adjustedScore;
+        bestIndex = index;
+      }
+    }
+
+    const [item] = pending.splice(bestIndex, 1);
+    if (!item) {
+      break;
+    }
+
+    selected.push(item);
+    categoryCounts.set(item.topic.category.slug, (categoryCounts.get(item.topic.category.slug) || 0) + 1);
+    authorCounts.set(item.topic.authorId, (authorCounts.get(item.topic.authorId) || 0) + 1);
+  }
+
+  return selected;
 }
 
 function buildParticipationReason(topic: Topic, signals: UserSignals, lang: Lang, kind: string) {
@@ -1288,7 +1549,7 @@ function normalizeTargetType(value: string) {
 }
 
 function normalizeSurface(value: string | undefined) {
-  if (value === "see" || value === "go" || value === "following" || value === "related" || value === "search") {
+  if (value === "see" || value === "go" || value === "following" || value === "related" || value === "reading" || value === "search") {
     return value;
   }
 

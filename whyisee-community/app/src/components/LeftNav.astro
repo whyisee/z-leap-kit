@@ -17,7 +17,7 @@ const routeCategorySlug = currentPath.startsWith("/c/") ? decodeURIComponent(cur
 const routeTagSlug = currentPath.startsWith("/tag/") ? decodeURIComponent(currentPath.split("/")[2] || "") : undefined;
 const activeCategorySlug = Astro.props.activeCategorySlug || routeCategorySlug;
 const activeTagSlug = Astro.props.activeTagSlug || routeTagSlug;
-const activePrimary = currentPath === "/" || currentPath === "/see"
+const activePrimary = currentPath === "/see"
   ? "see"
   : currentPath.startsWith("/go")
     ? "go"
@@ -30,7 +30,7 @@ const activePrimary = currentPath === "/" || currentPath === "/see"
   <nav class="compact-list nav-list left-nav-primary" aria-label={lang === "en" ? "Main" : "主导航"}>
     <a
       class:list={["nav-item", activePrimary === "see" && "is-active"]}
-      href="/"
+      href="/see?from=nav"
       style="--pill-color: #8ab4f8"
       aria-current={activePrimary === "see" ? "page" : undefined}
     >
