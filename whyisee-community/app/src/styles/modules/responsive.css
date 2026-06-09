@@ -371,21 +371,39 @@
     font-size: 17px;
   }
 
+  .topic-meta {
+    gap: 6px;
+  }
+
+  .topic-inline-tags {
+    gap: 5px;
+  }
+
+  .topic-inline-tags a {
+    min-height: 20px;
+    padding: 0 7px;
+    font-size: 11px;
+  }
+
   .topic-summary {
     max-width: 100%;
     white-space: normal;
   }
 
-  .topic-cell {
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 6px;
-    text-align: left;
+  .topic-card > .topic-cell {
+    display: none;
   }
 
-  .topic-cell strong {
-    font-size: 14px;
+  .topic-mobile-stats {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 2px;
+  }
+
+  .topic-mobile-stat {
+    display: inline-flex;
   }
 
   .category-grid {
@@ -414,14 +432,18 @@
   }
 
   .topic-post-frame {
-    grid-template-columns: 46px minmax(0, 1fr);
-    gap: 12px;
+    position: relative;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
     padding-bottom: 20px;
   }
 
   .topic-author-card {
-    position: relative;
-    top: auto;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 14;
+    padding-top: 0;
   }
 
   .topic-author-avatar {
@@ -432,6 +454,8 @@
 
   .topic-author-inline {
     gap: 4px 8px;
+    min-height: 42px;
+    padding-left: 54px;
   }
 
   .topic-author-name-trigger {
@@ -878,14 +902,19 @@
   }
 
   .topic-post-frame {
-    grid-template-columns: 38px minmax(0, 1fr);
-    gap: 10px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
   }
 
   .topic-author-avatar {
     width: 36px;
     height: 36px;
     font-size: 14px;
+  }
+
+  .topic-author-inline {
+    min-height: 36px;
+    padding-left: 46px;
   }
 
   .topic-filter-pill {

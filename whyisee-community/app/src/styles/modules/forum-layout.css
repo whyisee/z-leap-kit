@@ -602,7 +602,20 @@ button.topic-filter-pill {
   margin-top: 8px;
 }
 
+.topic-inline-tags {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.topic-inline-tags:empty {
+  display: none;
+}
+
 .tag-row a,
+.topic-inline-tags a,
 .tag-cloud a {
   display: inline-flex;
   align-items: center;
@@ -616,10 +629,40 @@ button.topic-filter-pill {
 }
 
 .topic-summary {
+  flex-basis: 100%;
   overflow: hidden;
   max-width: 720px;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.topic-mobile-stats {
+  display: none;
+}
+
+.topic-mobile-stat {
+  align-items: center;
+  gap: 4px;
+  color: var(--subtle);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.topic-mobile-stat svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+}
+
+.topic-mobile-stat strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .topic-cell {

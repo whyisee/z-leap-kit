@@ -27,6 +27,8 @@ interface TopicRow {
   is_featured: boolean;
   view_count: number;
   reply_count: number;
+  like_count: number;
+  bookmark_count: number;
   published_at: string;
   last_activity_at: string;
   created_at: string;
@@ -394,6 +396,18 @@ SELECT
   topics.is_featured,
   topics.view_count,
   topics.reply_count,
+  (
+    SELECT COUNT(*)::int
+    FROM reactions
+    WHERE reactions.target_type = 'topic'
+      AND reactions.target_id = topics.id
+      AND reactions.reaction_type = 'like'
+  ) AS like_count,
+  (
+    SELECT COUNT(*)::int
+    FROM bookmarks
+    WHERE bookmarks.topic_id = topics.id
+  ) AS bookmark_count,
   COALESCE(topics.published_at, topics.created_at) AS published_at,
   COALESCE(topics.last_activity_at, topics.published_at, topics.created_at) AS last_activity_at,
   topics.created_at,
@@ -441,6 +455,8 @@ async function mapTopicRow(row: TopicRow, lang: Lang, options: MapTopicOptions =
     isFeatured: Boolean(row.is_featured),
     viewCount: row.view_count,
     replyCount: row.reply_count,
+    likeCount: row.like_count,
+    bookmarkCount: row.bookmark_count,
     publishedAt: row.published_at,
     lastActivityAt: row.last_activity_at,
     createdAt: row.created_at,

@@ -35,6 +35,8 @@ export interface Topic {
   isFeatured: boolean;
   viewCount: number;
   replyCount: number;
+  likeCount: number;
+  bookmarkCount: number;
   publishedAt: string;
   lastActivityAt: string;
   createdAt: string;

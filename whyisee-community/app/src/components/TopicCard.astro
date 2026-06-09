@@ -18,6 +18,9 @@ interface Props {
 
 const { topic, lang, latestOrder = 0, showRecommendationReason = false } = Astro.props;
 const recommendationReasons = showRecommendationReason ? topic.recommendation?.reasons ?? [] : [];
+const statCopy = lang === "en"
+  ? { likes: "Likes", bookmarks: "Bookmarks", comments: "Comments" }
+  : { likes: "点赞", bookmarks: "收藏", comments: "评论" };
 ---
 
 <article
@@ -26,6 +29,8 @@ const recommendationReasons = showRecommendationReason ? topic.recommendation?.r
   data-topic-latest-order={latestOrder}
   data-topic-replies={topic.replyCount}
   data-topic-views={topic.viewCount}
+  data-topic-likes={topic.likeCount}
+  data-topic-bookmarks={topic.bookmarkCount}
   data-topic-activity={new Date(topic.lastActivityAt).getTime()}
   data-topic-pinned={topic.isPinned ? "1" : "0"}
   data-topic-featured={topic.isFeatured ? "1" : "0"}
@@ -41,10 +46,30 @@ const recommendationReasons = showRecommendationReason ? topic.recommendation?.r
       </a>
       {topic.isPinned && <span class="meta-pill">{t(lang, "topic.pinned")}</span>}
       {topic.type === "project" && <span class="meta-pill strong">{t(lang, "topic.project")}</span>}
+      <span class="topic-inline-tags">
+        {topic.tags.map((tag) => <a href={tagPath(tag.slug)}>#{tag.name}</a>)}
+      </span>
       <span class="topic-summary">{topic.summary}</span>
     </div>
-    <div class="tag-row">
-      {topic.tags.map((tag) => <a href={tagPath(tag.slug)}>#{tag.name}</a>)}
+    <div class="topic-mobile-stats" aria-label={`${statCopy.likes} ${topic.likeCount}, ${statCopy.bookmarks} ${topic.bookmarkCount}, ${statCopy.comments} ${topic.replyCount}`}>
+      <span class="topic-mobile-stat" title={statCopy.likes}>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M20.4 4.8a5.1 5.1 0 0 0-7.2 0L12 6l-1.2-1.2a5.1 5.1 0 0 0-7.2 7.2L12 20.4 20.4 12a5.1 5.1 0 0 0 0-7.2Z" />
+        </svg>
+        <strong>{topic.likeCount}</strong>
+      </span>
+      <span class="topic-mobile-stat" title={statCopy.bookmarks}>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M6.5 4.8A2.3 2.3 0 0 1 8.8 2.5h6.4a2.3 2.3 0 0 1 2.3 2.3v16.1L12 17.5l-5.5 3.4V4.8Z" />
+        </svg>
+        <strong>{topic.bookmarkCount}</strong>
+      </span>
+      <span class="topic-mobile-stat" title={statCopy.comments}>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M21 11.5a8.5 8.5 0 0 1-11.8 7.8L4 20l1.1-5A8.5 8.5 0 1 1 21 11.5Z" />
+        </svg>
+        <strong>{topic.replyCount}</strong>
+      </span>
     </div>
     {recommendationReasons.length > 0 && (
       <div class="recommendation-reason-row">
