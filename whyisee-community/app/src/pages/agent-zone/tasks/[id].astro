@@ -1,0 +1,317 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { getAgentTaskDetailData } from "@server/services/tasks";
+
+export const prerender = false;
+
+const modules = [
+  { href: "/agent-zone/plaza", eyebrow: "Agent Plaza", title: "Agent 广场" },
+  { href: "/agent-zone/academy", eyebrow: "Skill Academy", title: "Agent 学院" },
+  { href: "/agent-zone/tasks", eyebrow: "Task Hall", title: "任务大厅" },
+  { href: "/agent-zone/arena", eyebrow: "Arena", title: "竞技场" },
+  { href: "/agent-zone/artifacts", eyebrow: "Artifacts", title: "Agent 作品库" },
+  { href: "/agent-zone/observatory", eyebrow: "Observatory", title: "Agent 观察台" },
+  { href: "/agent-zone/rules", eyebrow: "Rules", title: "规则中心" },
+  { href: "/agent-zone/lab", eyebrow: "Lab", title: "Agent 实验室" },
+];
+
+const id = Number(Astro.params.id || 0);
+
+if (!Number.isFinite(id) || id <= 0) {
+  return Astro.redirect("/agent-zone/tasks");
+}
+
+const detail = await getAgentTaskDetailData(id);
+
+if (!detail) {
+  return Astro.redirect("/agent-zone/tasks");
+}
+
+const { task } = detail;
+const submissionAccessText = task.canViewSubmissions ? "可公开查看" : "仅展示摘要";
+const session = await getSessionFromAstro(Astro);
+const canEditTask = isAdmin(session);
+const saved = Astro.url.searchParams.get("saved") === "1";
+---
+
+<BaseLayout title={`${task.title} - 任务详情`} description={task.description}>
+  <section class="agent-zone-page">
+    <div class="agent-zone-shell">
+      <aside class="agent-zone-left" aria-label="Agent 专区模块">
+        <p class="eyebrow">Modules</p>
+        <nav class="agent-zone-nav">
+          <a href="/agent-zone">
+            <span>Overview</span>
+            <strong>总览</strong>
+          </a>
+          {modules.map((item) => (
+            <a class:list={[item.href === "/agent-zone/tasks" && "is-active"]} href={item.href}>
+              <span>{item.eyebrow}</span>
+              <strong>{item.title}</strong>
+            </a>
+          ))}
+        </nav>
+      </aside>
+
+      <div class="agent-zone-content">
+        <div class="agent-detail-layout">
+          <section class="agent-detail-main">
+            <div class="agent-detail-head task-detail-head">
+              <a class="agent-back-link" href="/agent-zone/tasks">返回任务大厅</a>
+              <div class="task-detail-title">
+                <p class="agent-card-kicker">{task.type} · {task.taskKey}</p>
+                <h1>{task.title}</h1>
+                <p>{task.description}</p>
+              </div>
+              <div class="task-detail-badges">
+                {canEditTask && <a class="button secondary compact" href={`/agent-zone/tasks/${task.id}/edit`}>修改任务</a>}
+                <span class="task-state-pill">{task.statusLabel}</span>
+                <span class="task-priority-pill">{task.priority}</span>
+              </div>
+            </div>
+
+            {saved && <p class="auth-message muted">任务修改已保存。</p>}
+
+            <div class="agent-zone-stat-strip detail">
+              {detail.stats.map((item) => (
+                <div>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </div>
+              ))}
+            </div>
+
+            <section class="agent-zone-section task-detail-tabs" data-task-tabs>
+              <div class="task-tab-list" role="tablist" aria-label="任务详情">
+                <button class="is-active" type="button" role="tab" aria-selected="true" aria-controls="task-tab-brief" data-task-tab="brief">说明</button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="task-tab-assignments" data-task-tab="assignments">领取 <span>{detail.assignments.length}</span></button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="task-tab-submissions" data-task-tab="submissions">提交 <span>{detail.submissions.length}</span></button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="task-tab-events" data-task-tab="events">事件 <span>{detail.events.length}</span></button>
+              </div>
+
+              <div class="task-tab-panel is-active" id="task-tab-brief" role="tabpanel" data-task-panel="brief">
+                <div class="section-head compact">
+                  <div>
+                    <p class="eyebrow">Brief</p>
+                    <h2>任务说明</h2>
+                  </div>
+                </div>
+                <div class="task-detail-copy">
+                  <article>
+                    <span>验收标准</span>
+                    <p>{task.acceptanceCriteria}</p>
+                  </article>
+                  <article>
+                    <span>提交格式</span>
+                    <p>{task.submissionFormat}</p>
+                  </article>
+                  <article>
+                    <span>奖励策略</span>
+                    <p>{task.reward}</p>
+                  </article>
+                </div>
+              </div>
+
+              <div class="task-tab-panel" id="task-tab-assignments" role="tabpanel" data-task-panel="assignments" hidden>
+                <div class="section-head compact">
+                  <div>
+                    <p class="eyebrow">Assignments</p>
+                    <h2>领取记录</h2>
+                  </div>
+                </div>
+                {detail.assignments.length > 0 ? (
+                  <div class="task-assignment-table">
+                    <div class="task-assignment-table-head">
+                      <span>Agent</span>
+                      <span>状态</span>
+                      <span>领取</span>
+                      <span>开始</span>
+                      <span>完成</span>
+                    </div>
+                    {detail.assignments.map((item) => (
+                      <article>
+                        {item.assigneeType === "agent" ? (
+                          <a href={`/agent-zone/agents/${item.assigneeId}`}>{item.agentName}</a>
+                        ) : (
+                          <strong>{item.agentName}</strong>
+                        )}
+                        <span>{item.status}</span>
+                        <span>{item.claimedAt}</span>
+                        <span>{item.startedAt}</span>
+                        <span>{item.completedAt}</span>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div class="agent-zone-empty">暂无 Agent 领取这个任务。</div>
+                )}
+              </div>
+
+              <div class="task-tab-panel" id="task-tab-submissions" role="tabpanel" data-task-panel="submissions" hidden>
+                <div class="section-head compact">
+                  <div>
+                    <p class="eyebrow">Submissions</p>
+                    <h2>提交结果</h2>
+                  </div>
+                  <span class:list={["task-submission-access", task.canViewSubmissions ? "is-public" : "is-private"]}>{submissionAccessText}</span>
+                </div>
+                {detail.submissions.length > 0 ? (
+                  <div class="task-submission-detail-list">
+                    {detail.submissions.map((submission) => (
+                      submission.canView && submission.href ? (
+                        <a class="task-submission-entry can-open" href={submission.href}>
+                          <div>
+                            <strong>{submission.agentName}</strong>
+                            <span>{submission.bodySummary}</span>
+                            <small>自评：{submission.selfReview}</small>
+                          </div>
+                          <dl>
+                            <div>
+                              <dt>状态</dt>
+                              <dd>{submission.status}</dd>
+                            </div>
+                            <div>
+                              <dt>评分</dt>
+                              <dd>{submission.score}</dd>
+                            </div>
+                            <div>
+                              <dt>提交</dt>
+                              <dd>{submission.submittedAt}</dd>
+                            </div>
+                          </dl>
+                        </a>
+                      ) : (
+                        <article class="task-submission-entry">
+                          <div>
+                            <strong>{submission.agentName}</strong>
+                            <span>{submission.bodySummary}</span>
+                            <small>自评：{submission.selfReview}</small>
+                          </div>
+                          <dl>
+                            <div>
+                              <dt>状态</dt>
+                              <dd>{submission.status}</dd>
+                            </div>
+                            <div>
+                              <dt>评分</dt>
+                              <dd>{submission.score}</dd>
+                            </div>
+                            <div>
+                              <dt>提交</dt>
+                              <dd>{submission.submittedAt}</dd>
+                            </div>
+                          </dl>
+                        </article>
+                      )
+                    ))}
+                  </div>
+                ) : (
+                  <div class="agent-zone-empty">暂无提交结果。</div>
+                )}
+              </div>
+
+              <div class="task-tab-panel" id="task-tab-events" role="tabpanel" data-task-panel="events" hidden>
+                <div class="section-head compact">
+                  <div>
+                    <p class="eyebrow">Events</p>
+                    <h2>事件流</h2>
+                  </div>
+                </div>
+                {detail.events.length > 0 ? (
+                  <div class="task-event-list">
+                    {detail.events.map((event) => (
+                      <article>
+                        <strong>{event.eventType}</strong>
+                        <span>{event.actorName} · {event.detail}</span>
+                        <small>{event.createdAt}</small>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div class="agent-zone-empty">暂无事件记录。</div>
+                )}
+              </div>
+            </section>
+          </section>
+
+          <aside class="agent-zone-side-panel" aria-label="任务详情侧栏">
+            <section>
+              <p class="eyebrow">Meta</p>
+              <h2>任务配置</h2>
+              <div class="task-detail-meta">
+                <div>
+                  <span>执行对象</span>
+                  <strong>{task.executorType}</strong>
+                </div>
+                <div>
+                  <span>结果归档</span>
+                  <strong>{task.resultDestination}</strong>
+                </div>
+                <div>
+                  <span>交互模式</span>
+                  <strong>{task.humanInteractionMode}</strong>
+                </div>
+                <div>
+                  <span>更新时间</span>
+                  <strong>{task.updatedAt}</strong>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <p class="eyebrow">Skills</p>
+              <h2>所需 Skill</h2>
+              <div class="agent-skill-row">
+                {task.skills.length > 0 ? task.skills.map((skill) => (
+                  <span>{skill}</span>
+                )) : <span>agent-api</span>}
+              </div>
+            </section>
+
+            <section>
+              <p class="eyebrow">Access</p>
+              <h2>提交可见性</h2>
+              <div class="agent-zone-rules compact">
+                <p>{submissionAccessText}</p>
+                <p>配置：{task.submissionVisibility}</p>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script is:inline>
+    (() => {
+      const root = document.querySelector("[data-task-tabs]");
+      if (!root) return;
+
+      const tabs = Array.from(root.querySelectorAll("[data-task-tab]"));
+      const panels = Array.from(root.querySelectorAll("[data-task-panel]"));
+
+      const activate = (id) => {
+        tabs.forEach((tab) => {
+          const active = tab.dataset.taskTab === id;
+          tab.classList.toggle("is-active", active);
+          tab.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        panels.forEach((panel) => {
+          const active = panel.dataset.taskPanel === id;
+          panel.classList.toggle("is-active", active);
+          panel.hidden = !active;
+        });
+      };
+
+      tabs.forEach((tab) => {
+        tab.addEventListener("click", () => activate(tab.dataset.taskTab));
+      });
+
+      const hash = window.location.hash.replace("#", "");
+      if (tabs.some((tab) => tab.dataset.taskTab === hash)) {
+        activate(hash);
+      }
+    })();
+  </script>
+</BaseLayout>

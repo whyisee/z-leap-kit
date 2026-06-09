@@ -25,24 +25,35 @@ npm run launch:seed-content
 
 ## 2. 正式分类
 
-首版只保留 6 个分类，避免页面显得散。
+首版公开展示 9 个分类。分类不再围绕“独立开发 / SEO / 效率工具”这种偏行业标签展开，而是更像社区频道：既能承载严肃资料，也能承载轻松互动。
 
 | 分类 | Slug | 定位 |
 | --- | --- | --- |
-| 公告 | `announcements` | 站务公告、社区规则、版本更新、邀请和反馈收集 |
-| AI 工具 | `ai-tools` | Cursor、Codex、Claude Code、DeepSeek、Agent 和真实 AI 工作流 |
-| 独立开发 | `indie-dev` | 产品想法、MVP、技术选型、上线记录、冷启动、收入和失败复盘 |
-| SEO 与流量 | `seo-traffic` | Google SEO、内容站、社区推广、外链、广告变现和增长实验 |
-| 效率工具 | `productivity-tools` | 插件、脚本、自动化、个人知识库、开发环境和效率系统 |
-| 项目展示 | `projects` | 发布工具、插件、网站、小游戏、开源项目，并获得具体反馈 |
+| AI | `ai` | AI 工具、模型、Agent、提示词、自动化和真实工作流 |
+| 小A | `xiao-a` | 站内 AI Agent、小A 能力、自动任务、共创实验和使用反馈 |
+| 读书 | `reading` | 书单、摘录、读书笔记、长期学习和知识整理 |
+| 沙雕 | `funny` | 轻松内容、离谱见闻、段子、吐槽和社区快乐源泉 |
+| 福利 | `benefits` | 优惠、活动、免费资源、权益信息和实用福利提醒 |
+| 资源 | `resources` | 工具、链接、教程、资料、服务推荐和可复用信息源 |
+| 文档 | `docs` | 教程、指南、规则、说明、复盘和可长期沉淀的结构化内容 |
+| 项目 | `projects` | 展示项目、产品、网站、插件、开源作品和开发进展 |
+| 树洞 | `tree-hole` | 困惑、压力、失败、想法碎片和不方便放到正式讨论里的内容 |
 
-暂不保留独立的“闲聊”“测试”“小游戏与内容站”分类。小游戏和内容站相关内容先通过 `项目展示`、`SEO 与流量` 以及标签承载。
+旧分类迁移关系：
+
+- `announcements` -> `docs`
+- `ai-tools` -> `ai`
+- `indie-dev` -> `projects`
+- `seo-traffic` -> `resources`
+- `productivity-tools` -> `docs`
+- `games-content-sites` -> `projects`
+- `chat` -> `tree-hole`
 
 ## 3. 正式标签
 
 标签控制在常用、可复用、可搜索的范围内。每篇话题建议 1 到 4 个标签。
 
-### AI 工具
+### AI
 
 - `cursor`：Cursor 使用、插件开发和真实项目工作流
 - `codex`：Codex 使用、开发协作和自动化
@@ -53,7 +64,7 @@ npm run launch:seed-content
 - `ai-writing`：AI 辅助写作、润色、摘要和去 AI 味
 - `model-integration`：大模型 API 配置、调用、容错和成本控制
 
-### 独立开发
+### 项目与复盘
 
 - `indie-dev`：独立开发过程、决策、复盘和长期经营
 - `mvp`：最小可行产品、范围控制和首版取舍
@@ -63,7 +74,7 @@ npm run launch:seed-content
 - `user-feedback`：获取反馈、整理需求和验证问题
 - `product-validation`：需求验证、目标用户、付费意愿和市场判断
 
-### SEO 与流量
+### 资源与增长
 
 - `seo`：搜索引擎优化、索引、关键词和搜索流量
 - `content-site`：内容站选题、结构、更新节奏和长尾内容
@@ -72,7 +83,7 @@ npm run launch:seed-content
 - `traffic-growth`：SEO、社区、内容分发和增长实验
 - `community-ops`：小社区冷启动、规则、审核和内容节奏
 
-### 效率与工程
+### 文档与工程
 
 - `automation`：脚本、定时任务、CI 和重复流程自动化
 - `github-actions`：GitHub Actions 自动化、部署和开发流程
@@ -82,7 +93,7 @@ npm run launch:seed-content
 - `cursor-plugin`：Cursor / VS Code 插件设计、发布和推广
 - `knowledge-base`：个人知识库、搜索、图谱和工作台
 
-### 项目与发布
+### 轻内容与社区
 
 - `project-showcase`：项目发布、Demo、进度记录和展示结构
 - `feedback`：请求具体反馈、测试和建议
@@ -96,11 +107,11 @@ npm run launch:seed-content
 
 上线前内容池按 `launch-content-plan.md` 执行：
 
-- AI 工具：约 30%
-- 独立开发：约 30%
-- SEO 与流量：约 20%
-- 效率工具：约 15%
-- 项目展示：约 5%
+- AI：约 35%
+- 项目：约 25%
+- 资源：约 20%
+- 文档：约 15%
+- 小A / 读书 / 沙雕 / 福利 / 树洞：先保留空位，后续按真实内容补充
 
 分类可以暂时空一点，但不要用低质量内容硬填。
 

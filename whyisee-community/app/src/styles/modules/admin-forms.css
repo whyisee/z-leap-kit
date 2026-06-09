@@ -219,6 +219,292 @@
   font-weight: 820;
 }
 
+:where(
+  .admin-filter-form,
+  .admin-edit-form,
+  .admin-inline-form,
+  .category-form-grid,
+  .category-edit-form,
+  .tag-form-grid,
+  .tag-edit-form,
+  .invitation-form-grid,
+  .invitation-edit-form,
+  .ai-config-form-grid,
+  .ai-config-edit-form,
+  .bot-task-form,
+  .draft-form,
+  .auth-form
+) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]):not([type="hidden"]), textarea, select) {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 0 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.068), rgba(255, 255, 255, 0.032)),
+    color-mix(in srgb, var(--panel) 82%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 1px 0 rgba(0, 0, 0, 0.16);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+:where(
+  .admin-filter-form,
+  .admin-edit-form,
+  .admin-inline-form,
+  .category-form-grid,
+  .category-edit-form,
+  .tag-form-grid,
+  .tag-edit-form,
+  .invitation-form-grid,
+  .invitation-edit-form,
+  .ai-config-form-grid,
+  .ai-config-edit-form,
+  .bot-task-form,
+  .draft-form,
+  .auth-form
+) textarea {
+  min-height: 84px;
+  padding: 10px 12px;
+  line-height: 1.55;
+}
+
+:where(
+  .admin-filter-form,
+  .admin-edit-form,
+  .admin-inline-form,
+  .category-form-grid,
+  .category-edit-form,
+  .tag-form-grid,
+  .tag-edit-form,
+  .invitation-form-grid,
+  .invitation-edit-form,
+  .ai-config-form-grid,
+  .ai-config-edit-form,
+  .bot-task-form,
+  .draft-form,
+  .auth-form
+) select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 38px;
+  background:
+    linear-gradient(45deg, transparent 50%, #bdd3ff 50%) calc(100% - 18px) calc(50% + 2px) / 5px 5px no-repeat,
+    linear-gradient(135deg, #bdd3ff 50%, transparent 50%) calc(100% - 13px) calc(50% + 2px) / 5px 5px no-repeat,
+    linear-gradient(90deg, transparent calc(100% - 36px), rgba(138, 180, 248, 0.085) calc(100% - 36px)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.068), rgba(255, 255, 255, 0.032)),
+    color-mix(in srgb, var(--panel) 82%, transparent);
+  cursor: pointer;
+}
+
+:where(
+  .admin-filter-form,
+  .admin-edit-form,
+  .admin-inline-form,
+  .category-form-grid,
+  .category-edit-form,
+  .tag-form-grid,
+  .tag-edit-form,
+  .invitation-form-grid,
+  .invitation-edit-form,
+  .ai-config-form-grid,
+  .ai-config-edit-form,
+  .bot-task-form,
+  .draft-form,
+  .auth-form
+) select option {
+  background: #1d222c;
+  color: var(--text);
+}
+
+:where(
+  .admin-filter-form,
+  .admin-edit-form,
+  .admin-inline-form,
+  .category-form-grid,
+  .category-edit-form,
+  .tag-form-grid,
+  .tag-edit-form,
+  .invitation-form-grid,
+  .invitation-edit-form,
+  .ai-config-form-grid,
+  .ai-config-edit-form,
+  .bot-task-form,
+  .draft-form,
+  .auth-form
+) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]):not([type="hidden"]), textarea, select):hover {
+  border-color: rgba(138, 180, 248, 0.26);
+  background-color: rgba(138, 180, 248, 0.03);
+}
+
+:where(
+  .admin-filter-form,
+  .admin-edit-form,
+  .admin-inline-form,
+  .category-form-grid,
+  .category-edit-form,
+  .tag-form-grid,
+  .tag-edit-form,
+  .invitation-form-grid,
+  .invitation-edit-form,
+  .ai-config-form-grid,
+  .ai-config-edit-form,
+  .bot-task-form,
+  .draft-form,
+  .auth-form
+) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]):not([type="hidden"]), textarea, select):focus {
+  border-color: rgba(138, 180, 248, 0.72);
+  outline: 0;
+  background-color: rgba(138, 180, 248, 0.045);
+  box-shadow:
+    0 0 0 3px rgba(138, 180, 248, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+:where(
+  .admin-filter-form,
+  .admin-edit-form,
+  .admin-inline-form,
+  .category-form-grid,
+  .category-edit-form,
+  .tag-form-grid,
+  .tag-edit-form,
+  .invitation-form-grid,
+  .invitation-edit-form,
+  .ai-config-form-grid,
+  .ai-config-edit-form,
+  .bot-task-form,
+  .draft-form,
+  .auth-form
+) :where(input, textarea)::placeholder {
+  color: color-mix(in srgb, var(--subtle) 82%, transparent);
+}
+
+:where(
+  .admin-filter-form,
+  .admin-edit-form,
+  .admin-inline-form,
+  .category-form-grid,
+  .category-edit-form,
+  .tag-form-grid,
+  .tag-edit-form,
+  .invitation-form-grid,
+  .invitation-edit-form,
+  .ai-config-form-grid,
+  .ai-config-edit-form,
+  .bot-task-form,
+  .draft-form,
+  .auth-form
+) input:is([type="date"], [type="datetime-local"])::-webkit-calendar-picker-indicator {
+  opacity: 0.72;
+  filter: invert(0.82);
+}
+
+.admin-task-form {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  align-items: start;
+}
+
+.admin-task-form label,
+.admin-task-form .span-full {
+  min-width: 0;
+}
+
+.admin-task-form .span-3 {
+  grid-column: span 3;
+}
+
+.admin-task-form .span-2 {
+  grid-column: span 2;
+}
+
+.admin-task-form .span-4 {
+  grid-column: span 4;
+}
+
+.admin-task-form .span-full {
+  grid-column: 1 / -1;
+}
+
+.admin-task-form textarea {
+  resize: vertical;
+}
+
+.admin-task-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-task-table {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.022);
+}
+
+.admin-task-row {
+  grid-template-columns: minmax(0, 1fr) minmax(210px, max-content) auto;
+  align-items: center;
+  border-width: 0 0 1px;
+  border-radius: 0;
+}
+
+.admin-task-row:last-child {
+  border-bottom: 0;
+}
+
+.admin-task-main {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.admin-task-main strong {
+  min-width: 0;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.admin-task-main p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.admin-task-state {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.admin-task-skill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-task-skill-list span {
+  border: 1px solid rgba(138, 180, 248, 0.24);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgba(138, 180, 248, 0.07);
+  color: #b7d0ff;
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .token-once {
   overflow-wrap: anywhere;
   margin: 10px 0 0;

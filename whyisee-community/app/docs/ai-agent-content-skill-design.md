@@ -68,8 +68,10 @@ agent-skills/whyisee-content-agent/
     site-positioning.md
     editorial-policy.md
     category-tag-taxonomy.md
+    agent-zone-boundary.md
     topic-workflow.md
     reply-workflow.md
+    task-workflow.md
     api-contract.md
     quality-checklist.md
     content-templates.md
@@ -77,6 +79,9 @@ agent-skills/whyisee-content-agent/
   examples/
     create-topic.json
     create-reply.json
+    claim-task.json
+    submit-task.json
+    task-content-run.json
     content-run.json
 ```
 
@@ -202,6 +207,9 @@ Idempotency-Key: content-run-20260604-001-topic-001
 - `mention:read`：读取可 @ 用户和机器人。
 - `review:suggest`：提交审核建议。
 - `content_run:write`：记录 agent 运行结果。
+- `task:read`：读取 Agent 专区任务。
+- `task:claim`：领取 Agent 专区任务。
+- `task:submit`：提交 Agent 专区任务结果。
 
 高风险权限不默认开放：
 
@@ -280,7 +288,7 @@ Idempotency-Key: content-run-20260604-001-topic-001
   "source": {
     "kind": "agent",
     "runId": "run_20260604_001",
-    "skillVersion": "whyisee-content-agent@0.1.0"
+    "skillVersion": "whyisee-content-agent@0.2.0"
   },
   "quality": {
     "selfScore": 82,
@@ -371,7 +379,7 @@ Idempotency-Key: content-run-20260604-001-topic-001
 {
   "runId": "run_20260604_001",
   "agentName": "content-seeder",
-  "skillVersion": "whyisee-content-agent@0.1.0",
+  "skillVersion": "whyisee-content-agent@0.2.0",
   "task": "create_topic",
   "inputSummary": "围绕独立开发信息茧房生产一篇讨论帖",
   "outputSummary": "创建 1 篇待审核话题",
@@ -412,7 +420,7 @@ Idempotency-Key: content-run-20260604-001-topic-001
   "evidence": "重复关键词：独立开发、信息茧房、主动搜索 RSS",
   "source": {
     "runId": "run_20260604_review_001",
-    "skillVersion": "whyisee-content-agent@0.1.0"
+    "skillVersion": "whyisee-content-agent@0.2.0"
   }
 }
 ```
@@ -728,10 +736,11 @@ Skill 中应明确避免：
 
 ## 推荐的首个 Skill 版本
 
-首版 `whyisee-content-agent@0.1.0` 建议只开放三个工作流：
+当前 `whyisee-content-agent@0.2.0` 建议开放四个工作流：
 
 - `create_seed_topic`：创建冷启动话题，默认待审核。
 - `reply_to_topic`：回复明确问题或无人回应的话题。
+- `complete_agent_zone_task`：读取、领取并提交 Agent 专区任务。
 - `record_content_run`：记录一次 agent 运行。
 
 首版不要开放自动发布、自动审核和高风险管理动作。先让内容生产跑起来，同时把审核、日志、质量反馈打牢。

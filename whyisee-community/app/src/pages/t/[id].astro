@@ -5,13 +5,14 @@ import MarkdownContent from "@components/MarkdownContent.astro";
 import TopicAiController from "@components/TopicAiController.astro";
 import TopicReplyController from "@components/TopicReplyController.astro";
 import TopicReplySection from "@components/TopicReplySection.astro";
+import { getAnonymousInitial } from "@lib/anonymous";
 import { getSessionFromAstro } from "@lib/auth";
 import { categoryPath, tagPath, topicPath } from "@lib/routes";
 import { formatDate, formatRelative } from "@lib/format";
 import { getLangFromAstro, t } from "@lib/i18n";
 import { enhanceMarkdownHtml } from "@lib/markdown";
 import { listCategories, listTags } from "@server/services/categories";
-import { countTargetLikes, getTopicInteractionState, userLikedTarget } from "@server/services/interactions";
+import { countTargetLikes, getTopicInteractionState, userFollowsTarget, userLikedTarget } from "@server/services/interactions";
 import { listPostsForTopic } from "@server/services/posts";
 import { getTopicById, listRelatedTopics } from "@server/services/topics";
 
@@ -29,7 +30,8 @@ if (!topic) {
 }
 
 const related = topic ? await listRelatedTopics(topic, 4, lang) : [];
-const posts = topic ? await listPostsForTopic(topic.id, session?.userId) : [];
+const nextTopic = related[0];
+const posts = topic ? await listPostsForTopic(topic.id, session?.userId, lang) : [];
 const topicInteraction = topic ? await getTopicInteractionState(topic.id, session?.userId) : undefined;
 const postInteractionEntries = await Promise.all(
   posts.map(async (post) => [
@@ -46,13 +48,21 @@ const avatarInitial = (value: string | undefined, fallback = "W") => {
   return initial ? initial.toUpperCase() : fallback;
 };
 const currentUserInitial = avatarInitial(session?.displayName || session?.username);
+const isAnonymousTopic = Boolean(topic?.author.isAnonymous);
+const anonymousInitial = getAnonymousInitial(lang);
+const topicAuthorInitial = isAnonymousTopic ? anonymousInitial : avatarInitial(topic?.author.displayName || topic?.author.username);
+const topicAuthorFollowed = topic && !isAnonymousTopic
+  ? await userFollowsTarget("user", topic.author.id, session?.userId)
+  : false;
+const showTopicAuthorFollowButton = Boolean(topic && !isAnonymousTopic && session?.userId !== topic.author.id && !topicAuthorFollowed);
+const showTopicAuthorFollowedState = Boolean(topic && !isAnonymousTopic && session?.userId !== topic.author.id && topicAuthorFollowed);
 const allReplyItems = posts.map((post) => {
   const interaction = postInteractions.get(post.id);
   const createdAtMs = Date.parse(post.createdAt);
 
   return {
     post,
-    authorInitial: avatarInitial(post.author.displayName || post.author.username),
+    authorInitial: post.author.isAnonymous ? anonymousInitial : avatarInitial(post.author.displayName || post.author.username),
     contentHtml: enhanceMarkdownHtml(post.contentHtml),
     likeCount: interaction?.likeCount ?? 0,
     liked: interaction?.liked ?? false,
@@ -112,6 +122,9 @@ const copy = lang === "en"
       liked: "Liked",
       bookmark: "Bookmark",
       bookmarked: "Bookmarked",
+      comment: "Comment",
+      share: "Share",
+      shareCopied: "Link copied",
       follow: "Follow",
       following: "Following",
       report: "Report",
@@ -133,6 +146,9 @@ const copy = lang === "en"
       joined: "Joined",
       profile: "View profile",
       role: "Role",
+      anonymousUser: "Anonymous",
+      anonymousBadge: "Tree Hole",
+      anonymousBio: "Identity is hidden in this Tree Hole topic.",
     }
   : {
       comments: "评论",
@@ -162,6 +178,9 @@ const copy = lang === "en"
       liked: "已点赞",
       bookmark: "收藏",
       bookmarked: "已收藏",
+      comment: "评论",
+      share: "转发",
+      shareCopied: "链接已复制",
       follow: "关注",
       following: "已关注",
       report: "举报",
@@ -183,6 +202,9 @@ const copy = lang === "en"
       joined: "加入",
       profile: "查看主页",
       role: "身份",
+      anonymousUser: "匿名用户",
+      anonymousBadge: "树洞匿名",
+      anonymousBio: "树洞板块已隐藏作者和评论者身份。",
     };
 const aiActions = lang === "en"
   ? [
@@ -205,7 +227,12 @@ const aiActions = lang === "en"
 
 <BaseLayout title={`${topic?.title ?? t(lang, "topic.notFound")} - whyisee.xyz`} description={topic?.summary ?? t(lang, "topic.notFound")}>
   {topic ? (
-    <section class="page-grid topic-layout" data-topic-reading-page>
+    <section
+      class="page-grid topic-layout no-right-sidebar"
+      data-topic-reading-page
+      data-next-topic-url={nextTopic ? topicPath(nextTopic) : ""}
+      data-next-topic-title={nextTopic?.title ?? ""}
+    >
       <LeftNav categories={categories} tags={tags} lang={lang} activeCategorySlug={topic.category.slug} />
 
       <div class="content-column">
@@ -248,98 +275,80 @@ const aiActions = lang === "en"
           </header>
 
           <section class="topic-post-frame">
-            <div class="topic-author-card">
-              <div class="topic-author-hover topic-author-avatar-hover">
-                <button class="topic-author-avatar-trigger" type="button" aria-haspopup="dialog" aria-label={topic.author.displayName}>
-                  <span class="topic-author-avatar" aria-hidden="true">
-                    {topic.author.avatarUrl
-                      ? <img src={topic.author.avatarUrl} alt="" loading="lazy" />
-                      : avatarInitial(topic.author.displayName || topic.author.username)}
-                  </span>
-                </button>
-                <div class="topic-author-popover" role="dialog" aria-label={topic.author.displayName}>
-                  <div class="topic-author-popover-head">
-                    <span class="topic-author-popover-avatar" aria-hidden="true">
+            <div class:list={["topic-author-card", isAnonymousTopic && "is-anonymous"]}>
+              {isAnonymousTopic ? (
+                <span class="topic-author-avatar topic-author-avatar-anonymous" aria-label={copy.anonymousUser}>
+                  {topicAuthorInitial}
+                </span>
+              ) : (
+                <div class="topic-author-hover topic-author-avatar-hover">
+                  <button class="topic-author-avatar-trigger" type="button" aria-haspopup="dialog" aria-label={topic.author.displayName}>
+                    <span class="topic-author-avatar" aria-hidden="true">
                       {topic.author.avatarUrl
                         ? <img src={topic.author.avatarUrl} alt="" loading="lazy" />
-                        : avatarInitial(topic.author.displayName || topic.author.username)}
+                        : topicAuthorInitial}
                     </span>
-                    <div>
-                      <strong>{topic.author.displayName}</strong>
-                      <span>@{topic.author.username}</span>
+                  </button>
+                  <div class="topic-author-popover" role="dialog" aria-label={topic.author.displayName}>
+                    <div class="topic-author-popover-head">
+                      <span class="topic-author-popover-avatar" aria-hidden="true">
+                        {topic.author.avatarUrl
+                          ? <img src={topic.author.avatarUrl} alt="" loading="lazy" />
+                          : topicAuthorInitial}
+                      </span>
+                      <div>
+                        <strong>{topic.author.displayName}</strong>
+                        <span>@{topic.author.username}</span>
+                      </div>
                     </div>
+                    <p>{topic.author.bio || copy.signatureFallback}</p>
+                    <div class="topic-author-popover-meta">
+                      <span>{copy.role}: {topic.author.role}</span>
+                      {topic.author.createdAt && <span>{copy.joined}: {formatDate(topic.author.createdAt, lang)}</span>}
+                    </div>
+                    <a class="button secondary compact" href={`/u/${topic.author.username}`}>{copy.profile}</a>
                   </div>
-                  <p>{topic.author.bio || copy.signatureFallback}</p>
-                  <div class="topic-author-popover-meta">
-                    <span>{copy.role}: {topic.author.role}</span>
-                    {topic.author.createdAt && <span>{copy.joined}: {formatDate(topic.author.createdAt, lang)}</span>}
-                  </div>
-                  <a class="button secondary compact" href={`/u/${topic.author.username}`}>{copy.profile}</a>
                 </div>
-              </div>
+              )}
             </div>
 
             <div class="topic-post-body">
               <div class="topic-post-head">
                 <div class="topic-author-inline">
-                  <div class="topic-author-hover">
-                    <button class="topic-author-name-trigger" type="button" aria-haspopup="dialog">
-                      {topic.author.displayName}
-                    </button>
-                    <div class="topic-author-popover" role="dialog" aria-label={topic.author.displayName}>
-                      <div class="topic-author-popover-head">
-                        <span class="topic-author-popover-avatar" aria-hidden="true">
-                          {topic.author.avatarUrl
-                            ? <img src={topic.author.avatarUrl} alt="" loading="lazy" />
-                            : avatarInitial(topic.author.displayName || topic.author.username)}
-                        </span>
-                        <div>
-                          <strong>{topic.author.displayName}</strong>
-                          <span>@{topic.author.username}</span>
+                  {isAnonymousTopic ? (
+                    <span class="topic-author-name-trigger is-static">{copy.anonymousUser}</span>
+                  ) : (
+                    <div class="topic-author-hover">
+                      <button class="topic-author-name-trigger" type="button" aria-haspopup="dialog">
+                        {topic.author.displayName}
+                      </button>
+                      <div class="topic-author-popover" role="dialog" aria-label={topic.author.displayName}>
+                        <div class="topic-author-popover-head">
+                          <span class="topic-author-popover-avatar" aria-hidden="true">
+                            {topic.author.avatarUrl
+                              ? <img src={topic.author.avatarUrl} alt="" loading="lazy" />
+                              : topicAuthorInitial}
+                          </span>
+                          <div>
+                            <strong>{topic.author.displayName}</strong>
+                            <span>@{topic.author.username}</span>
+                          </div>
                         </div>
+                        <p>{topic.author.bio || copy.signatureFallback}</p>
+                        <div class="topic-author-popover-meta">
+                          <span>{copy.role}: {topic.author.role}</span>
+                          {topic.author.createdAt && <span>{copy.joined}: {formatDate(topic.author.createdAt, lang)}</span>}
+                        </div>
+                        <a class="button secondary compact" href={`/u/${topic.author.username}`}>{copy.profile}</a>
                       </div>
-                      <p>{topic.author.bio || copy.signatureFallback}</p>
-                      <div class="topic-author-popover-meta">
-                        <span>{copy.role}: {topic.author.role}</span>
-                        {topic.author.createdAt && <span>{copy.joined}: {formatDate(topic.author.createdAt, lang)}</span>}
-                      </div>
-                      <a class="button secondary compact" href={`/u/${topic.author.username}`}>{copy.profile}</a>
                     </div>
-                  </div>
-                  <span class="topic-author-username">@{topic.author.username}</span>
-                  <p class="topic-author-signature">{topic.author.bio || copy.signatureFallback}</p>
+                  )}
+                  <span class="topic-author-username">{isAnonymousTopic ? copy.anonymousBadge : `@${topic.author.username}`}</span>
+                  <p class="topic-author-signature">{isAnonymousTopic ? copy.anonymousBio : topic.author.bio || copy.signatureFallback}</p>
                   <span class="topic-post-time">{formatRelative(topic.publishedAt, lang)}</span>
                 </div>
               </div>
               <MarkdownContent html={topic.contentHtml} />
-
-              <div class="topic-action-strip">
-                <form method="post" action="/api/interactions/reaction">
-                  <input type="hidden" name="targetType" value="topic" />
-                  <input type="hidden" name="targetId" value={topic.id} />
-                  <input type="hidden" name="redirect" value={Astro.url.pathname} />
-                  <button class:list={["action-button", topicInteraction?.liked && "is-active"]} type="submit">
-                    {topicInteraction?.liked ? copy.liked : copy.like}
-                    <span>{topicInteraction?.likeCount ?? 0}</span>
-                  </button>
-                </form>
-                <form method="post" action="/api/interactions/bookmark">
-                  <input type="hidden" name="topicId" value={topic.id} />
-                  <input type="hidden" name="redirect" value={Astro.url.pathname} />
-                  <button class:list={["action-button", topicInteraction?.bookmarked && "is-active"]} type="submit">
-                    {topicInteraction?.bookmarked ? copy.bookmarked : copy.bookmark}
-                  </button>
-                </form>
-                <form method="post" action="/api/interactions/follow">
-                  <input type="hidden" name="targetType" value="topic" />
-                  <input type="hidden" name="targetId" value={topic.id} />
-                  <input type="hidden" name="redirect" value={Astro.url.pathname} />
-                  <button class:list={["action-button", topicInteraction?.followed && "is-active"]} type="submit">
-                    {topicInteraction?.followed ? copy.following : copy.follow}
-                  </button>
-                </form>
-                <a class="action-button" href={`/report?targetType=topic&targetId=${topic.id}&redirect=${encodeURIComponent(Astro.url.pathname)}`}>{copy.report}</a>
-              </div>
             </div>
           </section>
 
@@ -371,42 +380,121 @@ const aiActions = lang === "en"
             <footer data-topic-ai-meta hidden></footer>
           </section>
 
-          <TopicReplySection
-            childRepliesByParentId={childRepliesByParentId}
-            copy={copy}
-            currentPath={Astro.url.pathname}
-            currentUserInitial={currentUserInitial}
-            lang={lang}
-            postCount={posts.length}
-            replyError={replyError}
-            replyItems={replyItems}
-            session={session}
-            topicId={topic.id}
-            topicUrl={topicUrl}
-          />
+          <div id="topic-replies" class="topic-replies-shell" data-topic-replies hidden={!replyError}>
+            <TopicReplySection
+              childRepliesByParentId={childRepliesByParentId}
+              copy={copy}
+              currentPath={Astro.url.pathname}
+              currentUserInitial={currentUserInitial}
+              lang={lang}
+              postCount={posts.length}
+              replyError={replyError}
+              replyItems={replyItems}
+              session={session}
+              isAnonymousThread={isAnonymousTopic}
+              topicId={topic.id}
+              topicUrl={topicUrl}
+            />
+          </div>
         </article>
       </div>
 
-      <aside class="sidebar">
-        <section class="side-panel">
-          <h2>{t(lang, "topic.info")}</h2>
-          <div class="topic-side-meta">
-            <span>{copy.author} <strong><a href={`/u/${topic.author.username}`}>{topic.author.displayName}</a></strong></span>
-            <span>{t(lang, "topic.replies")} <strong>{topic.replyCount}</strong></span>
-            <span>{t(lang, "topic.views")} <strong>{topic.viewCount}</strong></span>
-            <span>{t(lang, "topic.published")} <strong>{formatDate(topic.publishedAt, lang)}</strong></span>
-          </div>
-        </section>
+      <nav class="topic-floating-actions" aria-label={lang === "en" ? "Topic actions" : "帖子操作"} data-topic-floating-actions>
+        <div class="topic-floating-author">
+          {isAnonymousTopic ? (
+            <span class="topic-floating-avatar is-anonymous" aria-label={copy.anonymousUser}>{topicAuthorInitial}</span>
+          ) : (
+            <a class="topic-floating-avatar" href={`/u/${topic.author.username}`} aria-label={topic.author.displayName}>
+              {topic.author.avatarUrl
+                ? <img src={topic.author.avatarUrl} alt="" loading="lazy" />
+                : topicAuthorInitial}
+            </a>
+          )}
 
-        {related.length > 0 && (
-          <section class="side-panel">
-            <h2>{t(lang, "topic.related")}</h2>
-            <div class="compact-list">
-              {related.map((item) => <a href={topicPath(item)}>{item.title}</a>)}
-            </div>
-          </section>
-        )}
-      </aside>
+          {showTopicAuthorFollowButton && (
+            <form class="topic-floating-follow-form" method="post" action="/api/interactions/follow">
+              <input type="hidden" name="targetType" value="user" />
+              <input type="hidden" name="targetId" value={topic.author.id} />
+              <input type="hidden" name="redirect" value={Astro.url.pathname} />
+              <button class="topic-floating-follow-button" type="submit" aria-label={copy.follow}>
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+            </form>
+          )}
+
+          {showTopicAuthorFollowedState && (
+            <span class="topic-floating-follow-state" role="img" aria-label={copy.following}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="m5 12 4 4 10-10" />
+              </svg>
+            </span>
+          )}
+        </div>
+
+        <form class="topic-floating-action-form" method="post" action="/api/interactions/reaction">
+          <input type="hidden" name="targetType" value="topic" />
+          <input type="hidden" name="targetId" value={topic.id} />
+          <input type="hidden" name="redirect" value={Astro.url.pathname} />
+          <button
+            class:list={["topic-floating-action", topicInteraction?.liked && "is-active"]}
+            type="submit"
+            aria-label={`${topicInteraction?.liked ? copy.liked : copy.like} ${topicInteraction?.likeCount ?? 0}`}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M20.4 4.8a5.1 5.1 0 0 0-7.2 0L12 6l-1.2-1.2a5.1 5.1 0 0 0-7.2 7.2L12 20.4 20.4 12a5.1 5.1 0 0 0 0-7.2Z" />
+            </svg>
+            <span class="topic-floating-action-count">{topicInteraction?.likeCount ?? 0}</span>
+          </button>
+        </form>
+
+        <form class="topic-floating-action-form" method="post" action="/api/interactions/bookmark">
+          <input type="hidden" name="topicId" value={topic.id} />
+          <input type="hidden" name="redirect" value={Astro.url.pathname} />
+          <button
+            class:list={["topic-floating-action", topicInteraction?.bookmarked && "is-active"]}
+            type="submit"
+            aria-label={`${topicInteraction?.bookmarked ? copy.bookmarked : copy.bookmark} ${topicInteraction?.bookmarkCount ?? 0}`}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M6.5 4.8A2.3 2.3 0 0 1 8.8 2.5h6.4a2.3 2.3 0 0 1 2.3 2.3v16.1L12 17.5l-5.5 3.4V4.8Z" />
+            </svg>
+            <span class="topic-floating-action-count">{topicInteraction?.bookmarkCount ?? 0}</span>
+          </button>
+        </form>
+
+        <button
+          class="topic-floating-action"
+          type="button"
+          aria-controls="topic-replies"
+          aria-expanded={replyError ? "true" : "false"}
+          aria-label={`${copy.comment} ${posts.length}`}
+          data-topic-comment-toggle
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M21 11.5a8.5 8.5 0 0 1-11.8 7.8L4 20l1.1-5A8.5 8.5 0 1 1 21 11.5Z" />
+          </svg>
+          <span class="topic-floating-action-count">{posts.length}</span>
+        </button>
+
+        <button
+          class="topic-floating-action"
+          type="button"
+          aria-label={`${copy.share} 0`}
+          data-topic-share
+          data-share-title={topic.title}
+          data-share-url={topicUrl}
+          data-share-label={copy.share}
+          data-share-copied={copy.shareCopied}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M21 3 10.8 13.2" />
+            <path d="m21 3-6.2 18-4-7.8L3 9.2 21 3Z" />
+          </svg>
+          <span class="topic-floating-action-count" data-topic-share-count>0</span>
+        </button>
+      </nav>
     </section>
   ) : (
     <section class="article-page">
@@ -432,6 +520,11 @@ const aiActions = lang === "en"
     const postBody = page.querySelector(".topic-post-body");
     const header = document.querySelector(".site-header");
     const title = page.querySelector(".topic-title-stack h1")?.textContent?.trim() || "";
+    const replies = page.querySelector("[data-topic-replies]");
+    const commentToggle = page.querySelector("[data-topic-comment-toggle]");
+    const floatingActions = page.querySelector("[data-topic-floating-actions]");
+    const shareButton = page.querySelector("[data-topic-share]");
+    const nextTopicUrl = page.getAttribute("data-next-topic-url") || "";
 
     if (!scrollRoot || !hero || !postBody || !header) {
       return;
@@ -467,10 +560,28 @@ const aiActions = lang === "en"
       header.style.setProperty("--reading-title-width", `${width}px`);
     };
 
+    const syncFloatingActionPosition = () => {
+      if (!floatingActions) {
+        return;
+      }
+
+      const columnRect = scrollRoot.getBoundingClientRect();
+      const actionRect = floatingActions.getBoundingClientRect();
+      const actionWidth = Math.max(42, actionRect.width || 46);
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const safeInset = 12;
+      const desiredLeft = columnRect.right - actionWidth - 18;
+      const left = Math.max(safeInset, Math.min(desiredLeft, viewportWidth - actionWidth - safeInset));
+      const right = Math.max(safeInset, viewportWidth - left - actionWidth);
+
+      document.documentElement.style.setProperty("--topic-actions-right", `${right}px`);
+    };
+
     const setState = () => {
       ticking = false;
 
       syncTitlePosition();
+      syncFloatingActionPosition();
 
       const scrolled = getScrollTop() > 64;
       const headerRect = header.getBoundingClientRect();
@@ -498,6 +609,151 @@ const aiActions = lang === "en"
       window.requestAnimationFrame(setState);
     };
 
+    const sidebarObserver = new MutationObserver(() => {
+      requestUpdate();
+      window.setTimeout(requestUpdate, 360);
+    });
+
+    sidebarObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-sidebar"],
+    });
+
+    const revealReplies = (shouldScroll = true) => {
+      if (!replies) {
+        return;
+      }
+
+      replies.hidden = false;
+      commentToggle?.setAttribute("aria-expanded", "true");
+
+      if (shouldScroll) {
+        replies.scrollIntoView({ block: "start", behavior: "smooth" });
+      }
+    };
+
+    commentToggle?.addEventListener("click", () => {
+      if (!replies) {
+        return;
+      }
+
+      const shouldOpen = replies.hidden;
+
+      replies.hidden = !shouldOpen;
+      commentToggle.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+
+      if (shouldOpen) {
+        replies.scrollIntoView({ block: "start", behavior: "smooth" });
+      }
+    });
+
+    if (window.location.hash.startsWith("#post-")) {
+      revealReplies(false);
+      window.requestAnimationFrame(() => {
+        const target = document.getElementById(window.location.hash.slice(1));
+        target?.scrollIntoView({ block: "start" });
+      });
+    }
+
+    const flashShareState = () => {
+      if (!shareButton) {
+        return;
+      }
+
+      const defaultLabel = shareButton.getAttribute("data-share-label") || "";
+      const copiedLabel = shareButton.getAttribute("data-share-copied") || defaultLabel;
+
+      shareButton.dataset.copyState = "copied";
+      shareButton.setAttribute("aria-label", copiedLabel);
+      window.setTimeout(() => {
+        delete shareButton.dataset.copyState;
+        shareButton.setAttribute("aria-label", `${defaultLabel} 0`);
+      }, 1400);
+    };
+
+    const copyShareUrl = async (url) => {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        return;
+      }
+
+      const input = document.createElement("textarea");
+      input.value = url;
+      input.setAttribute("readonly", "");
+      input.style.position = "fixed";
+      input.style.left = "-999px";
+      document.body.append(input);
+      input.select();
+      document.execCommand("copy");
+      input.remove();
+    };
+
+    shareButton?.addEventListener("click", async () => {
+      const url = shareButton.getAttribute("data-share-url") || window.location.href;
+      const shareTitle = shareButton.getAttribute("data-share-title") || title;
+
+      try {
+        if (navigator.share) {
+          await navigator.share({ title: shareTitle, url });
+          return;
+        }
+
+        await copyShareUrl(url);
+        flashShareState();
+      } catch {
+        await copyShareUrl(url);
+        flashShareState();
+      }
+    });
+
+    const getActiveScroller = () => {
+      const rootCanScroll = scrollRoot.scrollHeight - scrollRoot.clientHeight > 8;
+      return rootCanScroll ? scrollRoot : document.scrollingElement || document.documentElement;
+    };
+
+    const getRemainingScroll = () => {
+      const activeScroller = getActiveScroller();
+      return activeScroller.scrollHeight - activeScroller.scrollTop - activeScroller.clientHeight;
+    };
+
+    let navigatingToNext = false;
+    const navigateToNextTopic = () => {
+      if (!nextTopicUrl || navigatingToNext) {
+        return;
+      }
+
+      navigatingToNext = true;
+      window.location.assign(nextTopicUrl);
+    };
+
+    const isReadingAtBottom = () => getRemainingScroll() <= 4;
+
+    const handleContinuedWheel = (event) => {
+      if (!nextTopicUrl || navigatingToNext || event.deltaY <= 18) {
+        return;
+      }
+
+      if (isReadingAtBottom()) {
+        navigateToNextTopic();
+      }
+    };
+
+    let touchStartY = 0;
+
+    page.addEventListener("touchstart", (event) => {
+      touchStartY = event.touches[0]?.clientY || 0;
+    }, { passive: true });
+
+    page.addEventListener("touchmove", (event) => {
+      const currentY = event.touches[0]?.clientY || touchStartY;
+
+      if (touchStartY - currentY > 48 && isReadingAtBottom()) {
+        navigateToNextTopic();
+      }
+    }, { passive: true });
+
+    scrollRoot.addEventListener("wheel", handleContinuedWheel, { passive: true });
+    window.addEventListener("wheel", handleContinuedWheel, { passive: true });
     scrollRoot.addEventListener("scroll", requestUpdate, { passive: true });
     window.addEventListener("scroll", requestUpdate, { passive: true });
     window.addEventListener("resize", requestUpdate);

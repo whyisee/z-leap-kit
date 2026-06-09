@@ -1,6 +1,6 @@
 {
   "runKey": "run_20260604_001",
-  "skillVersion": "whyisee-content-agent@0.1.0",
+  "skillVersion": "whyisee-content-agent@0.2.0",
   "task": "create_topic",
   "status": "success",
   "inputSummary": "围绕独立开发冷启动生成一个讨论帖",

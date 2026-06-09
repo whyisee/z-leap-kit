@@ -10,6 +10,7 @@ import { listCategories, listTags } from "@server/services/categories";
 import { listFeaturedTopics } from "@server/services/topics";
 import { getUserByUsername, listUserTopics } from "@server/services/users";
 import { getUserGrowthProfile, listUserContributionEvents } from "@server/services/reputation";
+import { userFollowsTarget } from "@server/services/interactions";
 
 export const prerender = false;
 
@@ -22,9 +23,11 @@ const tags = await listTags(lang);
 const featuredTopics = await listFeaturedTopics(4, lang);
 const submitted = Astro.url.searchParams.get("submitted") === "1";
 const canEditProfile = Boolean(user && session && (session.userId === user.id || isAdmin(session)));
+const canFollowProfile = Boolean(user && (!session || session.userId !== user.id));
 const topics = user ? await listUserTopics(user.id, lang, canEditProfile) : [];
 const growth = user ? await getUserGrowthProfile(user.id) : undefined;
 const contributionEvents = user ? await listUserContributionEvents(user.id, 10) : [];
+const userFollowed = user ? await userFollowsTarget("user", user.id, session?.userId) : false;
 const requestedTab = Astro.url.searchParams.get("tab") || "topics";
 const activeTab = ["topics", "badges", "contribution"].includes(requestedTab) ? requestedTab : "topics";
 const profilePath = `/u/${encodeURIComponent(username)}`;
@@ -61,6 +64,8 @@ const copy = lang === "en"
       published: "Published",
       hidden: "Hidden",
       deletedStatus: "Deleted",
+      follow: "Follow",
+      following: "Following",
     }
   : {
       notFound: "用户未找到",
@@ -94,6 +99,8 @@ const copy = lang === "en"
       published: "已发布",
       hidden: "已隐藏",
       deletedStatus: "已删除",
+      follow: "关注",
+      following: "已关注",
     };
 const deleted = Astro.url.searchParams.get("deleted") === "1";
 const avatarInitial = (user?.displayName || user?.username || "W").trim().slice(0, 1).toUpperCase();
@@ -120,6 +127,16 @@ const avatarInitial = (user?.displayName || user?.username || "W").trim().slice(
               {user.githubUrl && <a class="text-link" href={user.githubUrl} rel="noreferrer" target="_blank">GitHub</a>}
             </div>
           </div>
+          {canFollowProfile && (
+            <form class="user-profile-follow-form" method="post" action="/api/interactions/follow">
+              <input type="hidden" name="targetType" value="user" />
+              <input type="hidden" name="targetId" value={user.id} />
+              <input type="hidden" name="redirect" value={Astro.url.pathname + Astro.url.search} />
+              <button class:list={["button secondary compact", userFollowed && "is-active"]} type="submit">
+                {userFollowed ? copy.following : copy.follow}
+              </button>
+            </form>
+          )}
           {growth && (
             <div class="user-profile-badge-strip" aria-label={copy.activeBadges}>
               <span class="user-profile-badge-strip-title">{copy.activeBadges}</span>

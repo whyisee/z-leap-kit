@@ -23,6 +23,12 @@ export const POST: APIRoute = async (context) => {
   const formData = await context.request.formData();
   const intent = String(formData.get("intent") || "update");
   const redirect = safeRedirectPath(formData.get("redirect"), "/admin/bot-jobs");
+  const selectedBoards = formData
+    .getAll("boardSelections")
+    .map((value) => String(value).trim())
+    .filter(Boolean);
+  const customBoards = String(formData.get("boards") || "").trim();
+  const boards = [...selectedBoards, customBoards].filter(Boolean).join("\n");
 
   try {
     if (intent === "run") {
@@ -38,9 +44,18 @@ export const POST: APIRoute = async (context) => {
       batchSize: Number(formData.get("batchSize") || 5),
       dryRun: formData.get("dryRun") === "1",
       sourceUrl: String(formData.get("sourceUrl") || ""),
+      apiBaseUrl: String(formData.get("apiBaseUrl") || ""),
+      boards,
       maxItems: Number(formData.get("maxItems") || formData.get("batchSize") || 30),
       timeoutMs: Number(formData.get("timeoutMs") || 15000),
       userAgent: String(formData.get("userAgent") || ""),
+      windowHours: Number(formData.get("windowHours") || 24),
+      minSeenCount: Number(formData.get("minSeenCount") || 1),
+      publishMode: String(formData.get("publishMode") || ""),
+      categorySlug: String(formData.get("categorySlug") || ""),
+      tagNames: String(formData.get("tagNames") || ""),
+      style: String(formData.get("style") || ""),
+      itemId: Number(formData.get("itemId") || 0),
     });
 
     return context.redirect(`${redirect}${redirect.includes("?") ? "&" : "?"}saved=1`, 303);

@@ -1,0 +1,65 @@
+---
+import { categoryPath, tagPath } from "@lib/routes";
+import type { Lang } from "@lib/i18n";
+import type { ParticipationRecommendation } from "@server/services/recommendations";
+
+interface Props {
+  item: ParticipationRecommendation;
+  lang: Lang;
+  isLoggedIn: boolean;
+  redirectPath?: string;
+}
+
+const { item, lang, isLoggedIn, redirectPath = "/go" } = Astro.props;
+const actionHref = isLoggedIn ? item.href : `/login?redirect=${encodeURIComponent(redirectPath)}`;
+const typeLabels = lang === "en"
+  ? {
+      question: "Question",
+      topic: "Discussion",
+      project: "Feedback",
+      resource: "Resource",
+      community_task: "Task",
+      review_needed: "Review",
+      stale_content: "Update",
+    }
+  : {
+      question: "待回答",
+      topic: "待参与",
+      project: "求反馈",
+      resource: "可补充",
+      community_task: "可领取",
+      review_needed: "待判断",
+      stale_content: "可更新",
+    };
+---
+
+<article class="participation-card">
+  <div class="participation-card-main">
+    <div class="participation-card-kicker">
+      <span>{typeLabels[item.targetType]}</span>
+      {item.category && (
+        <a href={categoryPath(item.category.slug)} style={`--pill-color: ${item.category.color}`}>
+          {item.category.name}
+        </a>
+      )}
+    </div>
+    <h2><a href={item.href}>{item.title}</a></h2>
+    <p>{item.summary}</p>
+    <div class="participation-reason">{item.reason}</div>
+    {item.tags.length > 0 && (
+      <div class="tag-row">
+        {item.tags.slice(0, 5).map((tag) => <a href={tagPath(tag.slug)}>#{tag.name}</a>)}
+      </div>
+    )}
+  </div>
+  <div class="participation-card-side">
+    <div class="participation-stats">
+      {typeof item.stats.replyCount === "number" && <span><strong>{item.stats.replyCount}</strong>{lang === "en" ? "replies" : "回复"}</span>}
+      {typeof item.stats.viewCount === "number" && <span><strong>{item.stats.viewCount}</strong>{lang === "en" ? "views" : "浏览"}</span>}
+      {typeof item.stats.submissionCount === "number" && <span><strong>{item.stats.submissionCount}</strong>{lang === "en" ? "submissions" : "提交"}</span>}
+      {item.stats.rewardLabel && <span><strong>{item.stats.rewardLabel}</strong>{lang === "en" ? "reward" : "奖励"}</span>}
+    </div>
+    <a class="button primary compact" href={actionHref}>{item.actionLabel}</a>
+  </div>
+</article>
+

@@ -20,7 +20,7 @@ if (!session) {
 
 const bindLink = await createUserAgentBindLink(session.userId, Astro.url.origin);
 const devices = await listUserAgentDevices(session.userId);
-const skillDownloadUrl = `${Astro.url.origin}/api/agent/${encodeURIComponent(bindLink.code)}/skill.md`;
+const skillDownloadUrl = bindLink.skillDownloadUrl;
 const skillDownloadCommand = `curl -L ${skillDownloadUrl} -o whyisee-content-agent-SKILL.md`;
 const saved = Astro.url.searchParams.get("saved") === "1";
 const copy = lang === "en"

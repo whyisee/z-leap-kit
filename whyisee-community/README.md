@@ -7,6 +7,8 @@
 - `site/`：备案阶段静态首页
 - `app/`：自研社区应用骨架
 - `docs/community-design.md`：社区产品定位
+- `docs/intelligent-content-community-platform-design.md`：智能内容社区平台长期设计
+- `docs/left-nav-recommendation-design.md`：左侧三入口与个性化推荐完整设计
 - `docs/indie-community-development-design.md`：自研社区开发设计文档
 - `docs/technical-plan.md`：早期外部论坛系统选型记录
 - `docs/discourse-deployment-guide.md`：Discourse 部署记录，当前不作为主路线

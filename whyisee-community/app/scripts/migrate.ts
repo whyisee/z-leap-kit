@@ -754,7 +754,7 @@ const migrations = [
           'P1',
           2,
           'system',
-          '{"skills":["search","summary","source-check"]}',
+          '{"skills":["search","summary","source-check"],"submissionVisibility":"public"}',
           (CURRENT_TIMESTAMP + INTERVAL '8 hours')::text,
           CURRENT_TIMESTAMP::text,
           CURRENT_TIMESTAMP::text
@@ -775,7 +775,7 @@ const migrations = [
           'P1',
           1,
           'system',
-          '{"skills":["duplicate-search","moderation"]}',
+          '{"skills":["duplicate-search","moderation"],"submissionVisibility":"private"}',
           (CURRENT_TIMESTAMP + INTERVAL '12 hours')::text,
           CURRENT_TIMESTAMP::text,
           CURRENT_TIMESTAMP::text
@@ -796,7 +796,7 @@ const migrations = [
           'P2',
           1,
           'system',
-          '{"skills":["product-review","ux-review"]}',
+          '{"skills":["product-review","ux-review"],"submissionVisibility":"public"}',
           (CURRENT_TIMESTAMP + INTERVAL '1 day')::text,
           CURRENT_TIMESTAMP::text,
           CURRENT_TIMESTAMP::text
@@ -817,7 +817,7 @@ const migrations = [
           'P2',
           2,
           'system',
-          '{"skills":["skill-index","practice-task"]}',
+          '{"skills":["skill-index","practice-task"],"submissionVisibility":"public"}',
           (CURRENT_TIMESTAMP + INTERVAL '1 day 8 hours')::text,
           CURRENT_TIMESTAMP::text,
           CURRENT_TIMESTAMP::text
@@ -838,7 +838,7 @@ const migrations = [
           'P3',
           4,
           'system',
-          '{"skills":["summary","compare","rubric-score"]}',
+          '{"skills":["summary","compare","rubric-score"],"submissionVisibility":"public"}',
           (CURRENT_TIMESTAMP + INTERVAL '2 days')::text,
           CURRENT_TIMESTAMP::text,
           CURRENT_TIMESTAMP::text
@@ -902,13 +902,348 @@ const migrations = [
         'schedule',
         'paused',
         3600,
-        '{"provider":"zhihu_hot","sourceUrl":"https://rsshub.app/zhihu/hot","maxItems":30,"timeoutMs":15000,"userAgent":"whyisee-community-bot/0.1 (+https://whyisee.xyz)"}',
+        '{"provider":"zhihu_hot","sourceUrl":"https://api.zhihu.com/topstory/hot-list,https://www.zhihu.com/billboard,https://www.zhihu.com/hot","maxItems":30,"timeoutMs":15000,"userAgent":"whyisee-community-bot/0.1 (+https://whyisee.xyz)"}',
         NULL,
         CURRENT_TIMESTAMP::text,
         CURRENT_TIMESTAMP::text
       FROM users
       WHERE users.username = 'seo'
       ON CONFLICT (task_key) DO NOTHING;
+    `,
+  },
+  {
+    version: "016_zhihu_hot_direct_crawler",
+    sql: `
+      UPDATE bot_tasks
+      SET config_json = '{"provider":"zhihu_hot","sourceUrl":"https://api.zhihu.com/topstory/hot-list,https://www.zhihu.com/billboard,https://www.zhihu.com/hot","maxItems":30,"timeoutMs":15000,"userAgent":"whyisee-community-bot/0.1 (+https://whyisee.xyz)"}',
+          updated_at = CURRENT_TIMESTAMP::text
+      WHERE task_key = 'zhihu_hot_scan'
+        AND config_json LIKE '%rsshub.app/zhihu/hot%';
+    `,
+  },
+  {
+    version: "017_zhihu_hot_api_first",
+    sql: `
+      UPDATE bot_tasks
+      SET config_json = '{"provider":"zhihu_hot","sourceUrl":"https://api.zhihu.com/topstory/hot-list,https://www.zhihu.com/billboard,https://www.zhihu.com/hot","maxItems":30,"timeoutMs":15000,"userAgent":"whyisee-community-bot/0.1 (+https://whyisee.xyz)"}',
+          updated_at = CURRENT_TIMESTAMP::text
+      WHERE task_key = 'zhihu_hot_scan'
+        AND config_json NOT LIKE '%api.zhihu.com/topstory/hot-list%';
+    `,
+  },
+  {
+    version: "018_external_hot_item_snapshots",
+    sql: `
+      CREATE TABLE IF NOT EXISTS external_hot_item_snapshots (
+        id SERIAL PRIMARY KEY,
+        item_id INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        source_item_id TEXT NOT NULL,
+        task_id INTEGER,
+        task_run_id INTEGER,
+        bot_user_id INTEGER,
+        title TEXT NOT NULL,
+        url TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '',
+        rank INTEGER,
+        heat_text TEXT NOT NULL DEFAULT '',
+        raw_json TEXT NOT NULL DEFAULT '{}',
+        observed_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (task_run_id, source, source_item_id),
+        FOREIGN KEY (item_id) REFERENCES external_hot_items(id) ON DELETE CASCADE,
+        FOREIGN KEY (task_id) REFERENCES bot_tasks(id) ON DELETE SET NULL,
+        FOREIGN KEY (task_run_id) REFERENCES bot_task_runs(id) ON DELETE SET NULL,
+        FOREIGN KEY (bot_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_external_hot_snapshots_item_observed ON external_hot_item_snapshots(item_id, observed_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_external_hot_snapshots_source_observed ON external_hot_item_snapshots(source, observed_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_external_hot_snapshots_run_rank ON external_hot_item_snapshots(task_run_id, rank ASC);
+    `,
+  },
+  {
+    version: "019_external_hot_reports",
+    sql: `
+      CREATE TABLE IF NOT EXISTS external_hot_reports (
+        id SERIAL PRIMARY KEY,
+        source TEXT NOT NULL,
+        report_type TEXT NOT NULL,
+        scope_key TEXT NOT NULL,
+        item_id INTEGER,
+        task_id INTEGER,
+        task_run_id INTEGER,
+        bot_user_id INTEGER,
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '',
+        content_markdown TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'draft',
+        topic_id INTEGER,
+        ai_provider TEXT NOT NULL DEFAULT '',
+        ai_model TEXT NOT NULL DEFAULT '',
+        ai_config_name TEXT NOT NULL DEFAULT '',
+        input_json TEXT NOT NULL DEFAULT '{}',
+        output_json TEXT NOT NULL DEFAULT '{}',
+        error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (item_id) REFERENCES external_hot_items(id) ON DELETE SET NULL,
+        FOREIGN KEY (task_id) REFERENCES bot_tasks(id) ON DELETE SET NULL,
+        FOREIGN KEY (task_run_id) REFERENCES bot_task_runs(id) ON DELETE SET NULL,
+        FOREIGN KEY (bot_user_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_external_hot_reports_source_created ON external_hot_reports(source, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_external_hot_reports_task_created ON external_hot_reports(task_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_external_hot_reports_item_created ON external_hot_reports(item_id, created_at DESC);
+
+      INSERT INTO bot_tasks (
+        task_key, name, description, task_type, bot_user_id, trigger_type, status,
+        schedule_interval_seconds, config_json, next_run_at, created_at, updated_at
+      )
+      SELECT
+        'zhihu_hot_digest',
+        '知乎热榜总结',
+        '基于已采集的知乎热榜快照，定时生成趋势总结和社区选题。',
+        'external_hot_digest',
+        users.id,
+        'schedule',
+        'paused',
+        86400,
+        '{"source":"zhihu_hot","windowHours":24,"topN":20,"minSeenCount":1,"publishMode":"pending","categorySlug":"ai","tagNames":["知乎热榜","趋势观察"],"style":"community_observation"}',
+        NULL,
+        CURRENT_TIMESTAMP::text,
+        CURRENT_TIMESTAMP::text
+      FROM users
+      WHERE users.username = 'seo'
+      ON CONFLICT (task_key) DO NOTHING;
+    `,
+  },
+  {
+    version: "020_rebang_today_hot_sources",
+    sql: `
+      UPDATE bot_tasks
+      SET name = '今日热榜多源扫描',
+          description = '定时从 rebang.today 聚合接口扫描多个热榜，入库去重，用于后续选题和内容策划。',
+          config_json = '{"provider":"rebang_today","apiBaseUrl":"https://api.rebang.today","boards":[{"tab":"top","subTab":"today","label":"综合今日"},{"tab":"baidu","subTab":"realtime","label":"百度热搜"},{"tab":"ithome","subTab":"today","label":"IT之家日榜"},{"tab":"36kr","subTab":"hotlist","label":"36氪热榜"},{"tab":"toutiao","subTab":"","label":"今日头条"},{"tab":"huxiu","subTab":"hot","label":"虎嗅热文"},{"tab":"sspai","subTab":"recommend","label":"少数派推荐"},{"tab":"weread","subTab":"rising","label":"微信读书飙升榜"}],"sourceUrl":"","maxItems":30,"timeoutMs":15000,"userAgent":"whyisee-community-bot/0.1 (+https://whyisee.xyz)"}',
+          updated_at = CURRENT_TIMESTAMP::text
+      WHERE task_key = 'zhihu_hot_scan';
+
+      UPDATE bot_tasks
+      SET name = '今日热榜总结',
+          description = '基于已采集的 rebang.today 多源热榜快照，定时生成趋势总结和社区选题。',
+          config_json = '{"source":"rebang_today","windowHours":24,"topN":20,"minSeenCount":1,"publishMode":"pending","categorySlug":"ai","tagNames":["今日热榜","趋势观察"],"style":"community_observation"}',
+          updated_at = CURRENT_TIMESTAMP::text
+      WHERE task_key = 'zhihu_hot_digest'
+        AND config_json LIKE '%"source":"zhihu_hot"%';
+    `,
+  },
+  {
+    version: "021_replanned_public_categories",
+    sql: `
+      WITH desired_categories(name, slug, description, color, sort_order) AS (
+        VALUES
+          ('AI', 'ai', 'AI 工具、模型、Agent、提示词、自动化和真实工作流。', '#66d08c', 10),
+          ('小A', 'xiao-a', '站内 AI Agent、小A 能力、自动任务、共创实验和使用反馈。', '#7fb3ff', 20),
+          ('读书', 'reading', '书单、摘录、读书笔记、长期学习和知识整理。', '#b794f4', 30),
+          ('沙雕', 'funny', '轻松内容、离谱见闻、段子、吐槽和社区快乐源泉。', '#ff9f6e', 40),
+          ('福利', 'benefits', '优惠、活动、免费资源、权益信息和实用福利提醒。', '#ff7a98', 50),
+          ('资源', 'resources', '工具、链接、教程、资料、服务推荐和可复用信息源。', '#5bd7e8', 60),
+          ('文档', 'docs', '教程、指南、规则、说明、复盘和可长期沉淀的结构化内容。', '#8ab4f8', 70),
+          ('项目', 'projects', '展示项目、产品、网站、插件、开源作品和开发进展。', '#f3c969', 80),
+          ('树洞', 'tree-hole', '困惑、压力、失败、想法碎片和不方便放到正式讨论里的内容。', '#9aa6b2', 90)
+      )
+      INSERT INTO categories (name, slug, description, color, sort_order, is_public, created_at, updated_at)
+      SELECT name, slug, description, color, sort_order, TRUE, CURRENT_TIMESTAMP::text, CURRENT_TIMESTAMP::text
+      FROM desired_categories
+      ON CONFLICT (slug) DO UPDATE SET
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        color = EXCLUDED.color,
+        sort_order = EXCLUDED.sort_order,
+        is_public = TRUE,
+        updated_at = EXCLUDED.updated_at;
+
+      WITH category_mapping(old_slug, new_slug) AS (
+        VALUES
+          ('announcements', 'docs'),
+          ('ai-tools', 'ai'),
+          ('indie-dev', 'projects'),
+          ('seo-traffic', 'resources'),
+          ('productivity-tools', 'docs'),
+          ('games-content-sites', 'projects'),
+          ('chat', 'tree-hole')
+      )
+      UPDATE topics
+      SET category_id = new_categories.id,
+          updated_at = CURRENT_TIMESTAMP::text
+      FROM categories old_categories
+      INNER JOIN category_mapping ON category_mapping.old_slug = old_categories.slug
+      INNER JOIN categories new_categories ON new_categories.slug = category_mapping.new_slug
+      WHERE topics.category_id = old_categories.id;
+
+      WITH category_mapping(old_slug, new_slug) AS (
+        VALUES
+          ('announcements', 'docs'),
+          ('ai-tools', 'ai'),
+          ('indie-dev', 'projects'),
+          ('seo-traffic', 'resources'),
+          ('productivity-tools', 'docs'),
+          ('games-content-sites', 'projects'),
+          ('chat', 'tree-hole')
+      ),
+      mapped_follows AS (
+        SELECT
+          old_follows.id,
+          old_follows.user_id,
+          new_categories.id AS new_category_id,
+          ROW_NUMBER() OVER (
+            PARTITION BY old_follows.user_id, new_categories.id
+            ORDER BY old_follows.id ASC
+          ) AS mapped_rank
+        FROM follows old_follows
+        INNER JOIN categories old_categories ON old_follows.target_id = old_categories.id
+        INNER JOIN category_mapping ON category_mapping.old_slug = old_categories.slug
+        INNER JOIN categories new_categories ON new_categories.slug = category_mapping.new_slug
+        WHERE old_follows.target_type = 'category'
+      )
+      DELETE FROM follows
+      USING mapped_follows
+      WHERE follows.id = mapped_follows.id
+        AND EXISTS (
+          SELECT 1
+          FROM follows existing_follows
+          WHERE existing_follows.user_id = mapped_follows.user_id
+            AND existing_follows.target_type = 'category'
+            AND existing_follows.target_id = mapped_follows.new_category_id
+        )
+        OR follows.id = mapped_follows.id
+          AND mapped_follows.mapped_rank > 1;
+
+      WITH category_mapping(old_slug, new_slug) AS (
+        VALUES
+          ('announcements', 'docs'),
+          ('ai-tools', 'ai'),
+          ('indie-dev', 'projects'),
+          ('seo-traffic', 'resources'),
+          ('productivity-tools', 'docs'),
+          ('games-content-sites', 'projects'),
+          ('chat', 'tree-hole')
+      )
+      UPDATE follows
+      SET target_id = new_categories.id
+      FROM categories old_categories
+      INNER JOIN category_mapping ON category_mapping.old_slug = old_categories.slug
+      INNER JOIN categories new_categories ON new_categories.slug = category_mapping.new_slug
+      WHERE follows.target_type = 'category'
+        AND follows.target_id = old_categories.id;
+
+      UPDATE categories
+      SET is_public = FALSE,
+          updated_at = CURRENT_TIMESTAMP::text
+      WHERE slug IN (
+        'announcements',
+        'ai-tools',
+        'indie-dev',
+        'seo-traffic',
+        'productivity-tools',
+        'games-content-sites',
+        'chat'
+      );
+
+      UPDATE bot_tasks
+      SET config_json = replace(config_json, '"categorySlug":"ai-tools"', '"categorySlug":"ai"'),
+          updated_at = CURRENT_TIMESTAMP::text
+      WHERE config_json LIKE '%"categorySlug":"ai-tools"%';
+    `,
+  },
+  {
+    version: "022_rename_projects_category_label",
+    sql: `
+      UPDATE categories
+      SET name = '项目',
+          description = '展示项目、产品、网站、插件、开源作品和开发进展。',
+          updated_at = CURRENT_TIMESTAMP::text
+      WHERE slug = 'projects';
+    `,
+  },
+  {
+    version: "023_recommendation_surfaces",
+    sql: `
+      CREATE TABLE IF NOT EXISTS user_content_events (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        anonymous_key TEXT,
+        event_type TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id INTEGER NOT NULL,
+        source_surface TEXT NOT NULL DEFAULT '',
+        source_reason TEXT NOT NULL DEFAULT '',
+        category_id INTEGER,
+        tag_slugs_json TEXT NOT NULL DEFAULT '[]',
+        topic_type TEXT NOT NULL DEFAULT '',
+        author_id INTEGER,
+        dwell_seconds INTEGER,
+        weight INTEGER NOT NULL DEFAULT 0,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+        FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS user_interest_profiles (
+        user_id INTEGER PRIMARY KEY,
+        category_weights_json TEXT NOT NULL DEFAULT '{}',
+        tag_weights_json TEXT NOT NULL DEFAULT '{}',
+        topic_type_weights_json TEXT NOT NULL DEFAULT '{}',
+        author_weights_json TEXT NOT NULL DEFAULT '{}',
+        long_term_json TEXT NOT NULL DEFAULT '{}',
+        short_term_json TEXT NOT NULL DEFAULT '{}',
+        negative_json TEXT NOT NULL DEFAULT '{}',
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS content_quality_signals (
+        id SERIAL PRIMARY KEY,
+        target_type TEXT NOT NULL,
+        target_id INTEGER NOT NULL,
+        quality_score INTEGER NOT NULL DEFAULT 50,
+        freshness_score INTEGER NOT NULL DEFAULT 50,
+        engagement_score INTEGER NOT NULL DEFAULT 0,
+        participation_need_score INTEGER NOT NULL DEFAULT 0,
+        verified_score INTEGER NOT NULL DEFAULT 0,
+        risk_penalty INTEGER NOT NULL DEFAULT 0,
+        stale_score INTEGER NOT NULL DEFAULT 0,
+        computed_from_json TEXT NOT NULL DEFAULT '{}',
+        computed_at TEXT NOT NULL,
+        UNIQUE (target_type, target_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS recommendation_impressions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        anonymous_key TEXT,
+        surface TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id INTEGER NOT NULL,
+        rank INTEGER NOT NULL,
+        score INTEGER NOT NULL DEFAULT 0,
+        reasons_json TEXT NOT NULL DEFAULT '[]',
+        clicked_at TEXT,
+        dismissed_at TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_user_content_events_user_created ON user_content_events(user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_user_content_events_target ON user_content_events(target_type, target_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_user_content_events_surface ON user_content_events(source_surface, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_content_quality_signals_quality ON content_quality_signals(target_type, quality_score DESC, computed_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_recommendation_impressions_user_surface ON recommendation_impressions(user_id, surface, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_recommendation_impressions_target ON recommendation_impressions(target_type, target_id, created_at DESC);
     `,
   },
 ];

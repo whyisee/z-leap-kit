@@ -82,6 +82,7 @@ export async function syncMentions(input: {
   body?: string;
   href: string;
   skipUserIds?: number[];
+  anonymousActor?: boolean;
 }) {
   const usernames = extractMentionUsernames(input.markdown);
   const targets = await resolveMentionTargets(usernames);
@@ -125,7 +126,7 @@ export async function syncMentions(input: {
 
     await createNotification({
       userId: target.id,
-      actorId: input.actorId,
+      actorId: input.anonymousActor ? null : input.actorId,
       type: "mention",
       targetType: input.sourceType,
       targetId: input.sourceId,

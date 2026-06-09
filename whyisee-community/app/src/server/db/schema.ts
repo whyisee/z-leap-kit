@@ -306,6 +306,58 @@ CREATE TABLE IF NOT EXISTS external_hot_items (
   FOREIGN KEY (last_bot_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS external_hot_item_snapshots (
+  id SERIAL PRIMARY KEY,
+  item_id INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  source_item_id TEXT NOT NULL,
+  task_id INTEGER,
+  task_run_id INTEGER,
+  bot_user_id INTEGER,
+  title TEXT NOT NULL,
+  url TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  rank INTEGER,
+  heat_text TEXT NOT NULL DEFAULT '',
+  raw_json TEXT NOT NULL DEFAULT '{}',
+  observed_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (task_run_id, source, source_item_id),
+  FOREIGN KEY (item_id) REFERENCES external_hot_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (task_id) REFERENCES bot_tasks(id) ON DELETE SET NULL,
+  FOREIGN KEY (task_run_id) REFERENCES bot_task_runs(id) ON DELETE SET NULL,
+  FOREIGN KEY (bot_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS external_hot_reports (
+  id SERIAL PRIMARY KEY,
+  source TEXT NOT NULL,
+  report_type TEXT NOT NULL,
+  scope_key TEXT NOT NULL,
+  item_id INTEGER,
+  task_id INTEGER,
+  task_run_id INTEGER,
+  bot_user_id INTEGER,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  content_markdown TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft',
+  topic_id INTEGER,
+  ai_provider TEXT NOT NULL DEFAULT '',
+  ai_model TEXT NOT NULL DEFAULT '',
+  ai_config_name TEXT NOT NULL DEFAULT '',
+  input_json TEXT NOT NULL DEFAULT '{}',
+  output_json TEXT NOT NULL DEFAULT '{}',
+  error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (item_id) REFERENCES external_hot_items(id) ON DELETE SET NULL,
+  FOREIGN KEY (task_id) REFERENCES bot_tasks(id) ON DELETE SET NULL,
+  FOREIGN KEY (task_run_id) REFERENCES bot_task_runs(id) ON DELETE SET NULL,
+  FOREIGN KEY (bot_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS reports (
   id SERIAL PRIMARY KEY,
   reporter_id INTEGER NOT NULL,
@@ -344,6 +396,73 @@ CREATE TABLE IF NOT EXISTS page_views (
   ip_hash TEXT,
   user_agent TEXT,
   referrer TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_content_events (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER,
+  anonymous_key TEXT,
+  event_type TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id INTEGER NOT NULL,
+  source_surface TEXT NOT NULL DEFAULT '',
+  source_reason TEXT NOT NULL DEFAULT '',
+  category_id INTEGER,
+  tag_slugs_json TEXT NOT NULL DEFAULT '[]',
+  topic_type TEXT NOT NULL DEFAULT '',
+  author_id INTEGER,
+  dwell_seconds INTEGER,
+  weight INTEGER NOT NULL DEFAULT 0,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+  FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_interest_profiles (
+  user_id INTEGER PRIMARY KEY,
+  category_weights_json TEXT NOT NULL DEFAULT '{}',
+  tag_weights_json TEXT NOT NULL DEFAULT '{}',
+  topic_type_weights_json TEXT NOT NULL DEFAULT '{}',
+  author_weights_json TEXT NOT NULL DEFAULT '{}',
+  long_term_json TEXT NOT NULL DEFAULT '{}',
+  short_term_json TEXT NOT NULL DEFAULT '{}',
+  negative_json TEXT NOT NULL DEFAULT '{}',
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS content_quality_signals (
+  id SERIAL PRIMARY KEY,
+  target_type TEXT NOT NULL,
+  target_id INTEGER NOT NULL,
+  quality_score INTEGER NOT NULL DEFAULT 50,
+  freshness_score INTEGER NOT NULL DEFAULT 50,
+  engagement_score INTEGER NOT NULL DEFAULT 0,
+  participation_need_score INTEGER NOT NULL DEFAULT 0,
+  verified_score INTEGER NOT NULL DEFAULT 0,
+  risk_penalty INTEGER NOT NULL DEFAULT 0,
+  stale_score INTEGER NOT NULL DEFAULT 0,
+  computed_from_json TEXT NOT NULL DEFAULT '{}',
+  computed_at TEXT NOT NULL,
+  UNIQUE (target_type, target_id)
+);
+
+CREATE TABLE IF NOT EXISTS recommendation_impressions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER,
+  anonymous_key TEXT,
+  surface TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id INTEGER NOT NULL,
+  rank INTEGER NOT NULL,
+  score INTEGER NOT NULL DEFAULT 0,
+  reasons_json TEXT NOT NULL DEFAULT '[]',
+  clicked_at TEXT,
+  dismissed_at TEXT,
   created_at TEXT NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
@@ -661,9 +780,21 @@ CREATE INDEX IF NOT EXISTS idx_content_review_results_target ON content_review_r
 CREATE INDEX IF NOT EXISTS idx_content_review_results_status_created ON content_review_results(result_status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_external_hot_items_source_seen ON external_hot_items(source, last_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_external_hot_items_status_seen ON external_hot_items(status, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_external_hot_snapshots_item_observed ON external_hot_item_snapshots(item_id, observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_external_hot_snapshots_source_observed ON external_hot_item_snapshots(source, observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_external_hot_snapshots_run_rank ON external_hot_item_snapshots(task_run_id, rank ASC);
+CREATE INDEX IF NOT EXISTS idx_external_hot_reports_source_created ON external_hot_reports(source, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_external_hot_reports_task_created ON external_hot_reports(task_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_external_hot_reports_item_created ON external_hot_reports(item_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reports_status_created ON reports(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_page_views_created ON page_views(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_page_views_path_created ON page_views(path, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_content_events_user_created ON user_content_events(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_content_events_target ON user_content_events(target_type, target_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_content_events_surface ON user_content_events(source_surface, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_content_quality_signals_quality ON content_quality_signals(target_type, quality_score DESC, computed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_recommendation_impressions_user_surface ON recommendation_impressions(user_id, surface, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_recommendation_impressions_target ON recommendation_impressions(target_type, target_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_uploaded_files_user_created ON uploaded_files(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_reputation_score ON user_reputation(contribution_score DESC, trust_level DESC);
 CREATE INDEX IF NOT EXISTS idx_user_contribution_events_user_created ON user_contribution_events(user_id, occurred_at DESC);

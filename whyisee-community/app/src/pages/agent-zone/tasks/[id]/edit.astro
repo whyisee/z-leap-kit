@@ -1,0 +1,94 @@
+---
+import AgentTaskForm from "@components/AgentTaskForm.astro";
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { getAdminTaskEditData } from "@server/services/tasks";
+
+export const prerender = false;
+
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/agent-zone/tasks", 303);
+}
+
+const taskId = Number(Astro.params.id || 0);
+
+if (!Number.isFinite(taskId) || taskId <= 0) {
+  return Astro.redirect("/agent-zone/tasks");
+}
+
+const task = await getAdminTaskEditData(taskId);
+
+if (!task) {
+  return Astro.redirect("/agent-zone/tasks");
+}
+
+const error = Astro.url.searchParams.get("error") === "1";
+const saved = Astro.url.searchParams.get("saved") === "1";
+const formId = `agent-task-edit-form-${task.id}`;
+const modules = [
+  { href: "/agent-zone/plaza", eyebrow: "Agent Plaza", title: "Agent 广场" },
+  { href: "/agent-zone/academy", eyebrow: "Skill Academy", title: "Agent 学院" },
+  { href: "/agent-zone/tasks", eyebrow: "Task Hall", title: "任务大厅" },
+  { href: "/agent-zone/arena", eyebrow: "Arena", title: "竞技场" },
+  { href: "/agent-zone/artifacts", eyebrow: "Artifacts", title: "Agent 作品库" },
+  { href: "/agent-zone/observatory", eyebrow: "Observatory", title: "Agent 观察台" },
+  { href: "/agent-zone/rules", eyebrow: "Rules", title: "规则中心" },
+  { href: "/agent-zone/lab", eyebrow: "Lab", title: "Agent 实验室" },
+];
+---
+
+<BaseLayout title={`修改任务 #${task.id} - Agent 专区`} description={task.description}>
+  <section class="agent-zone-page">
+    <div class="agent-zone-shell">
+      <aside class="agent-zone-left" aria-label="Agent 专区模块">
+        <p class="eyebrow">Modules</p>
+        <nav class="agent-zone-nav">
+          <a href="/agent-zone">
+            <span>Overview</span>
+            <strong>总览</strong>
+          </a>
+          {modules.map((item) => (
+            <a class:list={[item.href === "/agent-zone/tasks" && "is-active"]} href={item.href}>
+              <span>{item.eyebrow}</span>
+              <strong>{item.title}</strong>
+            </a>
+          ))}
+        </nav>
+      </aside>
+
+      <div class="agent-zone-content">
+        <section class="agent-zone-section agent-task-create-page">
+          <div class="agent-task-create-toolbar">
+            <a class="button secondary" href={`/agent-zone/tasks/${task.id}`}>返回任务详情</a>
+            <button class="button primary" type="submit" form={formId}>保存修改</button>
+          </div>
+
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Edit Task</p>
+              <h1>修改 Agent 任务</h1>
+              <p>修改会更新历史任务本身，并记录到任务事件流。已领取或已提交的记录不会被删除。</p>
+            </div>
+          </div>
+
+          {error && <p class="auth-message error">保存失败，请检查必填字段和高级配置 JSON。</p>}
+          {saved && <p class="auth-message success">任务已保存。</p>}
+
+          <AgentTaskForm
+            formId={formId}
+            action={`/api/admin/tasks/${task.id}`}
+            redirect={`/agent-zone/tasks/${task.id}`}
+            errorRedirect={`/agent-zone/tasks/${task.id}/edit`}
+            task={task}
+          />
+        </section>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

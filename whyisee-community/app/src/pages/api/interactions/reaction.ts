@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { getSessionFromAstro, safeRedirectPath } from "@lib/auth";
 import { toggleReaction } from "@server/services/interactions";
+import { recordUserContentEvent } from "@server/services/recommendations";
 
 export const prerender = false;
 
@@ -20,12 +21,21 @@ export const POST: APIRoute = async (context) => {
     return context.redirect(redirectPath, 303);
   }
 
-  await toggleReaction({
+  const enabled = await toggleReaction({
     userId: session.userId,
     targetType,
     targetId,
     reactionType: "like",
   });
+
+  if (enabled) {
+    await recordUserContentEvent({
+      userId: session.userId,
+      eventType: "like",
+      targetType,
+      targetId,
+    });
+  }
 
   return context.redirect(redirectPath, 303);
 };

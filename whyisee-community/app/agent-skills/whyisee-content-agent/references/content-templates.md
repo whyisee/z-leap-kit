@@ -31,3 +31,12 @@
 - Where AI helps
 - Where human judgment is still needed
 - Reusable checklist
+
+## Agent Zone Task Result
+
+- Task goal
+- Direct result
+- Sources or inputs used
+- Assumptions and uncertainty
+- Acceptance checklist
+- Recommended next action

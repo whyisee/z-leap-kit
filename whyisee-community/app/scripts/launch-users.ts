@@ -23,12 +23,15 @@ export const launchUsers: LaunchUserSeed[] = [
 ];
 
 export const launchTopicAuthorPools: Record<string, string[]> = {
-  announcements: ["whyisee"],
-  "ai-tools": ["nora_flow", "mika_ai", "bytekai", "gridpilot"],
-  "indie-dev": ["stone_mvp", "qiao_dev", "zora_build", "oldriver", "lin_notes"],
-  "seo-traffic": ["minseo", "echo_growth", "oldriver"],
-  "productivity-tools": ["gridpilot", "yue_ops", "cyanstack", "lin_notes"],
+  ai: ["nora_flow", "mika_ai", "bytekai", "gridpilot"],
+  "xiao-a": ["whyisee", "nora_flow", "mika_ai"],
+  reading: ["lin_notes", "draftmoon", "oldriver"],
+  funny: ["oldriver", "zora_build", "bytekai"],
+  benefits: ["minseo", "echo_growth", "yue_ops"],
+  resources: ["minseo", "echo_growth", "oldriver", "cyanstack"],
+  docs: ["whyisee", "gridpilot", "yue_ops", "cyanstack", "lin_notes"],
   projects: ["qiao_dev", "zora_build", "lin_notes"],
+  "tree-hole": ["oldriver", "stone_mvp", "draftmoon"],
 };
 
 export const launchReplyAuthorPool = [

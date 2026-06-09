@@ -9,6 +9,7 @@ interface ReplyAuthor {
   id: number;
   username: string;
   displayName: string;
+  isAnonymous?: boolean;
 }
 
 interface ReplyPost {
@@ -50,6 +51,7 @@ interface TopicReplyCopy {
   like: string;
   liked: string;
   report: string;
+  anonymousUser: string;
 }
 
 interface Props {
@@ -62,6 +64,7 @@ interface Props {
   replyError: boolean;
   replyItems: TopicReplyItem[];
   session: AuthSession | undefined;
+  isAnonymousThread?: boolean;
   topicId: number;
   topicUrl: string;
 }
@@ -76,9 +79,17 @@ const {
   replyError,
   replyItems,
   session,
+  isAnonymousThread = false,
   topicId,
   topicUrl,
 } = Astro.props;
+
+const anonymousInitial = lang === "en" ? "A" : "匿";
+const composerInitial = isAnonymousThread ? anonymousInitial : currentUserInitial;
+const authorLabel = (post: ReplyPost) => post.author.isAnonymous ? copy.anonymousUser : post.author.displayName;
+const inlinePlaceholder = (post: ReplyPost) => post.author.isAnonymous
+  ? copy.inlineReplyPlaceholder
+  : `${copy.inlineReplyPlaceholder} @${post.author.username}`;
 ---
 
 <section class="reply-section" aria-labelledby="reply-title">
@@ -103,7 +114,7 @@ const {
   {session ? (
     <form class="reply-form reply-composer" method="post" action={`/api/topics/${topicId}/posts`} data-reply-composer>
       <input type="hidden" name="redirect" value={currentPath} />
-      <div class="reply-avatar reply-composer-avatar" aria-hidden="true">{currentUserInitial}</div>
+      <div class:list={["reply-avatar", "reply-composer-avatar", isAnonymousThread && "is-anonymous"]} aria-hidden="true">{composerInitial}</div>
       <div class="reply-composer-main">
         <label class="reply-composer-field">
           <span class="sr-only">{copy.reply}</span>
@@ -174,10 +185,12 @@ const {
             data-reply-likes={likeCount}
             data-reply-id={post.id}
           >
-            <div class="reply-avatar" aria-hidden="true">{authorInitial}</div>
+            <div class:list={["reply-avatar", post.author.isAnonymous && "is-anonymous"]} aria-hidden="true">{authorInitial}</div>
             <div class="reply-card-main">
               <header>
-                <a class="reply-author" href={`/u/${post.author.username}`}>{post.author.displayName}</a>
+                {post.author.isAnonymous
+                  ? <span class="reply-author is-anonymous">{authorLabel(post)}</span>
+                  : <a class="reply-author" href={`/u/${post.author.username}`}>{authorLabel(post)}</a>}
                 <span class="reply-floor">#{index + 1}</span>
               </header>
               <div class="reply-content" set:html={contentHtml} />
@@ -205,7 +218,7 @@ const {
                     <button type="button" data-copy-comment-link data-comment-url={`${topicUrl}#post-${post.id}`} data-copied-label={copy.copiedCommentLink}>
                       {copy.copyCommentLink}
                     </button>
-                    {session && session.userId !== post.author.id && (
+                    {session && !post.author.isAnonymous && session.userId !== post.author.id && (
                       <form method="post" action="/api/interactions/block-user">
                         <input type="hidden" name="blockedUserId" value={post.author.id} />
                         <input type="hidden" name="redirect" value={currentPath} />
@@ -224,7 +237,7 @@ const {
                   <textarea
                     name="contentMarkdown"
                     rows="2"
-                    placeholder={`${copy.inlineReplyPlaceholder} @${post.author.username}`}
+                    placeholder={inlinePlaceholder(post)}
                     required
                     data-inline-reply-input
                   ></textarea>
@@ -239,10 +252,12 @@ const {
                 <section class="reply-thread" data-reply-thread>
                   {featuredChildReply && (
                     <article class="reply-child-card is-featured" id={`post-${featuredChildReply.post.id}`}>
-                      <div class="reply-avatar reply-child-avatar" aria-hidden="true">{featuredChildReply.authorInitial}</div>
+                      <div class:list={["reply-avatar", "reply-child-avatar", featuredChildReply.post.author.isAnonymous && "is-anonymous"]} aria-hidden="true">{featuredChildReply.authorInitial}</div>
                       <div class="reply-child-main">
                         <header>
-                          <a class="reply-author" href={`/u/${featuredChildReply.post.author.username}`}>{featuredChildReply.post.author.displayName}</a>
+                          {featuredChildReply.post.author.isAnonymous
+                            ? <span class="reply-author is-anonymous">{authorLabel(featuredChildReply.post)}</span>
+                            : <a class="reply-author" href={`/u/${featuredChildReply.post.author.username}`}>{authorLabel(featuredChildReply.post)}</a>}
                         </header>
                         <div class="reply-content reply-child-content" set:html={featuredChildReply.contentHtml} />
                         <footer class="reply-actions reply-child-actions">
@@ -269,7 +284,7 @@ const {
                               <button type="button" data-copy-comment-link data-comment-url={`${topicUrl}#post-${featuredChildReply.post.id}`} data-copied-label={copy.copiedCommentLink}>
                                 {copy.copyCommentLink}
                               </button>
-                              {session && session.userId !== featuredChildReply.post.author.id && (
+                              {session && !featuredChildReply.post.author.isAnonymous && session.userId !== featuredChildReply.post.author.id && (
                                 <form method="post" action="/api/interactions/block-user">
                                   <input type="hidden" name="blockedUserId" value={featuredChildReply.post.author.id} />
                                   <input type="hidden" name="redirect" value={currentPath} />
@@ -287,7 +302,7 @@ const {
                             <textarea
                               name="contentMarkdown"
                               rows="2"
-                              placeholder={`${copy.inlineReplyPlaceholder} @${featuredChildReply.post.author.username}`}
+                              placeholder={inlinePlaceholder(featuredChildReply.post)}
                               required
                               data-inline-reply-input
                             ></textarea>
@@ -317,10 +332,12 @@ const {
                       <div class="reply-child-list" id={childListId} data-reply-child-list hidden>
                         {remainingChildReplies.map((child) => (
                           <article class="reply-child-card" id={`post-${child.post.id}`}>
-                            <div class="reply-avatar reply-child-avatar" aria-hidden="true">{child.authorInitial}</div>
+                            <div class:list={["reply-avatar", "reply-child-avatar", child.post.author.isAnonymous && "is-anonymous"]} aria-hidden="true">{child.authorInitial}</div>
                             <div class="reply-child-main">
                               <header>
-                                <a class="reply-author" href={`/u/${child.post.author.username}`}>{child.post.author.displayName}</a>
+                                {child.post.author.isAnonymous
+                                  ? <span class="reply-author is-anonymous">{authorLabel(child.post)}</span>
+                                  : <a class="reply-author" href={`/u/${child.post.author.username}`}>{authorLabel(child.post)}</a>}
                               </header>
                               <div class="reply-content reply-child-content" set:html={child.contentHtml} />
                               <footer class="reply-actions reply-child-actions">
@@ -347,7 +364,7 @@ const {
                                     <button type="button" data-copy-comment-link data-comment-url={`${topicUrl}#post-${child.post.id}`} data-copied-label={copy.copiedCommentLink}>
                                       {copy.copyCommentLink}
                                     </button>
-                                    {session && session.userId !== child.post.author.id && (
+                                    {session && !child.post.author.isAnonymous && session.userId !== child.post.author.id && (
                                       <form method="post" action="/api/interactions/block-user">
                                         <input type="hidden" name="blockedUserId" value={child.post.author.id} />
                                         <input type="hidden" name="redirect" value={currentPath} />
@@ -365,7 +382,7 @@ const {
                                   <textarea
                                     name="contentMarkdown"
                                     rows="2"
-                                    placeholder={`${copy.inlineReplyPlaceholder} @${child.post.author.username}`}
+                                    placeholder={inlinePlaceholder(child.post)}
                                     required
                                     data-inline-reply-input
                                   ></textarea>

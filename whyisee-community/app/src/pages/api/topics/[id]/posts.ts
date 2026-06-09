@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { getSessionFromAstro, safeRedirectPath } from "@lib/auth";
 import { createPost, topicHref } from "@server/services/posts";
+import { recordUserContentEvent } from "@server/services/recommendations";
 
 export const prerender = false;
 
@@ -25,6 +26,13 @@ export const POST: APIRoute = async (context) => {
       parentPostId: Number.isFinite(parentPostId) && parentPostId > 0 ? parentPostId : undefined,
       authorId: session.userId,
       contentMarkdown: String(formData.get("contentMarkdown") || ""),
+    });
+
+    await recordUserContentEvent({
+      userId: session.userId,
+      eventType: "reply",
+      targetType: "topic",
+      targetId: topicId,
     });
 
     return context.redirect(topicHref(result.topicId, result.topicSlug, `post-${result.postId}`), 303);

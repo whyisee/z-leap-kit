@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { getSessionFromAstro, isAdmin } from "@lib/auth";
 import type { TopicStatus, TopicType } from "@lib/types";
 import { notifyAdmins } from "@server/services/notifications";
+import { recordUserContentEvent } from "@server/services/recommendations";
 import { createTopic } from "@server/services/topics";
 
 export const prerender = false;
@@ -45,6 +46,13 @@ export const POST: APIRoute = async (context) => {
         href: "/admin?status=pending",
       });
     }
+
+    await recordUserContentEvent({
+      userId: session.userId,
+      eventType: "topic_create",
+      targetType: "topic",
+      targetId: topicId,
+    });
 
     return context.redirect(`/topics/${topicId}/edit?saved=1`, 303);
   } catch (error) {

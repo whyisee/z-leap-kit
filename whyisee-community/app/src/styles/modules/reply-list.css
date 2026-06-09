@@ -93,6 +93,14 @@
   text-transform: uppercase;
 }
 
+.reply-avatar.is-anonymous {
+  border-color: rgba(154, 166, 178, 0.32);
+  background:
+    radial-gradient(circle at 28% 20%, rgba(255, 255, 255, 0.18), transparent 30%),
+    linear-gradient(135deg, rgba(154, 166, 178, 0.28), rgba(138, 180, 248, 0.12));
+  color: rgba(235, 241, 255, 0.92);
+}
+
 .reply-card header {
   display: flex;
   align-items: center;
@@ -104,6 +112,10 @@
 
 .reply-author {
   color: var(--blue);
+}
+
+.reply-author.is-anonymous {
+  color: var(--muted);
 }
 
 .reply-floor {

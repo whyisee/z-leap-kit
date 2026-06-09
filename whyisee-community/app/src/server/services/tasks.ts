@@ -1,9 +1,15 @@
+import {
+  DEFAULT_AGENT_TASK_TYPE,
+  getAgentTaskTypeLabel,
+  normalizeAgentTaskType,
+} from "@lib/agentTaskTypes";
 import { query, queryOne, withTransaction } from "@server/db/client";
 import { AgentApiError } from "./agentErrors";
 import type { AgentContext } from "./agents";
 
 type AgentUiState = "online" | "busy" | "idle";
 type TaskUiState = "open" | "running" | "reviewing" | "completed" | "closed";
+export type AdminTaskStatus = "draft" | "open" | "closed" | "cancelled" | "completed";
 
 interface AgentDirectoryRow {
   id: number;
@@ -50,6 +56,11 @@ interface TaskRow {
   assignee_names: string | null;
 }
 
+interface AdminTaskRow extends TaskRow {
+  created_by_type: string;
+  created_by_id: number | null;
+}
+
 interface SubmissionRow {
   id: number;
   task_id: number;
@@ -58,6 +69,82 @@ interface SubmissionRow {
   submitted_at: string;
   submitter_name: string | null;
   score: number | null;
+}
+
+interface TaskAssignmentDetailRow {
+  id: number;
+  assignee_type: string;
+  assignee_id: number;
+  status: string;
+  claimed_at: string;
+  started_at: string | null;
+  due_at: string | null;
+  completed_at: string | null;
+  agent_name: string | null;
+}
+
+interface TaskSubmissionDetailRow {
+  id: number;
+  task_id: number;
+  submitter_type: string;
+  submitter_id: number;
+  body: string;
+  result_json: string;
+  attachments_json: string;
+  source_json: string;
+  status: string;
+  self_review: string;
+  submitted_at: string;
+  updated_at: string;
+  agent_name: string | null;
+  score: number | null;
+  decision: string | null;
+  review_comment: string | null;
+}
+
+interface TaskEventDetailRow {
+  id: number;
+  actor_type: string;
+  actor_id: number | null;
+  event_type: string;
+  details_json: string;
+  created_at: string;
+  agent_name: string | null;
+}
+
+interface AgentDeviceSummaryRow {
+  id: number;
+  device_id: string;
+  device_name: string;
+  status: string;
+  last_seen_at: string | null;
+  created_at: string;
+}
+
+interface AgentRunSummaryRow {
+  id: number;
+  run_key: string;
+  skill_version: string;
+  task: string;
+  status: string;
+  output_summary: string;
+  quality_score: number | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+interface AgentAssignmentSummaryRow {
+  id: number;
+  task_id: number;
+  title: string;
+  task_type: string;
+  task_status: string;
+  assignment_status: string;
+  claimed_at: string;
+  completed_at: string | null;
+  submission_id: number | null;
+  submission_status: string | null;
+  submitted_at: string | null;
 }
 
 export interface AgentZoneStat {
@@ -95,6 +182,7 @@ export interface AgentZoneTaskCard {
   title: string;
   type: string;
   status: string;
+  statusLabel: string;
   state: TaskUiState;
   priority: string;
   reward: string;
@@ -120,8 +208,185 @@ export interface AgentZoneSubmissionSummary {
 
 export interface AgentTaskHallData {
   stats: AgentZoneStat[];
+  tasks: AgentZoneTaskCard[];
   columns: AgentZoneTaskColumn[];
   submissions: AgentZoneSubmissionSummary[];
+}
+
+export interface AgentTaskDetailData {
+  task: AgentZoneTaskCard & {
+    taskKey: string;
+    description: string;
+    acceptanceCriteria: string;
+    submissionFormat: string;
+    executorType: string;
+    resultDestination: string;
+    humanInteractionMode: string;
+    submissionVisibility: "public" | "private";
+    canViewSubmissions: boolean;
+    maxAssignees: number;
+    createdAt: string;
+    updatedAt: string;
+  };
+  stats: AgentZoneStat[];
+  assignments: Array<{
+    id: number;
+    assigneeType: string;
+    assigneeId: number;
+    agentName: string;
+    status: string;
+    claimedAt: string;
+    startedAt: string;
+    dueAt: string;
+    completedAt: string;
+  }>;
+  submissions: Array<{
+    id: number;
+    submitterType: string;
+    submitterId: number;
+    agentName: string;
+    status: string;
+    score: string;
+    decision: string;
+    canView: boolean;
+    href: string | null;
+    bodySummary: string;
+    selfReview: string;
+    submittedAt: string;
+  }>;
+  events: Array<{
+    id: number;
+    actorType: string;
+    actorId: number | null;
+    actorName: string;
+    eventType: string;
+    detail: string;
+    createdAt: string;
+  }>;
+}
+
+export interface AgentTaskSubmissionDetailData {
+  task: AgentTaskDetailData["task"];
+  submission: {
+    id: number;
+    taskId: number;
+    submitterType: string;
+    submitterId: number;
+    agentName: string;
+    status: string;
+    score: string;
+    decision: string;
+    reviewComment: string;
+    body: string;
+    resultJson: string;
+    attachmentsJson: string;
+    sourceJson: string;
+    selfReview: string;
+    submittedAt: string;
+    updatedAt: string;
+  };
+}
+
+export interface AgentDetailData {
+  agent: AgentZoneAgentCard;
+  stats: AgentZoneStat[];
+  devices: Array<{
+    id: number;
+    deviceId: string;
+    deviceName: string;
+    status: string;
+    lastSeen: string;
+    createdAt: string;
+  }>;
+  runs: Array<{
+    id: number;
+    runKey: string;
+    skillVersion: string;
+    task: string;
+    status: string;
+    outputSummary: string;
+    qualityScore: string;
+    createdAt: string;
+  }>;
+  assignments: Array<{
+    id: number;
+    taskId: number;
+    title: string;
+    type: string;
+    taskStatus: string;
+    assignmentStatus: string;
+    claimedAt: string;
+    completedAt: string;
+    submissionId: number | null;
+    submissionStatus: string;
+    submittedAt: string;
+  }>;
+}
+
+export interface AdminTaskListItem {
+  id: number;
+  taskKey: string;
+  title: string;
+  description: string;
+  type: string;
+  taskType: string;
+  status: string;
+  statusLabel: string;
+  priority: string;
+  maxAssignees: number;
+  assignmentCount: number;
+  submissionCount: number;
+  reward: string;
+  resultDestination: string;
+  submissionVisibility: "public" | "private";
+  skills: string[];
+  deadlineAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminTaskCreateInput {
+  title: string;
+  description: string;
+  taskType: string;
+  acceptanceCriteria: string;
+  submissionFormat: string;
+  status: AdminTaskStatus;
+  priority: string;
+  maxAssignees: number;
+  resultDestination: string;
+  humanInteractionMode: string;
+  rewardType: string;
+  rewardAmount: number;
+  rewardLabel: string;
+  skills: string[];
+  submissionVisibility: "public" | "private";
+  config?: Record<string, unknown>;
+  deadlineAt?: string | null;
+  createdById: number;
+}
+
+export interface AdminTaskEditData {
+  id: number;
+  title: string;
+  description: string;
+  taskType: string;
+  acceptanceCriteria: string;
+  submissionFormat: string;
+  status: AdminTaskStatus;
+  priority: string;
+  maxAssignees: number;
+  resultDestination: string;
+  humanInteractionMode: string;
+  rewardType: string;
+  rewardAmount: number;
+  rewardLabel: string;
+  skills: string;
+  submissionVisibility: "public" | "private";
+  sourceContext: string;
+  referenceUrl: string;
+  configJson: string;
+  deadlineAt: string;
 }
 
 export async function getAgentPlazaData(limit = 200): Promise<AgentPlazaData> {
@@ -196,6 +461,69 @@ export async function getAgentPlazaData(limit = 200): Promise<AgentPlazaData> {
   };
 }
 
+export async function getAgentDetailData(id: number): Promise<AgentDetailData | null> {
+  const rows = await query<AgentDirectoryRow>(
+    `
+    SELECT
+      agent_profiles.id,
+      users.username,
+      users.display_name,
+      agent_profiles.name,
+      agent_profiles.description,
+      agent_profiles.status,
+      agent_profiles.default_scopes,
+      agent_profiles.created_at,
+      MAX(agent_devices.last_seen_at) AS last_device_seen_at,
+      MAX(agent_action_logs.created_at) AS last_action_at,
+      MAX(content_runs.created_at) AS last_run_at,
+      COUNT(DISTINCT agent_devices.id)::text AS device_count,
+      COUNT(DISTINCT content_runs.id)::text AS run_count,
+      COUNT(DISTINCT CASE WHEN content_runs.status = 'success' THEN content_runs.id END)::text AS success_count,
+      ROUND(AVG(content_runs.quality_score))::int AS avg_quality,
+      COUNT(DISTINCT task_assignments.id)::text AS active_assignment_count,
+      MAX(tasks.title) AS current_task
+    FROM agent_profiles
+    INNER JOIN users ON users.id = agent_profiles.user_id
+    LEFT JOIN agent_devices ON agent_devices.agent_profile_id = agent_profiles.id AND agent_devices.status = 'active'
+    LEFT JOIN agent_action_logs ON agent_action_logs.agent_profile_id = agent_profiles.id
+    LEFT JOIN content_runs ON content_runs.agent_profile_id = agent_profiles.id
+    LEFT JOIN task_assignments
+      ON task_assignments.assignee_type = 'agent'
+      AND task_assignments.assignee_id = agent_profiles.id
+      AND task_assignments.status IN ('claimed', 'in_progress', 'submitted')
+    LEFT JOIN tasks ON tasks.id = task_assignments.task_id
+    WHERE agent_profiles.status = 'active'
+      AND agent_profiles.id = $1
+    GROUP BY agent_profiles.id, users.username, users.display_name
+    LIMIT 1
+    `,
+    [id],
+  );
+  const row = rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  const agent = mapAgentCard(row);
+  const [devices, runs, assignments] = await Promise.all([
+    listAgentDevicesForDetail(id),
+    listAgentRunsForDetail(id),
+    listAgentAssignmentsForDetail(id),
+  ]);
+
+  return {
+    agent,
+    stats: [
+      ...agent.metrics,
+      { label: "设备", value: String(devices.length) },
+    ],
+    devices,
+    runs,
+    assignments,
+  };
+}
+
 export async function getAgentTaskHallData(): Promise<AgentTaskHallData> {
   const tasks = await listAgentZoneTasks();
   const submissions = await listAgentZoneSubmissionSummaries();
@@ -214,6 +542,7 @@ export async function getAgentTaskHallData(): Promise<AgentTaskHallData> {
       { label: "待评审", value: String(reviewingCount) },
       { label: "已归档", value: String(Number(archived?.count || 0)) },
     ],
+    tasks,
     columns: [
       { title: "可领取", status: "open", items: tasks.filter((task) => task.state === "open") },
       { title: "执行中", status: "running", items: tasks.filter((task) => task.state === "running") },
@@ -223,7 +552,8 @@ export async function getAgentTaskHallData(): Promise<AgentTaskHallData> {
   };
 }
 
-export async function listAgentZoneTasks(limit = 100): Promise<AgentZoneTaskCard[]> {
+export async function listAgentZoneTasks(limit = 300): Promise<AgentZoneTaskCard[]> {
+  const normalizedLimit = Math.max(1, Math.min(Number(limit || 300), 500));
   const rows = await query<TaskRow>(
     `
     SELECT
@@ -258,6 +588,7 @@ export async function listAgentZoneTasks(limit = 100): Promise<AgentZoneTaskCard
       AND task_assignments.assignee_id = agent_profiles.id
     LEFT JOIN task_submissions ON task_submissions.task_id = tasks.id
     WHERE tasks.visibility = 'agent_zone'
+      AND tasks.status <> 'draft'
     GROUP BY tasks.id
     ORDER BY
       CASE tasks.status
@@ -271,10 +602,452 @@ export async function listAgentZoneTasks(limit = 100): Promise<AgentZoneTaskCard
       tasks.created_at DESC
     LIMIT $1
     `,
-    [limit],
+    [normalizedLimit],
   );
 
   return rows.map(mapTaskCard);
+}
+
+export async function listAdminTasks(limit = 200): Promise<AdminTaskListItem[]> {
+  const normalizedLimit = Math.max(1, Math.min(Number(limit || 200), 500));
+  const rows = await query<AdminTaskRow>(
+    `
+    SELECT
+      tasks.id,
+      tasks.task_key,
+      tasks.title,
+      tasks.description,
+      tasks.task_type,
+      tasks.acceptance_criteria,
+      tasks.submission_format,
+      tasks.reward_policy_json,
+      tasks.visibility,
+      tasks.executor_type,
+      tasks.result_destination,
+      tasks.human_interaction_mode,
+      tasks.status,
+      tasks.priority,
+      tasks.max_assignees,
+      tasks.created_by_type,
+      tasks.created_by_id,
+      tasks.config_json,
+      tasks.deadline_at,
+      tasks.created_at,
+      tasks.updated_at,
+      COUNT(DISTINCT task_assignments.id)::text AS assignment_count,
+      COUNT(DISTINCT task_submissions.id)::text AS submission_count,
+      STRING_AGG(DISTINCT agent_profiles.name, ' / ') FILTER (
+        WHERE task_assignments.status IN ('claimed', 'in_progress', 'submitted')
+      ) AS assignee_names
+    FROM tasks
+    LEFT JOIN task_assignments ON task_assignments.task_id = tasks.id
+    LEFT JOIN agent_profiles
+      ON task_assignments.assignee_type = 'agent'
+      AND task_assignments.assignee_id = agent_profiles.id
+    LEFT JOIN task_submissions ON task_submissions.task_id = tasks.id
+    WHERE tasks.visibility = 'agent_zone'
+    GROUP BY tasks.id
+    ORDER BY
+      CASE tasks.status
+        WHEN 'draft' THEN 0
+        WHEN 'open' THEN 1
+        WHEN 'in_progress' THEN 2
+        WHEN 'reviewing' THEN 3
+        WHEN 'completed' THEN 4
+        WHEN 'closed' THEN 5
+        ELSE 9
+      END,
+      CASE tasks.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
+      tasks.created_at DESC
+    LIMIT $1
+    `,
+    [normalizedLimit],
+  );
+
+  return rows.map(mapAdminTaskListItem);
+}
+
+export async function createAdminTask(input: AdminTaskCreateInput): Promise<number> {
+  const title = input.title.trim();
+  const description = input.description.trim();
+  const acceptanceCriteria = input.acceptanceCriteria.trim();
+
+  if (!title) {
+    throw new Error("Task title is required.");
+  }
+
+  if (!description) {
+    throw new Error("Task description is required.");
+  }
+
+  if (!acceptanceCriteria) {
+    throw new Error("Task acceptance criteria is required.");
+  }
+
+  const now = new Date().toISOString();
+  const config = {
+    ...(input.config || {}),
+    skills: input.skills,
+    submissionVisibility: input.submissionVisibility,
+  };
+  const rewardPolicy = {
+    rewardType: normalizeRewardType(input.rewardType),
+    amount: Math.max(0, Math.round(input.rewardAmount || 0)),
+    label: input.rewardLabel.trim() || undefined,
+  };
+
+  return withTransaction(async (client) => {
+    const result = await client.query<{ id: number }>(
+      `
+      INSERT INTO tasks (
+        task_key, title, description, task_type, acceptance_criteria, submission_format,
+        reward_policy_json, visibility, executor_type, result_destination, human_interaction_mode,
+        status, priority, max_assignees, created_by_type, created_by_id, config_json,
+        deadline_at, created_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'agent_zone', 'agent', $8, $9, $10, $11, $12, 'admin', $13, $14, $15, $16, $16)
+      RETURNING id
+      `,
+      [
+        buildTaskKey(title),
+        title,
+        description,
+        normalizeTaskType(input.taskType),
+        acceptanceCriteria,
+        normalizeSubmissionFormat(input.submissionFormat),
+        JSON.stringify(rewardPolicy),
+        normalizeResultDestination(input.resultDestination),
+        normalizeHumanInteractionMode(input.humanInteractionMode),
+        normalizeAdminTaskStatus(input.status),
+        normalizePriority(input.priority),
+        Math.max(1, Math.min(Math.round(input.maxAssignees || 1), 50)),
+        input.createdById,
+        JSON.stringify(config),
+        input.deadlineAt || null,
+        now,
+      ],
+    );
+    const taskId = result.rows[0]?.id;
+
+    if (!taskId) {
+      throw new Error("Failed to create task.");
+    }
+
+    await client.query(
+      `
+      INSERT INTO task_events (task_id, actor_type, actor_id, event_type, details_json, created_at)
+      VALUES ($1, 'admin', $2, $3, $4, $5)
+      `,
+      [
+        taskId,
+        input.createdById,
+        normalizeAdminTaskStatus(input.status) === "open" ? "published" : "created",
+        JSON.stringify({ status: normalizeAdminTaskStatus(input.status), source: "admin_tasks_ui" }),
+        now,
+      ],
+    );
+
+    return taskId;
+  });
+}
+
+export async function getAdminTaskEditData(taskId: number): Promise<AdminTaskEditData | null> {
+  const rows = await query<AdminTaskRow>(
+    `
+    SELECT
+      tasks.id,
+      tasks.task_key,
+      tasks.title,
+      tasks.description,
+      tasks.task_type,
+      tasks.acceptance_criteria,
+      tasks.submission_format,
+      tasks.reward_policy_json,
+      tasks.visibility,
+      tasks.executor_type,
+      tasks.result_destination,
+      tasks.human_interaction_mode,
+      tasks.status,
+      tasks.priority,
+      tasks.max_assignees,
+      tasks.created_by_type,
+      tasks.created_by_id,
+      tasks.config_json,
+      tasks.deadline_at,
+      tasks.created_at,
+      tasks.updated_at,
+      '0' AS assignment_count,
+      '0' AS submission_count,
+      NULL AS assignee_names
+    FROM tasks
+    WHERE tasks.visibility = 'agent_zone'
+      AND tasks.id = $1
+    LIMIT 1
+    `,
+    [taskId],
+  );
+  const row = rows[0];
+
+  return row ? mapAdminTaskEditData(row) : null;
+}
+
+export async function updateAdminTask(
+  taskId: number,
+  input: AdminTaskCreateInput,
+): Promise<void> {
+  const title = input.title.trim();
+  const description = input.description.trim();
+  const acceptanceCriteria = input.acceptanceCriteria.trim();
+
+  if (!title) {
+    throw new Error("Task title is required.");
+  }
+
+  if (!description) {
+    throw new Error("Task description is required.");
+  }
+
+  if (!acceptanceCriteria) {
+    throw new Error("Task acceptance criteria is required.");
+  }
+
+  const now = new Date().toISOString();
+  const config = {
+    ...(input.config || {}),
+    skills: input.skills,
+    submissionVisibility: input.submissionVisibility,
+  };
+  const rewardPolicy = {
+    rewardType: normalizeRewardType(input.rewardType),
+    amount: Math.max(0, Math.round(input.rewardAmount || 0)),
+    label: input.rewardLabel.trim() || undefined,
+  };
+
+  await withTransaction(async (client) => {
+    await client.query(
+      `
+      UPDATE tasks
+      SET title = $1,
+        description = $2,
+        task_type = $3,
+        acceptance_criteria = $4,
+        submission_format = $5,
+        reward_policy_json = $6,
+        result_destination = $7,
+        human_interaction_mode = $8,
+        status = $9,
+        priority = $10,
+        max_assignees = $11,
+        config_json = $12,
+        deadline_at = $13,
+        updated_at = $14
+      WHERE id = $15 AND visibility = 'agent_zone'
+      `,
+      [
+        title,
+        description,
+        normalizeTaskType(input.taskType),
+        acceptanceCriteria,
+        normalizeSubmissionFormat(input.submissionFormat),
+        JSON.stringify(rewardPolicy),
+        normalizeResultDestination(input.resultDestination),
+        normalizeHumanInteractionMode(input.humanInteractionMode),
+        normalizeAdminTaskStatus(input.status),
+        normalizePriority(input.priority),
+        Math.max(1, Math.min(Math.round(input.maxAssignees || 1), 50)),
+        JSON.stringify(config),
+        input.deadlineAt || null,
+        now,
+        taskId,
+      ],
+    );
+    await client.query(
+      `
+      INSERT INTO task_events (task_id, actor_type, actor_id, event_type, details_json, created_at)
+      VALUES ($1, 'admin', $2, 'updated', $3, $4)
+      `,
+      [
+        taskId,
+        input.createdById,
+        JSON.stringify({
+          status: normalizeAdminTaskStatus(input.status),
+          priority: normalizePriority(input.priority),
+          source: "agent_task_edit_ui",
+        }),
+        now,
+      ],
+    );
+  });
+}
+
+export async function updateAdminTaskStatus(
+  taskId: number,
+  status: AdminTaskStatus,
+  actorId: number,
+): Promise<void> {
+  const nextStatus = normalizeAdminTaskStatus(status);
+  const now = new Date().toISOString();
+
+  await withTransaction(async (client) => {
+    await client.query(
+      `
+      UPDATE tasks
+      SET status = $1, updated_at = $2
+      WHERE id = $3 AND visibility = 'agent_zone'
+      `,
+      [nextStatus, now, taskId],
+    );
+    await client.query(
+      `
+      INSERT INTO task_events (task_id, actor_type, actor_id, event_type, details_json, created_at)
+      VALUES ($1, 'admin', $2, 'status_changed', $3, $4)
+      `,
+      [taskId, actorId, JSON.stringify({ status: nextStatus, source: "admin_tasks_ui" }), now],
+    );
+  });
+}
+
+export async function getAgentTaskDetailData(id: number): Promise<AgentTaskDetailData | null> {
+  const rows = await query<TaskRow>(
+    `
+    SELECT
+      tasks.id,
+      tasks.task_key,
+      tasks.title,
+      tasks.description,
+      tasks.task_type,
+      tasks.acceptance_criteria,
+      tasks.submission_format,
+      tasks.reward_policy_json,
+      tasks.visibility,
+      tasks.executor_type,
+      tasks.result_destination,
+      tasks.human_interaction_mode,
+      tasks.status,
+      tasks.priority,
+      tasks.max_assignees,
+      tasks.config_json,
+      tasks.deadline_at,
+      tasks.created_at,
+      tasks.updated_at,
+      COUNT(DISTINCT task_assignments.id)::text AS assignment_count,
+      COUNT(DISTINCT task_submissions.id)::text AS submission_count,
+      STRING_AGG(DISTINCT agent_profiles.name, ' / ') FILTER (
+        WHERE task_assignments.status IN ('claimed', 'in_progress', 'submitted')
+      ) AS assignee_names
+    FROM tasks
+    LEFT JOIN task_assignments ON task_assignments.task_id = tasks.id
+    LEFT JOIN agent_profiles
+      ON task_assignments.assignee_type = 'agent'
+      AND task_assignments.assignee_id = agent_profiles.id
+    LEFT JOIN task_submissions ON task_submissions.task_id = tasks.id
+    WHERE tasks.visibility = 'agent_zone'
+      AND tasks.status <> 'draft'
+      AND tasks.id = $1
+    GROUP BY tasks.id
+    LIMIT 1
+    `,
+    [id],
+  );
+  const row = rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  const task = mapTaskCard(row);
+  const config = safeJsonParse<Record<string, unknown>>(row.config_json, {});
+  const canViewSubmissions = canViewTaskSubmissions(row, config);
+  const [assignments, submissions, events] = await Promise.all([
+    listTaskAssignmentsForDetail(id),
+    listTaskSubmissionsForDetail(id, canViewSubmissions),
+    listTaskEventsForDetail(id),
+  ]);
+
+  return {
+    task: {
+      ...task,
+      taskKey: row.task_key || `task-${row.id}`,
+      description: row.description || "暂无任务说明。",
+      acceptanceCriteria: row.acceptance_criteria || "暂无验收标准。",
+      submissionFormat: row.submission_format || "markdown",
+      executorType: row.executor_type,
+      resultDestination: row.result_destination,
+      humanInteractionMode: row.human_interaction_mode,
+      submissionVisibility: canViewSubmissions ? "public" : "private",
+      canViewSubmissions,
+      maxAssignees: row.max_assignees,
+      createdAt: formatDateTime(row.created_at),
+      updatedAt: formatDateTime(row.updated_at),
+    },
+    stats: [
+      { label: "状态", value: task.statusLabel },
+      { label: "领取", value: `${assignments.length}/${row.max_assignees}` },
+      { label: "提交", value: String(submissions.length) },
+      { label: "截止", value: task.due },
+    ],
+    assignments,
+    submissions,
+    events,
+  };
+}
+
+export async function getAgentTaskSubmissionDetailData(
+  taskId: number,
+  submissionId: number,
+): Promise<AgentTaskSubmissionDetailData | null> {
+  const detail = await getAgentTaskDetailData(taskId);
+
+  if (!detail || !detail.task.canViewSubmissions) {
+    return null;
+  }
+
+  const rows = await query<TaskSubmissionDetailRow>(
+    `
+    SELECT
+      task_submissions.id,
+      task_submissions.task_id,
+      task_submissions.submitter_type,
+      task_submissions.submitter_id,
+      task_submissions.body,
+      task_submissions.result_json,
+      task_submissions.attachments_json,
+      task_submissions.source_json,
+      task_submissions.status,
+      task_submissions.self_review,
+      task_submissions.submitted_at,
+      task_submissions.updated_at,
+      agent_profiles.name AS agent_name,
+      task_reviews.score,
+      task_reviews.decision,
+      task_reviews.comment AS review_comment
+    FROM task_submissions
+    LEFT JOIN agent_profiles
+      ON task_submissions.submitter_type = 'agent'
+      AND task_submissions.submitter_id = agent_profiles.id
+    LEFT JOIN LATERAL (
+      SELECT score, decision, comment
+      FROM task_reviews
+      WHERE task_reviews.submission_id = task_submissions.id
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    ) task_reviews ON TRUE
+    WHERE task_submissions.task_id = $1
+      AND task_submissions.id = $2
+    LIMIT 1
+    `,
+    [taskId, submissionId],
+  );
+  const row = rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    task: detail.task,
+    submission: mapTaskSubmissionDetail(row),
+  };
 }
 
 export async function claimAgentZoneTask(agent: AgentContext, taskId: number) {
@@ -517,6 +1290,253 @@ async function listAgentZoneSubmissionSummaries(): Promise<AgentZoneSubmissionSu
   }));
 }
 
+async function listTaskAssignmentsForDetail(taskId: number): Promise<AgentTaskDetailData["assignments"]> {
+  const rows = await query<TaskAssignmentDetailRow>(
+    `
+    SELECT
+      task_assignments.id,
+      task_assignments.assignee_type,
+      task_assignments.assignee_id,
+      task_assignments.status,
+      task_assignments.claimed_at,
+      task_assignments.started_at,
+      task_assignments.due_at,
+      task_assignments.completed_at,
+      agent_profiles.name AS agent_name
+    FROM task_assignments
+    LEFT JOIN agent_profiles
+      ON task_assignments.assignee_type = 'agent'
+      AND task_assignments.assignee_id = agent_profiles.id
+    WHERE task_assignments.task_id = $1
+    ORDER BY task_assignments.claimed_at DESC, task_assignments.id DESC
+    LIMIT 40
+    `,
+    [taskId],
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    assigneeType: row.assignee_type,
+    assigneeId: row.assignee_id,
+    agentName: row.agent_name || `${row.assignee_type}#${row.assignee_id}`,
+    status: assignmentStatusLabel(row.status),
+    claimedAt: formatDateTime(row.claimed_at),
+    startedAt: row.started_at ? formatDateTime(row.started_at) : "-",
+    dueAt: row.due_at ? formatDateTime(row.due_at) : "-",
+    completedAt: row.completed_at ? formatDateTime(row.completed_at) : "-",
+  }));
+}
+
+async function listTaskSubmissionsForDetail(
+  taskId: number,
+  canView: boolean,
+): Promise<AgentTaskDetailData["submissions"]> {
+  const rows = await query<TaskSubmissionDetailRow>(
+    `
+    SELECT
+      task_submissions.id,
+      task_submissions.task_id,
+      task_submissions.submitter_type,
+      task_submissions.submitter_id,
+      task_submissions.body,
+      task_submissions.result_json,
+      task_submissions.attachments_json,
+      task_submissions.source_json,
+      task_submissions.status,
+      task_submissions.self_review,
+      task_submissions.submitted_at,
+      task_submissions.updated_at,
+      agent_profiles.name AS agent_name,
+      task_reviews.score,
+      task_reviews.decision,
+      task_reviews.comment AS review_comment
+    FROM task_submissions
+    LEFT JOIN agent_profiles
+      ON task_submissions.submitter_type = 'agent'
+      AND task_submissions.submitter_id = agent_profiles.id
+    LEFT JOIN LATERAL (
+      SELECT score, decision, comment
+      FROM task_reviews
+      WHERE task_reviews.submission_id = task_submissions.id
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    ) task_reviews ON TRUE
+    WHERE task_submissions.task_id = $1
+    ORDER BY task_submissions.submitted_at DESC, task_submissions.id DESC
+    LIMIT 30
+    `,
+    [taskId],
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    submitterType: row.submitter_type,
+    submitterId: row.submitter_id,
+    agentName: row.agent_name || `${row.submitter_type}#${row.submitter_id}`,
+    status: submissionStatusLabel(row.status),
+    score: typeof row.score === "number" ? String(row.score) : mapSubmissionScore(row.status),
+    decision: row.decision || "-",
+    canView,
+    href: canView ? `/agent-zone/tasks/${row.task_id}/submissions/${row.id}` : null,
+    bodySummary: compactText(row.body, 180),
+    selfReview: compactText(row.self_review || "-", 120),
+    submittedAt: formatDateTime(row.submitted_at),
+  }));
+}
+
+async function listTaskEventsForDetail(taskId: number): Promise<AgentTaskDetailData["events"]> {
+  const rows = await query<TaskEventDetailRow>(
+    `
+    SELECT
+      task_events.id,
+      task_events.actor_type,
+      task_events.actor_id,
+      task_events.event_type,
+      task_events.details_json,
+      task_events.created_at,
+      agent_profiles.name AS agent_name
+    FROM task_events
+    LEFT JOIN agent_profiles
+      ON task_events.actor_type = 'agent'
+      AND task_events.actor_id = agent_profiles.id
+    WHERE task_events.task_id = $1
+    ORDER BY task_events.created_at DESC, task_events.id DESC
+    LIMIT 30
+    `,
+    [taskId],
+  );
+
+  return rows.map((row) => {
+    const detail = safeJsonParse<Record<string, unknown>>(row.details_json, {});
+    const fallbackActor = row.actor_id ? `${row.actor_type}#${row.actor_id}` : row.actor_type;
+    const actorName = row.agent_name || String(detail.agentName || fallbackActor);
+
+    return {
+      id: row.id,
+      actorType: row.actor_type,
+      actorId: row.actor_id,
+      actorName,
+      eventType: eventTypeLabel(row.event_type),
+      detail: formatEventDetail(detail),
+      createdAt: formatDateTime(row.created_at),
+    };
+  });
+}
+
+function mapTaskSubmissionDetail(row: TaskSubmissionDetailRow): AgentTaskSubmissionDetailData["submission"] {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    submitterType: row.submitter_type,
+    submitterId: row.submitter_id,
+    agentName: row.agent_name || `${row.submitter_type}#${row.submitter_id}`,
+    status: submissionStatusLabel(row.status),
+    score: typeof row.score === "number" ? String(row.score) : mapSubmissionScore(row.status),
+    decision: row.decision || "-",
+    reviewComment: row.review_comment || "-",
+    body: row.body,
+    resultJson: prettyJson(row.result_json),
+    attachmentsJson: prettyJson(row.attachments_json),
+    sourceJson: prettyJson(row.source_json),
+    selfReview: row.self_review || "-",
+    submittedAt: formatDateTime(row.submitted_at),
+    updatedAt: formatDateTime(row.updated_at),
+  };
+}
+
+async function listAgentDevicesForDetail(agentProfileId: number): Promise<AgentDetailData["devices"]> {
+  const rows = await query<AgentDeviceSummaryRow>(
+    `
+    SELECT id, device_id, device_name, status, last_seen_at, created_at
+    FROM agent_devices
+    WHERE agent_profile_id = $1
+    ORDER BY COALESCE(last_seen_at, created_at) DESC, id DESC
+    LIMIT 20
+    `,
+    [agentProfileId],
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    deviceId: row.device_id,
+    deviceName: row.device_name,
+    status: row.status,
+    lastSeen: row.last_seen_at ? formatLastActive(row.last_seen_at) : "从未在线",
+    createdAt: formatDateTime(row.created_at),
+  }));
+}
+
+async function listAgentRunsForDetail(agentProfileId: number): Promise<AgentDetailData["runs"]> {
+  const rows = await query<AgentRunSummaryRow>(
+    `
+    SELECT id, run_key, skill_version, task, status, output_summary, quality_score, created_at, completed_at
+    FROM content_runs
+    WHERE agent_profile_id = $1
+    ORDER BY created_at DESC, id DESC
+    LIMIT 12
+    `,
+    [agentProfileId],
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    runKey: row.run_key,
+    skillVersion: row.skill_version || "unknown",
+    task: row.task,
+    status: row.status,
+    outputSummary: row.output_summary || "无输出摘要",
+    qualityScore: typeof row.quality_score === "number" ? String(row.quality_score) : "-",
+    createdAt: formatDateTime(row.completed_at || row.created_at),
+  }));
+}
+
+async function listAgentAssignmentsForDetail(agentProfileId: number): Promise<AgentDetailData["assignments"]> {
+  const rows = await query<AgentAssignmentSummaryRow>(
+    `
+    SELECT
+      task_assignments.id,
+      task_assignments.task_id,
+      tasks.title,
+      tasks.task_type,
+      tasks.status AS task_status,
+      task_assignments.status AS assignment_status,
+      task_assignments.claimed_at,
+      task_assignments.completed_at,
+      task_submissions.id AS submission_id,
+      task_submissions.status AS submission_status,
+      task_submissions.submitted_at
+    FROM task_assignments
+    INNER JOIN tasks ON tasks.id = task_assignments.task_id
+    LEFT JOIN LATERAL (
+      SELECT id, status, submitted_at
+      FROM task_submissions
+      WHERE task_submissions.assignment_id = task_assignments.id
+      ORDER BY submitted_at DESC, id DESC
+      LIMIT 1
+    ) task_submissions ON TRUE
+    WHERE task_assignments.assignee_type = 'agent'
+      AND task_assignments.assignee_id = $1
+    ORDER BY task_assignments.claimed_at DESC, task_assignments.id DESC
+    LIMIT 20
+    `,
+    [agentProfileId],
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    taskId: row.task_id,
+    title: row.title,
+    type: taskTypeLabel(row.task_type),
+    taskStatus: row.task_status,
+    assignmentStatus: row.assignment_status,
+    claimedAt: formatDateTime(row.claimed_at),
+    completedAt: row.completed_at ? formatDateTime(row.completed_at) : "-",
+    submissionId: row.submission_id,
+    submissionStatus: row.submission_status || "-",
+    submittedAt: row.submitted_at ? formatDateTime(row.submitted_at) : "-",
+  }));
+}
+
 function mapAgentCard(row: AgentDirectoryRow): AgentZoneAgentCard {
   const lastActivity = latestDate(row.last_action_at, row.last_device_seen_at, row.last_run_at, row.created_at);
   const activeAssignments = Number(row.active_assignment_count || 0);
@@ -556,6 +1576,7 @@ function mapTaskCard(row: TaskRow): AgentZoneTaskCard {
     title: row.title,
     type: taskTypeLabel(row.task_type),
     status: row.status,
+    statusLabel: taskStatusLabel(row.status),
     state: mapTaskState(row.status),
     priority: row.priority || "P2",
     reward: String(reward.label || formatReward(reward)),
@@ -565,6 +1586,92 @@ function mapTaskCard(row: TaskRow): AgentZoneTaskCard {
     acceptance: row.acceptance_criteria || row.description,
     submissionCount: Number(row.submission_count || 0),
   };
+}
+
+function mapAdminTaskListItem(row: AdminTaskRow): AdminTaskListItem {
+  const reward = safeJsonParse<Record<string, unknown>>(row.reward_policy_json, {});
+  const config = safeJsonParse<Record<string, unknown>>(row.config_json, {});
+  const skills = Array.isArray(config.skills)
+    ? config.skills.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  const canViewSubmissions = canViewTaskSubmissions(row, config);
+
+  return {
+    id: row.id,
+    taskKey: row.task_key || `task-${row.id}`,
+    title: row.title,
+    description: compactText(row.description, 160),
+    type: taskTypeLabel(row.task_type),
+    taskType: row.task_type,
+    status: row.status,
+    statusLabel: taskStatusLabel(row.status),
+    priority: row.priority || "P2",
+    maxAssignees: row.max_assignees,
+    assignmentCount: Number(row.assignment_count || 0),
+    submissionCount: Number(row.submission_count || 0),
+    reward: String(reward.label || formatReward(reward)),
+    resultDestination: row.result_destination,
+    submissionVisibility: canViewSubmissions ? "public" : "private",
+    skills,
+    deadlineAt: formatDeadline(row.deadline_at),
+    createdAt: formatDateTime(row.created_at),
+    updatedAt: formatDateTime(row.updated_at),
+  };
+}
+
+function mapAdminTaskEditData(row: AdminTaskRow): AdminTaskEditData {
+  const reward = safeJsonParse<Record<string, unknown>>(row.reward_policy_json, {});
+  const config = safeJsonParse<Record<string, unknown>>(row.config_json, {});
+  const skills = Array.isArray(config.skills)
+    ? config.skills.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  const sourceContext = String(config.sourceContext || "");
+  const referenceUrl = String(config.referenceUrl || "");
+  const advancedConfig = { ...config };
+
+  delete advancedConfig.skills;
+  delete advancedConfig.submissionVisibility;
+  delete advancedConfig.submissionsVisibility;
+  delete advancedConfig.publicSubmissions;
+  delete advancedConfig.submissionsPublic;
+  delete advancedConfig.allowPublicSubmissionView;
+  delete advancedConfig.sourceContext;
+  delete advancedConfig.referenceUrl;
+
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    taskType: normalizeTaskType(row.task_type),
+    acceptanceCriteria: row.acceptance_criteria,
+    submissionFormat: normalizeSubmissionFormat(row.submission_format),
+    status: normalizeAdminTaskStatus(row.status),
+    priority: normalizePriority(row.priority),
+    maxAssignees: row.max_assignees,
+    resultDestination: normalizeResultDestination(row.result_destination),
+    humanInteractionMode: normalizeHumanInteractionMode(row.human_interaction_mode),
+    rewardType: normalizeRewardType(String(reward.rewardType || "")),
+    rewardAmount: Number(reward.amount || 0),
+    rewardLabel: String(reward.label || ""),
+    skills: skills.join(", "),
+    submissionVisibility: canViewTaskSubmissions(row, config) ? "public" : "private",
+    sourceContext,
+    referenceUrl,
+    configJson: Object.keys(advancedConfig).length > 0 ? JSON.stringify(advancedConfig, null, 2) : "",
+    deadlineAt: formatDateTimeLocal(row.deadline_at),
+  };
+}
+
+function canViewTaskSubmissions(row: TaskRow, config: Record<string, unknown>) {
+  if (typeof config.publicSubmissions === "boolean") return config.publicSubmissions;
+  if (typeof config.submissionsPublic === "boolean") return config.submissionsPublic;
+  if (typeof config.allowPublicSubmissionView === "boolean") return config.allowPublicSubmissionView;
+
+  const visibility = String(config.submissionVisibility || config.submissionsVisibility || "").trim();
+  if (visibility === "public" || visibility === "agent_zone_public") return true;
+  if (visibility === "private" || visibility === "hidden" || visibility === "admin_only") return false;
+
+  return ["agent_artifacts", "topic_reply"].includes(row.result_destination);
 }
 
 function assertAgentCanUseTask(task: TaskRow) {
@@ -640,18 +1747,71 @@ function inferAgentSkills(name: string, scopesJson: string) {
 }
 
 function taskTypeLabel(type: string) {
-  const labels: Record<string, string> = {
-    content_summary: "内容整理",
-    project_feedback: "项目反馈",
-    research: "研究分析",
-    duplicate_check: "搜索查重",
-    moderation_suggestion: "审核建议",
-    tag_cleanup: "标签整理",
-    agent_skill_practice: "练习任务",
-    arena_challenge: "竞技任务",
-  };
+  return getAgentTaskTypeLabel(type);
+}
 
-  return labels[type] || type;
+function normalizeTaskType(value: string) {
+  return normalizeAgentTaskType(value || DEFAULT_AGENT_TASK_TYPE);
+}
+
+function normalizeAdminTaskStatus(value: string): AdminTaskStatus {
+  if (value === "open" || value === "closed" || value === "cancelled" || value === "completed") return value;
+  return "draft";
+}
+
+function normalizePriority(value: string) {
+  if (value === "P0" || value === "P1" || value === "P3") return value;
+  return "P2";
+}
+
+function normalizeSubmissionFormat(value: string) {
+  const format = String(value || "").trim();
+  const allowed = new Set([
+    "markdown",
+    "markdown_with_topic_link",
+    "topic_link",
+    "json",
+    "url",
+  ]);
+
+  return allowed.has(format) ? format : "markdown";
+}
+
+function normalizeResultDestination(value: string) {
+  const destination = String(value || "").trim();
+  const allowed = new Set([
+    "task_only",
+    "agent_artifacts",
+    "community_topic",
+    "topic_reply",
+    "moderation_queue",
+  ]);
+
+  return allowed.has(destination) ? destination : "agent_artifacts";
+}
+
+function normalizeHumanInteractionMode(value: string) {
+  const mode = String(value || "").trim();
+  if (mode === "normal" || mode === "ask_human") return mode;
+  return "read_only";
+}
+
+function normalizeRewardType(value: string) {
+  if (value === "agent_skill_credit" || value === "agent_arena_score") return value;
+  return "agent_quality_score";
+}
+
+function buildTaskKey(title: string) {
+  const base = title
+    .trim()
+    .toLowerCase()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48) || "agent_task";
+  const suffix = Date.now().toString(36);
+
+  return `admin_${base}_${suffix}`;
 }
 
 function mapTaskState(status: string): TaskUiState {
@@ -660,6 +1820,46 @@ function mapTaskState(status: string): TaskUiState {
   if (status === "completed") return "completed";
   if (status === "closed" || status === "cancelled" || status === "expired") return "closed";
   return "open";
+}
+
+function taskStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    draft: "草稿",
+    open: "可领取",
+    claimed: "已领取",
+    in_progress: "执行中",
+    reviewing: "待评审",
+    completed: "已完成",
+    closed: "已关闭",
+    cancelled: "已取消",
+    expired: "已过期",
+  };
+
+  return labels[status] || status;
+}
+
+function assignmentStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    claimed: "已领取",
+    in_progress: "执行中",
+    submitted: "已提交",
+    completed: "已完成",
+    cancelled: "已取消",
+  };
+
+  return labels[status] || status;
+}
+
+function submissionStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    submitted: "已提交",
+    reviewing: "待评审",
+    accepted: "已通过",
+    rejected: "未通过",
+    archived: "已归档",
+  };
+
+  return labels[status] || status;
 }
 
 function mapSubmissionState(status: string) {
@@ -674,6 +1874,28 @@ function mapSubmissionScore(status: string) {
   if (status === "rejected") return "未通过";
   if (status === "archived") return "已归档";
   return "待评审";
+}
+
+function eventTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    created: "创建任务",
+    updated: "更新任务",
+    claimed: "领取任务",
+    submitted: "提交结果",
+    reviewed: "评审结果",
+    accepted: "验收通过",
+    rejected: "验收未通过",
+    closed: "关闭任务",
+  };
+
+  return labels[type] || type;
+}
+
+function formatEventDetail(detail: Record<string, unknown>) {
+  if (typeof detail.submissionId === "number") return `submission #${detail.submissionId}`;
+  if (typeof detail.assignmentId === "number") return `assignment #${detail.assignmentId}`;
+  if (typeof detail.reason === "string" && detail.reason.trim()) return detail.reason.trim();
+  return "事件已记录";
 }
 
 function formatReward(reward: Record<string, unknown>) {
@@ -733,6 +1955,67 @@ function formatLastActive(value: string) {
   if (hours < 24) return `${hours} h ago`;
 
   return `${Math.round(hours / 24)} d ago`;
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Shanghai",
+  }).format(date);
+}
+
+function formatDateTimeLocal(value: string | null) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+    timeZone: "Asia/Shanghai",
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value || "00";
+
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+}
+
+function compactText(value: string, limit: number) {
+  const text = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!text) return "-";
+  if (text.length <= limit) return text;
+  return `${text.slice(0, Math.max(0, limit - 3))}...`;
+}
+
+function prettyJson(value: string) {
+  const parsed = safeJsonParse<unknown>(value, null);
+
+  if (parsed === null || parsed === undefined) {
+    return value || "{}";
+  }
+
+  return JSON.stringify(parsed, null, 2);
 }
 
 function latestDate(...values: Array<string | null | undefined>) {

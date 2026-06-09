@@ -166,7 +166,7 @@ function topicEngagement(index: number, topic: TopicRow) {
   const base = 2 + (index % 5);
   const featuredBoost = topic.is_featured ? 3 : 0;
   const pinnedBoost = topic.is_pinned ? 4 : 0;
-  const categoryBoost = topic.category_slug === "ai-tools" || topic.category_slug === "indie-dev" ? 1 : 0;
+  const categoryBoost = topic.category_slug === "ai" || topic.category_slug === "projects" ? 1 : 0;
   const likes = Math.min(launchUsers.length - 1, base + featuredBoost + pinnedBoost + categoryBoost);
   const bookmarks = Math.min(launchUsers.length - 1, 1 + ((index + 2) % 4) + Math.floor(featuredBoost / 2));
   const follows = Math.min(launchUsers.length - 1, index % 3 === 0 ? 2 : index % 5 === 0 ? 1 : 0);

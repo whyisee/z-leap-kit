@@ -17,9 +17,49 @@ const routeCategorySlug = currentPath.startsWith("/c/") ? decodeURIComponent(cur
 const routeTagSlug = currentPath.startsWith("/tag/") ? decodeURIComponent(currentPath.split("/")[2] || "") : undefined;
 const activeCategorySlug = Astro.props.activeCategorySlug || routeCategorySlug;
 const activeTagSlug = Astro.props.activeTagSlug || routeTagSlug;
+const activePrimary = currentPath === "/" || currentPath === "/see"
+  ? "see"
+  : currentPath.startsWith("/go")
+    ? "go"
+    : currentPath.startsWith("/following")
+      ? "following"
+      : "";
 ---
 
 <aside class="left-nav">
+  <nav class="compact-list nav-list left-nav-primary" aria-label={lang === "en" ? "Main" : "主导航"}>
+    <a
+      class:list={["nav-item", activePrimary === "see" && "is-active"]}
+      href="/"
+      style="--pill-color: #8ab4f8"
+      aria-current={activePrimary === "see" ? "page" : undefined}
+    >
+      <span class="nav-item-main">
+        <span class="nav-item-label">{t(lang, "nav.see")}</span>
+      </span>
+    </a>
+    <a
+      class:list={["nav-item", activePrimary === "go" && "is-active"]}
+      href="/go"
+      style="--pill-color: #66d08c"
+      aria-current={activePrimary === "go" ? "page" : undefined}
+    >
+      <span class="nav-item-main">
+        <span class="nav-item-label">{t(lang, "nav.go")}</span>
+      </span>
+    </a>
+    <a
+      class:list={["nav-item", activePrimary === "following" && "is-active"]}
+      href="/following"
+      style="--pill-color: #f3c969"
+      aria-current={activePrimary === "following" ? "page" : undefined}
+    >
+      <span class="nav-item-main">
+        <span class="nav-item-label">{t(lang, "nav.following")}</span>
+      </span>
+    </a>
+  </nav>
+
   <details class="left-nav-section" open>
     <summary>
       <span>{t(lang, "sidebar.categories")}</span>

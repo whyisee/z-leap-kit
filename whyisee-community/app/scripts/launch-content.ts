@@ -42,7 +42,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "whyisee.xyz 首版内容会先解决哪些真实问题",
     slug: "whyisee-first-content-real-user-needs",
-    category: "announcements",
+    category: "docs",
     type: "announcement",
     tags: ["community-ops", "indie-dev", "user-feedback"],
     summary: "首版内容不再按分类填满，而是围绕 AI 开发、独立开发、上线和流量里的真实卡点组织。",
@@ -67,7 +67,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "Cursor 一直改错同一个 bug，怎么让它先收敛上下文？",
     slug: "cursor-keeps-fixing-wrong-bug-context",
-    category: "ai-tools",
+    category: "ai",
     type: "question",
     tags: ["cursor", "ai-workflow", "codex"],
     summary: "当 AI 反复改错位置时，先停止追加指令，把复现路径、文件边界和验收方式收窄。",
@@ -92,7 +92,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "Codex、Claude Code、Cursor 同时用，任务到底怎么分才不乱？",
     slug: "codex-claude-code-cursor-task-split",
-    category: "ai-tools",
+    category: "ai",
     type: "article",
     tags: ["codex", "claude-code", "cursor", "ai-workflow"],
     summary: "多工具不是同时开火，而是按读代码、改代码、验收、解释和复盘拆出角色边界。",
@@ -116,7 +116,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "DeepSeek 返回 JSON 又乱了，是提示词问题还是产品设计问题？",
     slug: "deepseek-json-output-product-design",
-    category: "ai-tools",
+    category: "ai",
     type: "question",
     tags: ["deepseek", "model-integration", "ai-workflow"],
     summary: "结构化输出失败时，不能只改提示词，也要给产品层做校验、重试、降级和可解释反馈。",
@@ -141,7 +141,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "VPS 上 systemd 启动正常，但网页就是登录不了，先查哪里？",
     slug: "vps-systemd-login-session-debug",
-    category: "indie-dev",
+    category: "projects",
     type: "question",
     tags: ["vps", "postgresql", "community-ops"],
     summary: "服务器能启动不代表会话正常，登录问题常常在环境变量、Cookie、安全头和反向代理。",
@@ -162,7 +162,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "新站 2 周不收录，是内容问题还是技术问题？",
     slug: "new-site-not-indexed-content-or-technical",
-    category: "seo-traffic",
+    category: "resources",
     type: "question",
     tags: ["google-search", "seo", "content-site"],
     summary: "新站不收录时，先区分可抓取、可索引、内容价值、内部链接和真实需求，不要只重复提交 URL。",
@@ -186,7 +186,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "AI 写出来像大纲复读机，怎么改到能发布？",
     slug: "ai-writing-outline-repetition-fix",
-    category: "ai-tools",
+    category: "ai",
     type: "question",
     tags: ["ai-writing", "community-ops"],
     summary: "AI 正文像大纲，通常是因为输入只有主题，没有立场、冲突、例子和读者任务。",
@@ -207,7 +207,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "图片上传功能上线前，不要只测本地目录能写",
     slug: "image-upload-server-directory-checklist",
-    category: "productivity-tools",
+    category: "docs",
     type: "article",
     tags: ["vps", "automation", "community-ops"],
     summary: "图片上传保存到服务器目录时，要同时检查权限、URL 映射、大小限制、清理策略和安全边界。",
@@ -228,7 +228,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "自动审核机器人没有跑，是调度问题还是数据库问题？",
     slug: "auto-review-bot-not-running-debug",
-    category: "ai-tools",
+    category: "ai",
     type: "question",
     tags: ["ai-agent", "automation", "postgresql"],
     summary: "后台自动任务要能展示下一次运行、上次运行、失败原因和手动触发结果，否则用户不知道它是否活着。",
@@ -249,7 +249,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "低预算独立开发者，现在怎么搭一套 AI 编程工具链？",
     slug: "low-budget-ai-coding-toolchain",
-    category: "ai-tools",
+    category: "ai",
     type: "discussion",
     tags: ["cursor", "deepseek", "ai-workflow", "indie-dev"],
     summary: "预算有限时，不要追求所有工具都订阅，而要按任务频率和失败成本配置工具。",
@@ -270,7 +270,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "什么时候该用 Agent，什么时候只该自己写？",
     slug: "when-to-use-agent-or-code-yourself",
-    category: "ai-tools",
+    category: "ai",
     type: "article",
     tags: ["ai-agent", "codex", "ai-workflow"],
     summary: "Agent 适合边界清楚、可验证的任务，不适合需求还没想明白的混沌探索。",
@@ -290,7 +290,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "AI 代码审查应该看风险，不应该只挑格式",
     slug: "ai-code-review-should-focus-risk",
-    category: "ai-tools",
+    category: "ai",
     type: "article",
     tags: ["codex", "ai-workflow", "automation"],
     summary: "自动审查的价值不在于多找几个命名问题，而在于发现行为回归、边界条件和缺失验证。",
@@ -310,7 +310,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "给 Agent 的知识库，不应该只是文档列表",
     slug: "agent-knowledge-base-not-document-list",
-    category: "ai-tools",
+    category: "ai",
     type: "article",
     tags: ["ai-agent", "knowledge-base", "ai-workflow"],
     summary: "Agent 真正需要的是任务相关的上下文入口、决策历史、代码边界和失败案例。",
@@ -330,7 +330,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "AI 功能上线后，怎么判断建议到底准不准？",
     slug: "measure-ai-suggestion-quality",
-    category: "ai-tools",
+    category: "ai",
     type: "article",
     tags: ["model-integration", "ai-agent", "automation"],
     summary: "AI 建议不能只看生成是否成功，还要记录采纳、忽略、修改和后续结果。",
@@ -350,7 +350,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "2C2G VPS 能不能撑起一个早期社区网站？",
     slug: "can-2c2g-vps-run-early-community",
-    category: "indie-dev",
+    category: "projects",
     type: "question",
     tags: ["vps", "postgresql", "community-ops"],
     summary: "早期社区可以从 2C2G 起步，但要控制运行组件、图片存储、日志和后台任务。",
@@ -371,7 +371,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "小游戏站接广告，第一周到底该验证什么？",
     slug: "mini-game-site-first-week-validation",
-    category: "indie-dev",
+    category: "projects",
     type: "discussion",
     tags: ["mini-game", "adsense", "product-validation"],
     summary: "小游戏站不是先铺 100 个游戏，而是先验证用户入口、停留时间、版权边界和广告体验。",
@@ -392,7 +392,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "Open VSX 插件 3 天 0 下载，我先改 README 还是先推广？",
     slug: "open-vsx-zero-downloads-readme-or-promotion",
-    category: "seo-traffic",
+    category: "resources",
     type: "question",
     tags: ["open-vsx", "cursor-plugin", "plugin"],
     summary: "0 下载不一定是推广问题，先检查用户能否在 30 秒内看懂插件解决什么、怎么安装、是否可信。",
@@ -416,7 +416,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "内容站在 AI 搜索时代还值得做吗？",
     slug: "content-site-worth-building-in-ai-search-era",
-    category: "seo-traffic",
+    category: "resources",
     type: "discussion",
     tags: ["content-site", "seo", "traffic-growth"],
     summary: "纯搬运和泛教程会更难，但有独立经验、工具、案例和社区讨论的内容仍然有价值。",
@@ -437,7 +437,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "AI wrapper 还能做，但别再从聊天框开始",
     slug: "ai-wrapper-start-from-workflow-not-chatbox",
-    category: "indie-dev",
+    category: "projects",
     type: "article",
     tags: ["ai-agent", "product-validation", "mvp"],
     summary: "AI wrapper 的机会不在“也能聊天”，而在把模型嵌进一个高频、具体、可复盘的工作流。",
@@ -457,7 +457,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "失败复盘：功能越做越多，用户反而不知道入口在哪里",
     slug: "failure-review-too-many-features-no-entry",
-    category: "indie-dev",
+    category: "projects",
     type: "article",
     tags: ["failure-review", "mvp", "user-feedback"],
     summary: "功能数量不能替代产品入口。早期产品最需要的是一个用户马上能理解的主动作。",
@@ -477,7 +477,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "社区冷启动没人回复，是内容不行还是入口太高？",
     slug: "community-cold-start-no-replies",
-    category: "indie-dev",
+    category: "projects",
     type: "discussion",
     tags: ["community-ops", "cold-start", "user-feedback"],
     summary: "早期没人回复不一定是没人看，也可能是问题太大、身份压力太高、回复成本太高。",
@@ -518,7 +518,7 @@ export const launchTopics: LaunchTopicSeed[] = [
   topic({
     title: "写作页面做得太强，为什么反而更难发帖？",
     slug: "writing-page-too-powerful-harder-to-post",
-    category: "indie-dev",
+    category: "projects",
     type: "article",
     tags: ["failure-review", "ai-writing", "user-feedback"],
     summary: "发帖页不是功能展示厅，标题、正文、AI 辅助、发布设置和底部操作要服务一个流畅写作路径。",

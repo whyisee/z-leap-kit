@@ -3,14 +3,17 @@ import BaseLayout from "@layouts/BaseLayout.astro";
 import ForumFrame from "@components/ForumFrame.astro";
 import TopicCard from "@components/TopicCard.astro";
 import TopicListHeader from "@components/TopicListHeader.astro";
+import { getSessionFromAstro } from "@lib/auth";
 import { getLangFromAstro, t } from "@lib/i18n";
 import { tagPath } from "@lib/routes";
 import { getTagBySlug, listCategories, listTags } from "@server/services/categories";
+import { userFollowsTarget } from "@server/services/interactions";
 import { listFeaturedTopics, listTopics } from "@server/services/topics";
 
 export const prerender = false;
 
 const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
 const slug = Astro.params.slug || "";
 const tag = await getTagBySlug(slug, lang);
 const categories = await listCategories(lang);
@@ -38,6 +41,7 @@ const tagCategories = categories.map((category) => ({
 const activeCategory = tagCategories.find((category) => category.slug === requestedCategorySlug);
 const selectedCategorySlug = activeCategory?.slug || "";
 const topics = sortTopics(allTopics, sort);
+const tagFollowed = tag ? await userFollowsTarget("tag", tag.id, session?.userId) : false;
 const tagDescription = tag?.description || (lang === "en" ? `${allTopics.length} topics with this tag.` : `包含 ${allTopics.length} 个相关话题。`);
 const tagCopy = lang === "en"
   ? {
@@ -53,6 +57,8 @@ const tagCopy = lang === "en"
       removeFilter: "Remove filter",
       allTopics: "All topics",
       empty: "No topics match this filter.",
+      follow: "Follow",
+      following: "Following",
     }
   : {
       tag: "标签",
@@ -67,6 +73,8 @@ const tagCopy = lang === "en"
       removeFilter: "移除筛选器",
       allTopics: "全部话题",
       empty: "没有匹配当前筛选的话题。",
+      follow: "关注",
+      following: "已关注",
     };
 
 function readSort(value: string | null): "latest" | "popular" | "hot" {
@@ -138,6 +146,14 @@ function categoryFilterHref(categorySlug = "") {
             <h1>#{tag.name}</h1>
             <p>{tagDescription}</p>
           </div>
+          <form class="hero-follow-form" method="post" action="/api/interactions/follow">
+            <input type="hidden" name="targetType" value="tag" />
+            <input type="hidden" name="targetId" value={tag.id} />
+            <input type="hidden" name="redirect" value={Astro.url.pathname + Astro.url.search} />
+            <button class:list={["button secondary compact", tagFollowed && "is-active"]} type="submit">
+              {tagFollowed ? tagCopy.following : tagCopy.follow}
+            </button>
+          </form>
         </div>
 
         <div class="topic-filter-row">

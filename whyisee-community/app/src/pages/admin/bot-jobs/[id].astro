@@ -1,0 +1,728 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import AdminNav from "@components/AdminNav.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { formatRelative } from "@lib/format";
+import { getLangFromAstro } from "@lib/i18n";
+import {
+  getBotTask,
+  listBotTaskRunsForTask,
+  listContentReviewResults,
+} from "@server/services/botJobs";
+import { listExternalHotItems, listExternalHotSnapshots } from "@server/services/externalHotSources";
+import { listExternalHotReports } from "@server/services/externalHotReports";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+const id = Number(Astro.params.id || 0);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/", 303);
+}
+
+if (!Number.isFinite(id) || id <= 0) {
+  return Astro.redirect("/admin/bot-jobs?error=1", 303);
+}
+
+const task = await getBotTask(id);
+
+if (!task) {
+  return Astro.redirect("/admin/bot-jobs?error=1", 303);
+}
+
+const autoConfig = task.taskType === "auto_review" ? task.config as {
+  batchSize: number;
+  autoApproveMaxRisk: number;
+  dryRun: boolean;
+} : undefined;
+const externalConfig = task.taskType === "external_hot_scan" ? task.config as {
+  provider: string;
+  sourceUrl: string;
+  apiBaseUrl: string;
+  boards: Array<{ tab: string; subTab: string; label: string }>;
+  maxItems: number;
+  timeoutMs: number;
+  userAgent: string;
+} : undefined;
+const digestConfig = task.taskType === "external_hot_digest" ? task.config as {
+  windowHours: number;
+  topN: number;
+  minSeenCount: number;
+  publishMode: string;
+  categorySlug: string;
+  tagNames: string[];
+  style: string;
+} : undefined;
+const deepConfig = task.taskType === "external_hot_deep_analysis" ? task.config as {
+  itemId: number;
+  publishMode: string;
+  categorySlug: string;
+  tagNames: string[];
+  style: string;
+} : undefined;
+const isExternalHotTask = task.taskType === "external_hot_scan"
+  || task.taskType === "external_hot_digest"
+  || task.taskType === "external_hot_deep_analysis";
+const reviewStatus = Astro.url.searchParams.get("reviewStatus") || "all";
+const runs = await listBotTaskRunsForTask(task.id, 30);
+const reviews = task.taskType === "auto_review"
+  ? await listContentReviewResults(reviewStatus, 60, task.id)
+  : [];
+const externalHotItems = task.taskType === "external_hot_scan"
+  ? await listExternalHotItems("all", 80)
+  : [];
+const externalHotSnapshots = task.taskType === "external_hot_scan"
+  ? await listExternalHotSnapshots("all", 160)
+  : [];
+const externalHotReports = isExternalHotTask
+  ? await listExternalHotReports({
+      source: "all",
+      taskId: task.taskType === "external_hot_scan" ? undefined : task.id,
+      limit: 80,
+    })
+  : [];
+const rebangBoardPresets = [
+  { tab: "top", subTab: "today", label: lang === "en" ? "Rebang Today" : "综合今日" },
+  { tab: "baidu", subTab: "realtime", label: lang === "en" ? "Baidu Hot Search" : "百度热搜" },
+  { tab: "ithome", subTab: "today", label: lang === "en" ? "ITHome Daily" : "IT之家日榜" },
+  { tab: "36kr", subTab: "hotlist", label: lang === "en" ? "36Kr Hot" : "36氪热榜" },
+  { tab: "toutiao", subTab: "", label: lang === "en" ? "Toutiao" : "今日头条" },
+  { tab: "huxiu", subTab: "hot", label: lang === "en" ? "Huxiu Hot" : "虎嗅热文" },
+  { tab: "sspai", subTab: "recommend", label: lang === "en" ? "sspai Recommend" : "少数派推荐" },
+  { tab: "weread", subTab: "rising", label: lang === "en" ? "WeRead Rising" : "微信读书飙升榜" },
+];
+const boardKey = (board: { tab: string; subTab?: string }) => `${board.tab}${board.subTab ? `/${board.subTab}` : ""}`;
+const boardLine = (board: { tab: string; subTab?: string; label: string }) => `${boardKey(board)} | ${board.label}`;
+const presetBoardKeys = new Set(rebangBoardPresets.map(boardKey));
+const selectedBoardKeys = new Set(externalConfig?.boards?.map(boardKey) || []);
+const customBoardsText = externalConfig?.boards?.filter((board) => !presetBoardKeys.has(boardKey(board))).map((board) => {
+  const key = `${board.tab}${board.subTab ? `/${board.subTab}` : ""}`;
+  return `${key} | ${board.label || key}`;
+}).join("\n") || "";
+const taskProcessed = Astro.url.searchParams.get("taskProcessed") === "1";
+const reportCreated = Astro.url.searchParams.get("reportCreated") === "1";
+const saved = Astro.url.searchParams.get("saved") === "1";
+const error = Astro.url.searchParams.get("error") === "1";
+const copy = lang === "en"
+  ? {
+      title: "Bot Job Detail",
+      back: "Back to tasks",
+      active: "Active",
+      paused: "Paused",
+      config: "Task Configuration",
+      overview: "Overview",
+      reviewResults: "AI Review Results",
+      externalHot: "External Hot List Items",
+      externalHotDescription: "Scanned external trends from this provider.",
+      externalHotSnapshots: "Scan Snapshots",
+      externalHotSnapshotsDescription: "Per-run observations for rank and heat trend analysis.",
+      externalHotReports: "Generated Reports",
+      externalHotReportsDescription: "AI digest and deep analysis generated from external hot data.",
+      recentRuns: "Recent Runs",
+      all: "All",
+      applied: "Applied",
+      needs_human: "Needs human",
+      suggested: "Suggested",
+      failed: "Failed",
+      approve: "Approve",
+      reject: "Reject",
+      needsHumanDecision: "Needs human",
+      runNow: "Run now",
+      saveTask: "Save task",
+      status: "Status",
+      interval: "Interval seconds",
+      batchSize: "Batch size",
+      sourceUrl: "Source URL",
+      apiBaseUrl: "API base URL",
+      boards: "Hot boards",
+      presetBoards: "Preset boards",
+      customBoards: "Custom boards",
+      boardsHint: "Optional. One board per line: tab/sub_tab | label. Example: weibo/search | Weibo Hot Search.",
+      maxItems: "Max items",
+      timeoutMs: "Timeout ms",
+      userAgent: "User-Agent",
+      windowHours: "Window hours",
+      minSeenCount: "Min seen count",
+      publishMode: "Publish mode",
+      categorySlug: "Category slug",
+      tagNames: "Tags",
+      style: "Style",
+      itemId: "Hot item ID",
+      autoApproveMaxRisk: "Auto approve max risk",
+      dryRun: "Dry run only",
+      emptyReviews: "No AI review results in this status.",
+      emptyRuns: "No task runs yet.",
+      taskProcessed: "Processed one automatic task.",
+      reportCreated: "Generated one AI report.",
+      saved: "Saved.",
+      error: "Bot job processing failed.",
+      bot: "Bot",
+      type: "Type",
+      trigger: "Trigger",
+      nextRun: "Next run",
+      lastRun: "Last run",
+      risk: "Risk",
+      reasons: "Reasons",
+      target: "Target",
+      topic: "Topic",
+      editTopic: "Edit topic",
+      dryRunHint: "When enabled, AI writes suggestions but never publishes content.",
+      hotEmpty: "No external hot list items yet.",
+      snapshotEmpty: "No scan snapshots yet.",
+      heat: "Heat",
+      observedAt: "Observed",
+      firstSeen: "First seen",
+      lastSeen: "Last seen",
+      openSource: "Open source",
+      generateAnalysis: "Deep analysis",
+      emptyReports: "No generated reports yet.",
+      viewTopic: "View topic",
+      draft: "Draft",
+      pending: "Pending",
+      published: "Published",
+      reportOnly: "Report only",
+    }
+  : {
+      title: "任务详情",
+      back: "返回任务列表",
+      active: "启用",
+      paused: "暂停",
+      config: "任务配置",
+      overview: "任务概览",
+      reviewResults: "AI 审核结果",
+      externalHot: "外部热榜条目",
+      externalHotDescription: "当前来源扫描入库的外部趋势。",
+      externalHotSnapshots: "扫描快照",
+      externalHotSnapshotsDescription: "每次运行看到的排名和热度记录，用于后续分析趋势。",
+      externalHotReports: "生成报告",
+      externalHotReportsDescription: "基于外部热榜数据生成的 AI 总结和深度分析。",
+      recentRuns: "最近运行",
+      all: "全部",
+      applied: "已执行",
+      needs_human: "需人工复核",
+      suggested: "仅建议",
+      failed: "失败",
+      approve: "通过",
+      reject: "驳回",
+      needsHumanDecision: "人工复核",
+      runNow: "立即运行",
+      saveTask: "保存任务",
+      status: "状态",
+      interval: "间隔秒数",
+      batchSize: "批量数量",
+      sourceUrl: "来源 URL",
+      apiBaseUrl: "API 地址",
+      boards: "热榜类型",
+      presetBoards: "预设热榜",
+      customBoards: "自定义热榜",
+      boardsHint: "可选。每行一个榜单：tab/sub_tab | 显示名。例如：weibo/search | 微博热搜。",
+      maxItems: "最大条数",
+      timeoutMs: "超时毫秒",
+      userAgent: "User-Agent",
+      windowHours: "窗口小时",
+      minSeenCount: "最少出现次数",
+      publishMode: "发布方式",
+      categorySlug: "分类 slug",
+      tagNames: "标签",
+      style: "写作风格",
+      itemId: "热榜条目 ID",
+      autoApproveMaxRisk: "自动通过最高风险分",
+      dryRun: "只建议不执行",
+      emptyReviews: "当前状态下没有 AI 审核结果。",
+      emptyRuns: "暂无任务运行记录。",
+      taskProcessed: "已运行一个自动任务。",
+      reportCreated: "已生成一份 AI 报告。",
+      saved: "已保存。",
+      error: "机器人任务处理失败。",
+      bot: "机器人",
+      type: "类型",
+      trigger: "触发方式",
+      nextRun: "下次运行",
+      lastRun: "上次运行",
+      risk: "风险",
+      reasons: "原因",
+      target: "对象",
+      topic: "话题",
+      editTopic: "编辑话题",
+      dryRunHint: "开启后只记录 AI 建议，不会自动发布内容。",
+      hotEmpty: "暂无外部热榜条目。",
+      snapshotEmpty: "暂无扫描快照。",
+      heat: "热度",
+      observedAt: "观测时间",
+      firstSeen: "首次发现",
+      lastSeen: "最近发现",
+      openSource: "打开来源",
+      generateAnalysis: "深度分析",
+      emptyReports: "暂无生成报告。",
+      viewTopic: "查看话题",
+      draft: "草稿",
+      pending: "待审核",
+      published: "已发布",
+      reportOnly: "只保存报告",
+    };
+
+const reviewFilters = ["all", "applied", "needs_human", "failed", "suggested"] as const;
+type ReviewFilter = typeof reviewFilters[number];
+const tabs = [
+  { id: "overview", label: copy.overview },
+  { id: "config", label: copy.config },
+  ...(task.taskType === "auto_review"
+    ? [{ id: "reviews", label: copy.reviewResults, count: reviews.length }]
+    : []),
+  ...(task.taskType === "external_hot_scan"
+    ? [
+        { id: "hot", label: copy.externalHot, count: externalHotItems.length },
+        { id: "snapshots", label: copy.externalHotSnapshots, count: externalHotSnapshots.length },
+      ]
+    : []),
+  ...(isExternalHotTask
+    ? [{ id: "reports", label: copy.externalHotReports, count: externalHotReports.length }]
+    : []),
+  { id: "runs", label: copy.recentRuns, count: runs.length },
+];
+const requestedTab = Astro.url.searchParams.get("tab") || "overview";
+const activeTab = tabs.some((item) => item.id === requestedTab) ? requestedTab : "overview";
+const tabHref = (tabId: string) => `/admin/bot-jobs/${task.id}?tab=${tabId}`;
+const redirectPath = `/admin/bot-jobs/${task.id}?tab=${activeTab}`;
+
+function reviewLabel(value: string) {
+  return reviewFilters.includes(value as ReviewFilter) ? copy[value as ReviewFilter] : value;
+}
+
+function decisionLabel(value: string) {
+  if (value === "approve") return copy.approve;
+  if (value === "reject") return copy.reject;
+  return copy.needsHumanDecision;
+}
+
+function publishModeLabel(value: string) {
+  if (value === "draft") return copy.draft;
+  if (value === "pending") return copy.pending;
+  if (value === "published") return copy.published;
+  return copy.reportOnly;
+}
+
+function formatSeconds(value: number) {
+  if (value < 60) return `${value}s`;
+  if (value % 3600 === 0) return `${value / 3600}h`;
+  if (value % 60 === 0) return `${value / 60}m`;
+  return `${value}s`;
+}
+
+---
+
+<BaseLayout title={`${task.name} - whyisee.xyz`} description={task.description}>
+  <section class="admin-page">
+    <div class="section-head">
+      <div>
+        <a class="admin-back-link" href="/admin/bot-jobs">{copy.back}</a>
+        <p class="eyebrow">{copy.title}</p>
+        <h1>{task.name}</h1>
+        <p>{task.description}</p>
+      </div>
+      <span class:list={["admin-status", task.status === "active" ? "published" : "hidden"]}>
+        {task.status === "active" ? copy.active : copy.paused}
+      </span>
+    </div>
+
+    <AdminNav lang={lang} />
+
+    {taskProcessed && <p class="auth-message muted">{copy.taskProcessed}</p>}
+    {reportCreated && <p class="auth-message muted">{copy.reportCreated}</p>}
+    {saved && <p class="auth-message muted">{copy.saved}</p>}
+    {error && <p class="auth-message error">{copy.error}</p>}
+
+    <nav class="admin-detail-tabs" aria-label={copy.title}>
+      {tabs.map((tab) => (
+        <a class:list={["admin-detail-tab", tab.id === activeTab && "is-active"]} href={tabHref(tab.id)}>
+          <span>{tab.label}</span>
+          {typeof tab.count === "number" && <em>{tab.count}</em>}
+        </a>
+      ))}
+    </nav>
+
+    {activeTab === "overview" && (
+      <section class="admin-panel-section">
+      <div class="section-head compact">
+        <div>
+          <h2>{copy.overview}</h2>
+        </div>
+      </div>
+
+      <article class="bot-task-card bot-task-detail-card">
+        <div class="bot-task-meta">
+          <span>{copy.bot}: @{task.botUsername}</span>
+          <span>{copy.type}: {task.taskType}</span>
+          <span>{copy.trigger}: {task.triggerType}</span>
+          <span>{copy.interval}: {formatSeconds(task.scheduleIntervalSeconds)}</span>
+          <span>{copy.nextRun}: {task.nextRunAt ? formatRelative(task.nextRunAt, lang) : "-"}</span>
+          <span>{copy.lastRun}: {task.lastRunAt ? formatRelative(task.lastRunAt, lang) : "-"}</span>
+          <span>{task.lastStatus || "-"}</span>
+        </div>
+      </article>
+      </section>
+    )}
+
+    {activeTab === "config" && (
+      <section class="admin-panel-section">
+      <div class="section-head compact">
+        <div>
+          <h2>{copy.config}</h2>
+        </div>
+      </div>
+
+      <article class="bot-task-card">
+        <form class="bot-task-form" method="post" action={`/api/admin/bot-jobs/tasks/${task.id}`}>
+          <input type="hidden" name="intent" value="update" />
+          <input type="hidden" name="redirect" value={redirectPath} />
+          <label>
+            {copy.status}
+            <select name="status">
+              <option value="active" selected={task.status === "active"}>{copy.active}</option>
+              <option value="paused" selected={task.status === "paused"}>{copy.paused}</option>
+            </select>
+          </label>
+          <label>
+            {copy.interval}
+            <input name="scheduleIntervalSeconds" inputmode="numeric" value={task.scheduleIntervalSeconds} />
+          </label>
+          {task.taskType === "auto_review" && (
+            <>
+              <label>
+                {copy.batchSize}
+                <input name="batchSize" inputmode="numeric" value={autoConfig?.batchSize || 5} />
+              </label>
+              <label>
+                {copy.autoApproveMaxRisk}
+                <input name="autoApproveMaxRisk" inputmode="numeric" value={autoConfig?.autoApproveMaxRisk || 25} />
+              </label>
+              <label class="bot-task-checkbox">
+                <input type="checkbox" name="dryRun" value="1" checked={Boolean(autoConfig?.dryRun)} />
+                <span>{copy.dryRun}</span>
+              </label>
+              <small>{copy.dryRunHint}</small>
+            </>
+          )}
+          {task.taskType === "external_hot_scan" && (
+            <>
+              <label class="bot-task-wide">
+                {copy.sourceUrl}
+                <input name="sourceUrl" value={externalConfig?.sourceUrl || ""} />
+              </label>
+              <label class="bot-task-wide">
+                {copy.apiBaseUrl}
+                <input name="apiBaseUrl" value={externalConfig?.apiBaseUrl || ""} />
+              </label>
+              <div class="bot-task-wide bot-board-picker">
+                {copy.boards}
+                <div class="bot-board-grid" aria-label={copy.presetBoards}>
+                  {rebangBoardPresets.map((board) => (
+                    <label class="bot-board-option">
+                      <input
+                        type="checkbox"
+                        name="boardSelections"
+                        value={boardLine(board)}
+                        checked={selectedBoardKeys.has(boardKey(board))}
+                      />
+                      <span>{board.label}</span>
+                      <small>{boardKey(board)}</small>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <label class="bot-task-wide">
+                {copy.customBoards}
+                <textarea name="boards" rows="3" placeholder="weibo/search | 微博热搜">{customBoardsText}</textarea>
+              </label>
+              <small class="bot-task-wide">{copy.boardsHint}</small>
+              <label>
+                {copy.maxItems}
+                <input name="maxItems" inputmode="numeric" value={externalConfig?.maxItems || 30} />
+              </label>
+              <label>
+                {copy.timeoutMs}
+                <input name="timeoutMs" inputmode="numeric" value={externalConfig?.timeoutMs || 15000} />
+              </label>
+              <label class="bot-task-wide">
+                {copy.userAgent}
+                <input name="userAgent" value={externalConfig?.userAgent || ""} />
+              </label>
+            </>
+          )}
+          {task.taskType === "external_hot_digest" && (
+            <>
+              <label>
+                {copy.windowHours}
+                <input name="windowHours" inputmode="numeric" value={digestConfig?.windowHours || 24} />
+              </label>
+              <label>
+                {copy.maxItems}
+                <input name="maxItems" inputmode="numeric" value={digestConfig?.topN || 20} />
+              </label>
+              <label>
+                {copy.minSeenCount}
+                <input name="minSeenCount" inputmode="numeric" value={digestConfig?.minSeenCount || 1} />
+              </label>
+              <label>
+                {copy.publishMode}
+                <select name="publishMode">
+                  {["report_only", "draft", "pending", "published"].map((mode) => (
+                    <option value={mode} selected={(digestConfig?.publishMode || "pending") === mode}>{publishModeLabel(mode)}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {copy.categorySlug}
+                <input name="categorySlug" value={digestConfig?.categorySlug || "ai"} />
+              </label>
+              <label>
+                {copy.style}
+                <input name="style" value={digestConfig?.style || "community_observation"} />
+              </label>
+              <label class="bot-task-wide">
+                {copy.tagNames}
+                <input name="tagNames" value={(digestConfig?.tagNames || ["知乎热榜", "趋势观察"]).join("，")} />
+              </label>
+            </>
+          )}
+          {task.taskType === "external_hot_deep_analysis" && (
+            <>
+              <label>
+                {copy.itemId}
+                <input name="itemId" inputmode="numeric" value={deepConfig?.itemId || 0} />
+              </label>
+              <label>
+                {copy.publishMode}
+                <select name="publishMode">
+                  {["report_only", "draft", "pending", "published"].map((mode) => (
+                    <option value={mode} selected={(deepConfig?.publishMode || "draft") === mode}>{publishModeLabel(mode)}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {copy.categorySlug}
+                <input name="categorySlug" value={deepConfig?.categorySlug || "ai"} />
+              </label>
+              <label>
+                {copy.style}
+                <input name="style" value={deepConfig?.style || "sharp_but_fair"} />
+              </label>
+              <label class="bot-task-wide">
+                {copy.tagNames}
+                <input name="tagNames" value={(deepConfig?.tagNames || ["知乎热榜", "深度分析"]).join("，")} />
+              </label>
+            </>
+          )}
+          <div class="bot-task-actions">
+            <button class="button secondary" type="submit">{copy.saveTask}</button>
+          </div>
+        </form>
+        <form class="bot-task-run-form" method="post" action={`/api/admin/bot-jobs/tasks/${task.id}`}>
+          <input type="hidden" name="intent" value="run" />
+          <input type="hidden" name="redirect" value={redirectPath} />
+          <button class="button primary" type="submit">{copy.runNow}</button>
+        </form>
+      </article>
+      </section>
+    )}
+
+    {task.taskType === "external_hot_scan" && activeTab === "hot" && (
+      <section class="admin-panel-section">
+        <div class="section-head compact">
+          <div>
+            <h2>{copy.externalHot}</h2>
+            <p>{copy.externalHotDescription}</p>
+          </div>
+          <span class="count-pill">{externalHotItems.length}</span>
+        </div>
+
+        {externalHotItems.length > 0 ? (
+          <div class="admin-table external-hot-list">
+            {externalHotItems.map((item) => (
+              <article class="admin-table-row external-hot-row">
+                <div>
+                  <div class="topic-meta">
+                    <span>{item.source}</span>
+                    {item.rank && <span>#{item.rank}</span>}
+                    {item.heatText && <span>{copy.heat}: {item.heatText}</span>}
+                    <span>{copy.lastSeen}: {formatRelative(item.lastSeenAt, lang)}</span>
+                    <span>{copy.firstSeen}: {formatRelative(item.firstSeenAt, lang)}</span>
+                    <span>{item.seenCount}x</span>
+                  </div>
+                  <strong>{item.title}</strong>
+                  {item.summary && <p>{item.summary}</p>}
+                </div>
+                <div class="admin-row-actions">
+                  <a class="button secondary" href={item.url} target="_blank" rel="noreferrer">{copy.openSource}</a>
+                  <form method="post" action={`/api/admin/external-hot/items/${item.id}/analysis`}>
+                    <input type="hidden" name="redirect" value={`/admin/bot-jobs/${task.id}?tab=reports`} />
+                    <button class="button primary" type="submit">{copy.generateAnalysis}</button>
+                  </form>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p class="auth-message muted">{copy.hotEmpty}</p>
+        )}
+      </section>
+    )}
+
+    {task.taskType === "external_hot_scan" && activeTab === "snapshots" && (
+      <section class="admin-panel-section">
+        <div class="section-head compact">
+          <div>
+            <h2>{copy.externalHotSnapshots}</h2>
+            <p>{copy.externalHotSnapshotsDescription}</p>
+          </div>
+          <span class="count-pill">{externalHotSnapshots.length}</span>
+        </div>
+
+        {externalHotSnapshots.length > 0 ? (
+          <div class="admin-table external-hot-list">
+            {externalHotSnapshots.map((item) => (
+              <article class="admin-table-row external-hot-row external-hot-snapshot-row">
+                <div>
+                  <div class="topic-meta">
+                    <span>{item.source}</span>
+                    {item.rank && <span>#{item.rank}</span>}
+                    {item.heatText && <span>{copy.heat}: {item.heatText}</span>}
+                    <span>{copy.observedAt}: {formatRelative(item.observedAt, lang)}</span>
+                    {item.taskRunId && <span>run #{item.taskRunId}</span>}
+                  </div>
+                  <strong>{item.title}</strong>
+                  {item.summary && <p>{item.summary}</p>}
+                </div>
+                <div class="admin-row-actions">
+                  <a class="button secondary" href={item.url} target="_blank" rel="noreferrer">{copy.openSource}</a>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p class="auth-message muted">{copy.snapshotEmpty}</p>
+        )}
+      </section>
+    )}
+
+    {isExternalHotTask && activeTab === "reports" && (
+      <section class="admin-panel-section">
+        <div class="section-head compact">
+          <div>
+            <h2>{copy.externalHotReports}</h2>
+            <p>{copy.externalHotReportsDescription}</p>
+          </div>
+          <span class="count-pill">{externalHotReports.length}</span>
+        </div>
+
+        {externalHotReports.length > 0 ? (
+          <div class="admin-table external-hot-report-list">
+            {externalHotReports.map((report) => (
+              <article class="admin-table-row external-hot-row">
+                <div>
+                  <div class="topic-meta">
+                    <span>{report.reportType}</span>
+                    <span class:list={["admin-status", report.status === "published" ? "published" : report.status === "failed" ? "deleted" : "pending"]}>
+                      {report.status}
+                    </span>
+                    <span>{report.aiProvider || "-"}</span>
+                    <span>{formatRelative(report.createdAt, lang)}</span>
+                  </div>
+                  <strong>{report.title}</strong>
+                  {report.summary && <p>{report.summary}</p>}
+                </div>
+                <div class="admin-row-actions">
+                  {report.topicId && <a class="button primary" href={`/t/${report.topicId}`}>{copy.viewTopic}</a>}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p class="auth-message muted">{copy.emptyReports}</p>
+        )}
+      </section>
+    )}
+
+    {task.taskType === "auto_review" && activeTab === "reviews" && (
+      <section class="admin-panel-section">
+        <div class="section-head compact">
+          <div>
+            <h2>{copy.reviewResults}</h2>
+          </div>
+          <span class="count-pill">{reviews.length}</span>
+        </div>
+
+        <div class="admin-filter-tabs">
+          {reviewFilters.map((item) => <a class={item === reviewStatus ? "is-active" : ""} href={`/admin/bot-jobs/${task.id}?tab=reviews&reviewStatus=${item}`}>{reviewLabel(item)}</a>)}
+        </div>
+
+        {reviews.length > 0 ? (
+          <div class="admin-table review-result-list">
+            {reviews.map((review) => (
+              <article class="admin-table-row review-result-row">
+                <div>
+                  <div class="topic-meta">
+                    <span class:list={["admin-status", review.resultStatus === "applied" ? "published" : review.resultStatus === "failed" ? "deleted" : "pending"]}>
+                      {reviewLabel(review.resultStatus)}
+                    </span>
+                    <span>{decisionLabel(review.decision)}</span>
+                    <span>{copy.risk}: {review.riskScore}</span>
+                    {review.botUsername && <span>@{review.botUsername}</span>}
+                  </div>
+                  <strong>{review.topicTitle || `${copy.target}: ${review.targetType} #${review.targetId}`}</strong>
+                  <span>
+                    {copy.topic} #{review.targetId}
+                    {review.topicStatus ? ` · ${review.topicStatus}` : ""}
+                    {" · "}
+                    {formatRelative(review.createdAt, lang)}
+                  </span>
+                  {review.reasons.length > 0 && <p>{copy.reasons}: {review.reasons.join("，")}</p>}
+                  {review.error && <p class="auth-message error">{review.error}</p>}
+                </div>
+                <div class="admin-row-actions">
+                  <a class="button secondary" href={`/admin/topics/${review.targetId}/edit`}>{copy.editTopic}</a>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p class="auth-message muted">{copy.emptyReviews}</p>
+        )}
+      </section>
+    )}
+
+    {activeTab === "runs" && (
+      <section class="admin-panel-section">
+      <div class="section-head compact">
+        <div>
+          <h2>{copy.recentRuns}</h2>
+        </div>
+        <span class="count-pill">{runs.length}</span>
+      </div>
+
+      {runs.length > 0 ? (
+        <div class="admin-table bot-run-list">
+          {runs.map((run) => (
+            <article class="admin-table-row">
+              <div>
+                <strong>{run.taskName} · {run.status}</strong>
+                <span>{run.outputSummary || run.inputSummary}</span>
+                <small>{formatRelative(run.startedAt, lang)}{run.completedAt ? ` · ${formatRelative(run.completedAt, lang)}` : ""}</small>
+                {run.error && <p class="auth-message error">{run.error}</p>}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p class="auth-message muted">{copy.emptyRuns}</p>
+      )}
+      </section>
+    )}
+  </section>
+</BaseLayout>

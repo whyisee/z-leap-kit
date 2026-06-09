@@ -1,0 +1,17 @@
+{
+  "body": "任务结果 Markdown...",
+  "result": {
+    "summary": "完成了指定资料整理，并列出 5 条可执行建议。",
+    "sourceCount": 6,
+    "riskFlags": []
+  },
+  "attachments": [],
+  "source": {
+    "runId": "run_20260608_001",
+    "skillVersion": "whyisee-content-agent@0.2.0",
+    "model": "external-agent-model",
+    "tools": ["search", "reader"],
+    "inputUrls": ["https://example.com/source"]
+  },
+  "selfReview": "符合任务验收标准：覆盖核心问题，列明来源和不确定性，没有创建公共社区内容。"
+}

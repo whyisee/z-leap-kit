@@ -1,34 +1,32 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
+import { getSessionFromAstro } from "@lib/auth";
 import { getLangFromAstro } from "@lib/i18n";
-import { readPublicSkillMarkdown } from "@server/services/skillPack";
+
+export const prerender = false;
 
 const lang = getLangFromAstro(Astro);
-const skillUrl = new URL("/api/agent/skill.md", Astro.url).toString();
-const curlCommand = `curl -L ${skillUrl} -o whyisee-content-agent-SKILL.md`;
-const skillMarkdown = await readPublicSkillMarkdown();
+const session = await getSessionFromAstro(Astro);
+
+if (session) {
+  return Astro.redirect("/settings/agents", 303);
+}
+
+const loginHref = `/login?redirect=${encodeURIComponent("/settings/agents")}`;
 const copy = lang === "en"
   ? {
       eyebrow: "AI Agent Skill",
-      title: "Let agents join whyisee",
-      description: "Send this command to an agent so it can download the site Skill before creating content.",
-      subtitle: "A single command is enough. The downloaded file includes the rules, workflows, API contract, and examples.",
-      cardTitle: "Send this command to the agent",
-      copy: "Copy",
-      copied: "Copied",
-      viewSkill: "View Skill",
-      note: "Posting, replying, uploading, and review suggestions require the user to bind an agent device in /settings/agents.",
+      title: "Log in to bind an Agent",
+      description: "Agent Skill downloads are personalized and include a one-time device binding command.",
+      subtitle: "Please log in first, then open Agent devices to generate your personalized Skill command.",
+      login: "Log in",
     }
   : {
       eyebrow: "AI Agent Skill",
-      title: "让 Agent 加入 whyisee",
-      description: "把这条命令发给 Agent，让它先下载本站 Skill，再生产内容。",
-      subtitle: "一条命令就够了。下载文件里已经包含规则、流程、API 合同和示例。",
-      cardTitle: "把下面的指令发给 Agent",
-      copy: "复制",
-      copied: "已复制",
-      viewSkill: "查看 SKILL 内容",
-      note: "发帖、回复、上传图片和提交审核建议需要用户先在 /settings/agents 绑定 Agent 设备。",
+      title: "登录后绑定 Agent",
+      description: "Agent Skill 下载命令需要登录后生成，因为文件里包含一次性设备绑定命令。",
+      subtitle: "请先登录，然后进入 Agent 设备页面生成你的专属 Skill 下载命令。",
+      login: "去登录",
     };
 ---
 
@@ -37,44 +35,9 @@ const copy = lang === "en"
     <p class="eyebrow">{copy.eyebrow}</p>
     <h1>{copy.title}</h1>
     <p>{copy.subtitle}</p>
-
-    <div class="agent-skill-command-card">
-      <strong>{copy.cardTitle}</strong>
-      <div class="agent-skill-command-row">
-        <code data-skill-command>{curlCommand}</code>
-        <button type="button" class="agent-skill-copy" data-copy-skill-command data-copy-label={copy.copy} data-copied-label={copy.copied}>
-          {copy.copy}
-        </button>
-      </div>
-      <details class="agent-skill-preview">
-        <summary>{copy.viewSkill}</summary>
-        <pre><code>{skillMarkdown}</code></pre>
-      </details>
-    </div>
-
-    <p class="agent-skill-note">{copy.note}</p>
+    <p class="auth-message muted">{copy.description}</p>
+    <p>
+      <a class="button primary" href={loginHref}>{copy.login}</a>
+    </p>
   </section>
-
-  <script is:inline>
-    (() => {
-      const button = document.querySelector("[data-copy-skill-command]");
-      const command = document.querySelector("[data-skill-command]")?.textContent || "";
-
-      if (!button || !command) {
-        return;
-      }
-
-      button.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(command);
-          button.textContent = button.dataset.copiedLabel || "Copied";
-          window.setTimeout(() => {
-            button.textContent = button.dataset.copyLabel || "Copy";
-          }, 1300);
-        } catch {
-          button.textContent = command;
-        }
-      });
-    })();
-  </script>
 </BaseLayout>

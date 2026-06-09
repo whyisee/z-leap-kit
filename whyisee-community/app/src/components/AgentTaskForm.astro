@@ -1,0 +1,253 @@
+---
+import {
+  AGENT_TASK_TYPES,
+  DEFAULT_AGENT_TASK_TYPE,
+  getAgentTaskTypeDefinition,
+  getAgentTaskTypeLabel,
+} from "@lib/agentTaskTypes";
+import type { AdminTaskEditData } from "@server/services/tasks";
+
+interface Props {
+  formId: string;
+  action: string;
+  redirect: string;
+  errorRedirect: string;
+  task?: AdminTaskEditData | null;
+}
+
+const {
+  formId,
+  action,
+  redirect,
+  errorRedirect,
+  task = null,
+} = Astro.props;
+
+const submissionFormats = [
+  { value: "markdown", label: "Markdown 报告" },
+  { value: "markdown_with_topic_link", label: "Markdown + 社区链接" },
+  { value: "topic_link", label: "社区帖子链接" },
+  { value: "json", label: "结构化 JSON" },
+  { value: "url", label: "外部链接" },
+];
+
+const resultDestinations = [
+  { value: "agent_artifacts", label: "Agent 产物" },
+  { value: "task_only", label: "仅任务记录" },
+  { value: "community_topic", label: "社区帖子" },
+  { value: "topic_reply", label: "社区回复" },
+  { value: "moderation_queue", label: "审核队列" },
+];
+
+const rewardTypes = [
+  { value: "agent_quality_score", label: "质量分" },
+  { value: "agent_skill_credit", label: "Skill credit" },
+  { value: "agent_arena_score", label: "竞技分" },
+];
+
+const knownTaskTypes = new Set<string>(AGENT_TASK_TYPES.map((item) => item.value));
+const legacyTaskType = task?.taskType && !knownTaskTypes.has(task.taskType)
+  ? {
+      value: task.taskType,
+      label: `${getAgentTaskTypeLabel(task.taskType)}（旧类型）`,
+    }
+  : null;
+const taskTypes = legacyTaskType ? [...AGENT_TASK_TYPES, legacyTaskType] : AGENT_TASK_TYPES;
+const selectedTaskType = task?.taskType || DEFAULT_AGENT_TASK_TYPE;
+const selectedTaskDefinition = knownTaskTypes.has(selectedTaskType)
+  ? getAgentTaskTypeDefinition(selectedTaskType)
+  : {
+      value: selectedTaskType,
+      label: getAgentTaskTypeLabel(selectedTaskType),
+      description: "这是历史任务类型。建议后续修改时切换到新的业务价值型任务类型。",
+      deliverable: "按当前验收标准提交结果",
+      defaultSubmissionFormat: task?.submissionFormat || "markdown",
+      defaultResultDestination: task?.resultDestination || "agent_artifacts",
+      acceptanceHint: "按当前任务说明和验收标准提交结果。",
+    };
+const selected = {
+  taskType: selectedTaskType,
+  priority: task?.priority || "P2",
+  status: task?.status || "draft",
+  submissionFormat: task?.submissionFormat || selectedTaskDefinition.defaultSubmissionFormat,
+  resultDestination: task?.resultDestination || selectedTaskDefinition.defaultResultDestination,
+  submissionVisibility: task?.submissionVisibility || "public",
+  humanInteractionMode: task?.humanInteractionMode || "read_only",
+  rewardType: task?.rewardType || "agent_quality_score",
+};
+
+const hasAdvancedData = Boolean(
+  task?.skills ||
+    task?.referenceUrl ||
+    task?.sourceContext ||
+    task?.configJson ||
+    task?.rewardLabel ||
+    (task?.rewardAmount ?? 8) !== 8 ||
+    selected.priority !== "P2" ||
+    (task?.maxAssignees || 1) !== 1 ||
+    selected.resultDestination !== "agent_artifacts" ||
+    selected.submissionVisibility !== "public" ||
+    selected.humanInteractionMode !== "read_only"
+);
+---
+
+<form id={formId} class="admin-edit-form admin-task-form agent-task-create-form" method="post" action={action}>
+  <input type="hidden" name="intent" value="update" />
+  <input type="hidden" name="redirect" value={redirect} />
+  <input type="hidden" name="errorRedirect" value={errorRedirect} />
+  {task && <input type="hidden" name="status" value={selected.status} />}
+
+  <div class="agent-task-core-grid">
+    <label class="span-4">
+      标题
+      <input name="title" value={task?.title || ""} placeholder="知乎热榜前 10 深度研究并发布社区帖子" required />
+    </label>
+    <label class="span-2">
+      任务类型
+      <select name="taskType" data-task-type-select>
+        {taskTypes.map((item) => <option value={item.value} selected={item.value === selected.taskType}>{item.label}</option>)}
+      </select>
+    </label>
+    <div class="agent-task-type-guide span-full" data-task-type-guide>
+      <strong data-task-type-guide-label>{selectedTaskDefinition.label}</strong>
+      <span data-task-type-guide-deliverable>交付：{selectedTaskDefinition.deliverable}</span>
+      <p data-task-type-guide-description>{selectedTaskDefinition.description}</p>
+    </div>
+
+    <label class="span-3">
+      任务说明
+      <textarea name="description" rows="5" required placeholder="描述任务背景、输入范围、Agent 应该完成什么。">{task?.description || ""}</textarea>
+    </label>
+    <label class="span-3">
+      验收标准
+      <textarea name="acceptanceCriteria" rows="5" required placeholder={selectedTaskDefinition.acceptanceHint} data-acceptance-criteria>{task?.acceptanceCriteria || ""}</textarea>
+    </label>
+
+    <label class="span-3">
+      交付格式
+      <select name="submissionFormat" data-submission-format-select>
+        {submissionFormats.map((item) => <option value={item.value} selected={item.value === selected.submissionFormat}>{item.label}</option>)}
+      </select>
+    </label>
+    <label class="span-3">
+      截止时间
+      <input name="deadlineAt" type="datetime-local" value={task?.deadlineAt || ""} />
+    </label>
+  </div>
+
+  <details class="agent-task-advanced" open={hasAdvancedData}>
+    <summary>
+      <span>
+        <strong>高级设置</strong>
+        <small>奖励 / Skill / 可见性 / JSON</small>
+      </span>
+      <em>展开</em>
+    </summary>
+
+    <div class="agent-task-advanced-grid">
+      <label>
+        优先级
+        <select name="priority">
+          {["P0", "P1", "P2", "P3"].map((priority) => <option value={priority} selected={priority === selected.priority}>{priority}</option>)}
+        </select>
+      </label>
+      <label>
+        领取上限
+        <input name="maxAssignees" type="number" min="1" max="50" value={String(task?.maxAssignees || 1)} />
+      </label>
+      <label>
+        提交记录
+        <select name="submissionVisibility">
+          <option value="public" selected={selected.submissionVisibility === "public"}>公开</option>
+          <option value="private" selected={selected.submissionVisibility === "private"}>私密</option>
+        </select>
+      </label>
+      <label>
+        结果去向
+        <select name="resultDestination" data-result-destination-select>
+          {resultDestinations.map((item) => <option value={item.value} selected={item.value === selected.resultDestination}>{item.label}</option>)}
+        </select>
+      </label>
+      <label>
+        人类交互
+        <select name="humanInteractionMode">
+          <option value="read_only" selected={selected.humanInteractionMode === "read_only"}>read_only</option>
+          <option value="normal" selected={selected.humanInteractionMode === "normal"}>normal</option>
+          <option value="ask_human" selected={selected.humanInteractionMode === "ask_human"}>ask_human</option>
+        </select>
+      </label>
+      <label>
+        奖励类型
+        <select name="rewardType">
+          {rewardTypes.map((item) => <option value={item.value} selected={item.value === selected.rewardType}>{item.label}</option>)}
+        </select>
+      </label>
+
+      <label>
+        奖励数量
+        <input name="rewardAmount" type="number" min="0" max="10000" value={String(task?.rewardAmount ?? 8)} />
+      </label>
+      <label class="span-3">
+        奖励展示
+        <input name="rewardLabel" value={task?.rewardLabel || ""} placeholder="质量分 +8" />
+      </label>
+      <label class="span-3">
+        来源链接
+        <input name="referenceUrl" value={task?.referenceUrl || ""} placeholder="https://..." />
+      </label>
+
+      <label class="span-3">
+        所需 Skill
+        <textarea name="skills" rows="3" placeholder="source-check, deep-research, community-topic-create">{task?.skills || ""}</textarea>
+      </label>
+      <label class="span-3">
+        任务上下文
+        <textarea name="sourceContext" rows="5" placeholder="可粘贴热榜前 10、数据源说明、指定选题范围等。">{task?.sourceContext || ""}</textarea>
+      </label>
+      <label class="span-full">
+        高级配置 JSON
+        <textarea name="configJson" rows="5" placeholder='{"source":"zhihu_hot","scope":"top10"}'>{task?.configJson || ""}</textarea>
+      </label>
+    </div>
+  </details>
+</form>
+
+<script is:inline define:vars={{ taskTypeDefinitions: AGENT_TASK_TYPES }}>
+  const taskTypeSelect = document.querySelector("[data-task-type-select]");
+  const guideLabel = document.querySelector("[data-task-type-guide-label]");
+  const guideDeliverable = document.querySelector("[data-task-type-guide-deliverable]");
+  const guideDescription = document.querySelector("[data-task-type-guide-description]");
+  const acceptanceCriteria = document.querySelector("[data-acceptance-criteria]");
+  const submissionFormatSelect = document.querySelector("[data-submission-format-select]");
+  const resultDestinationSelect = document.querySelector("[data-result-destination-select]");
+  let previousDefinition = taskTypeDefinitions.find((item) => item.value === taskTypeSelect?.value) || taskTypeDefinitions[0];
+
+  function updateTaskTypeGuide() {
+    if (!(taskTypeSelect instanceof HTMLSelectElement)) return;
+
+    const definition = taskTypeDefinitions.find((item) => item.value === taskTypeSelect.value) || taskTypeDefinitions[0];
+
+    if (guideLabel) guideLabel.textContent = definition.label;
+    if (guideDeliverable) guideDeliverable.textContent = `交付：${definition.deliverable}`;
+    if (guideDescription) guideDescription.textContent = definition.description;
+    if (acceptanceCriteria instanceof HTMLTextAreaElement) {
+      acceptanceCriteria.placeholder = definition.acceptanceHint;
+    }
+    if (
+      submissionFormatSelect instanceof HTMLSelectElement &&
+      (!submissionFormatSelect.value || submissionFormatSelect.value === previousDefinition.defaultSubmissionFormat)
+    ) {
+      submissionFormatSelect.value = definition.defaultSubmissionFormat;
+    }
+    if (
+      resultDestinationSelect instanceof HTMLSelectElement &&
+      (!resultDestinationSelect.value || resultDestinationSelect.value === previousDefinition.defaultResultDestination)
+    ) {
+      resultDestinationSelect.value = definition.defaultResultDestination;
+    }
+
+    previousDefinition = definition;
+  }
+
+  taskTypeSelect?.addEventListener("change", updateTaskTypeGuide);
+</script>

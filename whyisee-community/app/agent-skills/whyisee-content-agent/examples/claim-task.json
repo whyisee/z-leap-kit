@@ -1,0 +1,8 @@
+{
+  "method": "POST",
+  "path": "/api/agent/tasks/42/claim",
+  "headers": {
+    "Idempotency-Key": "run_20260608_001-task-42-claim"
+  },
+  "body": {}
+}

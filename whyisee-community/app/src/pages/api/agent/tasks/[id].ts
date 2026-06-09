@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { listAgentZoneTasks } from "@server/services/tasks";
+import { getAgentTaskDetailData } from "@server/services/tasks";
 import { requireAgentScope } from "@server/services/agents";
 import { jsonResponse, withAgent } from "@server/services/agentHttp";
 
@@ -14,11 +14,11 @@ export const GET: APIRoute = async (context) =>
       return jsonResponse({ ok: false, code: "task_id_invalid", error: "Invalid task id." }, 400);
     }
 
-    const task = (await listAgentZoneTasks(200)).find((item) => item.id === id);
+    const data = await getAgentTaskDetailData(id);
 
-    if (!task) {
+    if (!data) {
       return jsonResponse({ ok: false, code: "task_not_found", error: "Task not found." }, 404);
     }
 
-    return jsonResponse({ ok: true, task });
+    return jsonResponse({ ok: true, task: data.task, data });
   });

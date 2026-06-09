@@ -7,6 +7,6 @@
   "evidence": "重复关键词：独立开发、信息茧房、主动搜索 RSS。",
   "source": {
     "runId": "run_20260604_review_001",
-    "skillVersion": "whyisee-content-agent@0.1.0"
+    "skillVersion": "whyisee-content-agent@0.2.0"
   }
 }

@@ -4,8 +4,7 @@ import AdminNav from "@components/AdminNav.astro";
 import { getSessionFromAstro, isAdmin } from "@lib/auth";
 import { formatRelative } from "@lib/format";
 import { getLangFromAstro } from "@lib/i18n";
-import { listBotJobs, listBotTaskRuns, listBotTasks, listContentReviewResults } from "@server/services/botJobs";
-import { listExternalHotItems } from "@server/services/externalHotSources";
+import { listBotTasks } from "@server/services/botJobs";
 
 export const prerender = false;
 
@@ -20,180 +19,53 @@ if (!isAdmin(session)) {
   return Astro.redirect("/", 303);
 }
 
-const status = Astro.url.searchParams.get("status") || "all";
-const reviewStatus = Astro.url.searchParams.get("reviewStatus") || "all";
 const tasks = await listBotTasks();
-const runs = await listBotTaskRuns(20);
-const reviews = await listContentReviewResults(reviewStatus, 60);
-const externalHotItems = await listExternalHotItems("all", 80);
-const jobs = await listBotJobs(status, 200);
-const processed = Astro.url.searchParams.get("processed") === "1";
 const taskProcessed = Astro.url.searchParams.get("taskProcessed") === "1";
 const saved = Astro.url.searchParams.get("saved") === "1";
 const error = Astro.url.searchParams.get("error") === "1";
 const copy = lang === "en"
   ? {
       title: "Bot Jobs",
-      description: "Manage automatic bot tasks, AI review results, and queued mention jobs.",
-      autoTasks: "Automatic Tasks",
-      autoTasksDescription: "Scheduled jobs run without @mentions. The first task reviews pending topics.",
-      reviewResults: "AI Review Results",
-      externalHot: "External Hot Lists",
-      externalHotDescription: "Scanned external trends. Current provider: Zhihu Hot List.",
-      recentRuns: "Recent Runs",
-      mentionJobs: "Mention Jobs",
-      all: "All",
-      queued: "Queued",
-      running: "Running",
-      succeeded: "Succeeded",
-      failed: "Failed",
+      description: "Scheduled and manual bot tasks. Open a task to edit configuration, run it, and inspect results.",
+      taskList: "Task List",
       active: "Active",
       paused: "Paused",
-      applied: "Applied",
-      needs_human: "Needs human",
-      suggested: "Suggested",
-      approve: "Approve",
-      reject: "Reject",
-      needsHumanDecision: "Needs human",
-      process: "Process next",
-      runNow: "Run now",
-      saveTask: "Save task",
-      status: "Status",
-      interval: "Interval seconds",
-      batchSize: "Batch size",
-      sourceUrl: "Source URL",
-      maxItems: "Max items",
-      timeoutMs: "Timeout ms",
-      userAgent: "User-Agent",
-      autoApproveMaxRisk: "Auto approve max risk",
-      dryRun: "Dry run only",
-      empty: "No bot jobs in this status.",
-      emptyReviews: "No AI review results in this status.",
-      emptyRuns: "No task runs yet.",
-      processed: "Processed one queued job.",
+      details: "Details",
+      emptyTasks: "No bot tasks yet.",
+      bot: "Bot",
+      type: "Type",
+      interval: "Interval",
+      nextRun: "Next run",
+      lastRun: "Last run",
+      lastStatus: "Last status",
       taskProcessed: "Processed one automatic task.",
       saved: "Saved.",
       error: "Bot job processing failed.",
-      actor: "Actor",
-      source: "Source",
-      result: "Result",
-      updated: "Updated",
-      nextRun: "Next run",
-      lastRun: "Last run",
-      risk: "Risk",
-      reasons: "Reasons",
-      target: "Target",
-      topic: "Topic",
-      editTopic: "Edit topic",
-      dryRunHint: "When enabled, AI writes suggestions but never publishes content.",
-      hotEmpty: "No external hot list items yet.",
-      heat: "Heat",
-      firstSeen: "First seen",
-      lastSeen: "Last seen",
-      openSource: "Open source",
     }
   : {
       title: "机器人任务",
-      description: "管理自动机器人任务、AI 审核结果和 @ 机器人触发队列。",
-      autoTasks: "自动任务",
-      autoTasksDescription: "无需 @ 的后台任务。第一版先用于自动审核待发布话题。",
-      reviewResults: "AI 审核结果",
-      externalHot: "外部热榜",
-      externalHotDescription: "外部趋势扫描结果。当前先接入知乎热榜。",
-      recentRuns: "最近运行",
-      mentionJobs: "提及任务",
-      all: "全部",
-      queued: "待处理",
-      running: "处理中",
-      succeeded: "已完成",
-      failed: "失败",
+      description: "定时和手动机器人任务。进入任务详情后再修改配置、立即运行和查看结果。",
+      taskList: "任务列表",
       active: "启用",
       paused: "暂停",
-      applied: "已执行",
-      needs_human: "需人工复核",
-      suggested: "仅建议",
-      approve: "通过",
-      reject: "驳回",
-      needsHumanDecision: "人工复核",
-      process: "处理下一条",
-      runNow: "立即运行",
-      saveTask: "保存任务",
-      status: "状态",
-      interval: "间隔秒数",
-      batchSize: "批量数量",
-      sourceUrl: "来源 URL",
-      maxItems: "最大条数",
-      timeoutMs: "超时毫秒",
-      userAgent: "User-Agent",
-      autoApproveMaxRisk: "自动通过最高风险分",
-      dryRun: "只建议不执行",
-      empty: "当前状态下没有机器人任务。",
-      emptyReviews: "当前状态下没有 AI 审核结果。",
-      emptyRuns: "暂无任务运行记录。",
-      processed: "已处理一条队列任务。",
+      details: "查看详情",
+      emptyTasks: "暂无机器人任务。",
+      bot: "机器人",
+      type: "类型",
+      interval: "间隔",
+      nextRun: "下次运行",
+      lastRun: "上次运行",
+      lastStatus: "最近状态",
       taskProcessed: "已运行一个自动任务。",
       saved: "已保存。",
       error: "机器人任务处理失败。",
-      actor: "触发人",
-      source: "来源",
-      result: "结果",
-      updated: "更新",
-      nextRun: "下次运行",
-      lastRun: "上次运行",
-      risk: "风险",
-      reasons: "原因",
-      target: "对象",
-      topic: "话题",
-      editTopic: "编辑话题",
-      dryRunHint: "开启后只记录 AI 建议，不会自动发布内容。",
-      hotEmpty: "暂无外部热榜条目。",
-      heat: "热度",
-      firstSeen: "首次发现",
-      lastSeen: "最近发现",
-      openSource: "打开来源",
     };
-
-const filters = ["all", "queued", "running", "succeeded", "failed"] as const;
-type BotJobFilter = typeof filters[number];
-const reviewFilters = ["all", "applied", "needs_human", "failed", "suggested"] as const;
-type ReviewFilter = typeof reviewFilters[number];
-
-function label(value: string) {
-  return filters.includes(value as BotJobFilter) ? copy[value as BotJobFilter] : value;
-}
-
-function reviewLabel(value: string) {
-  return reviewFilters.includes(value as ReviewFilter) ? copy[value as ReviewFilter] : value;
-}
-
-function decisionLabel(value: string) {
-  if (value === "approve") return copy.approve;
-  if (value === "reject") return copy.reject;
-  return copy.needsHumanDecision;
-}
 
 function formatSeconds(value: number) {
   if (value < 60) return `${value}s`;
   if (value % 3600 === 0) return `${value / 3600}h`;
   if (value % 60 === 0) return `${value / 60}m`;
   return `${value}s`;
-}
-
-function autoReviewConfig(task: (typeof tasks)[number]) {
-  return task.taskType === "auto_review" ? task.config as {
-    batchSize: number;
-    autoApproveMaxRisk: number;
-    dryRun: boolean;
-  } : undefined;
-}
-
-function externalHotConfig(task: (typeof tasks)[number]) {
-  return task.taskType === "external_hot_scan" ? task.config as {
-    sourceUrl: string;
-    maxItems: number;
-    timeoutMs: number;
-    userAgent: string;
-  } : undefined;
 }
 ---
 
@@ -205,12 +77,11 @@ function externalHotConfig(task: (typeof tasks)[number]) {
         <h1>{copy.title}</h1>
         <p>{copy.description}</p>
       </div>
-      <span class="count-pill">{jobs.length}</span>
+      <span class="count-pill">{tasks.length}</span>
     </div>
 
     <AdminNav lang={lang} />
 
-    {processed && <p class="auth-message muted">{copy.processed}</p>}
     {taskProcessed && <p class="auth-message muted">{copy.taskProcessed}</p>}
     {saved && <p class="auth-message muted">{copy.saved}</p>}
     {error && <p class="auth-message error">{copy.error}</p>}
@@ -218,239 +89,41 @@ function externalHotConfig(task: (typeof tasks)[number]) {
     <section class="admin-panel-section">
       <div class="section-head compact">
         <div>
-          <h2>{copy.autoTasks}</h2>
-          <p>{copy.autoTasksDescription}</p>
+          <h2>{copy.taskList}</h2>
         </div>
         <span class="count-pill">{tasks.length}</span>
       </div>
 
-      <div class="bot-task-grid">
-        {tasks.map((task) => (
-          <article class="bot-task-card">
-            <header>
-              <div>
+      {tasks.length > 0 ? (
+        <div class="admin-table bot-task-table">
+          {tasks.map((task) => (
+            <article class="admin-table-row bot-task-row">
+              <div class="bot-task-main">
                 <strong>{task.name}</strong>
-                <span>@{task.botUsername} · {task.taskType} · {formatSeconds(task.scheduleIntervalSeconds)}</span>
-              </div>
-              <span class:list={["admin-status", task.status === "active" ? "published" : "hidden"]}>
-                {task.status === "active" ? copy.active : copy.paused}
-              </span>
-            </header>
-            <p>{task.description}</p>
-            <div class="bot-task-meta">
-              <span>{copy.nextRun}: {task.nextRunAt ? formatRelative(task.nextRunAt, lang) : "-"}</span>
-              <span>{copy.lastRun}: {task.lastRunAt ? formatRelative(task.lastRunAt, lang) : "-"}</span>
-              <span>{task.lastStatus || "-"}</span>
-            </div>
-            <form class="bot-task-form" method="post" action={`/api/admin/bot-jobs/tasks/${task.id}`}>
-              <input type="hidden" name="intent" value="update" />
-              <input type="hidden" name="redirect" value="/admin/bot-jobs" />
-              <label>
-                {copy.status}
-                <select name="status">
-                  <option value="active" selected={task.status === "active"}>{copy.active}</option>
-                  <option value="paused" selected={task.status === "paused"}>{copy.paused}</option>
-                </select>
-              </label>
-              <label>
-                {copy.interval}
-                <input name="scheduleIntervalSeconds" inputmode="numeric" value={task.scheduleIntervalSeconds} />
-              </label>
-              {task.taskType === "auto_review" && (
-                <>
-                  <label>
-                    {copy.batchSize}
-                    <input name="batchSize" inputmode="numeric" value={autoReviewConfig(task)?.batchSize || 5} />
-                  </label>
-                  <label>
-                    {copy.autoApproveMaxRisk}
-                    <input name="autoApproveMaxRisk" inputmode="numeric" value={autoReviewConfig(task)?.autoApproveMaxRisk || 25} />
-                  </label>
-                  <label class="bot-task-checkbox">
-                    <input type="checkbox" name="dryRun" value="1" checked={Boolean(autoReviewConfig(task)?.dryRun)} />
-                    <span>{copy.dryRun}</span>
-                  </label>
-                  <small>{copy.dryRunHint}</small>
-                </>
-              )}
-              {task.taskType === "external_hot_scan" && (
-                <>
-                  <label class="bot-task-wide">
-                    {copy.sourceUrl}
-                    <input name="sourceUrl" value={externalHotConfig(task)?.sourceUrl || ""} />
-                  </label>
-                  <label>
-                    {copy.maxItems}
-                    <input name="maxItems" inputmode="numeric" value={externalHotConfig(task)?.maxItems || 30} />
-                  </label>
-                  <label>
-                    {copy.timeoutMs}
-                    <input name="timeoutMs" inputmode="numeric" value={externalHotConfig(task)?.timeoutMs || 15000} />
-                  </label>
-                  <label class="bot-task-wide">
-                    {copy.userAgent}
-                    <input name="userAgent" value={externalHotConfig(task)?.userAgent || ""} />
-                  </label>
-                </>
-              )}
-              <div class="bot-task-actions">
-                <button class="button secondary" type="submit">{copy.saveTask}</button>
-              </div>
-            </form>
-            <form method="post" action={`/api/admin/bot-jobs/tasks/${task.id}`}>
-              <input type="hidden" name="intent" value="run" />
-              <input type="hidden" name="redirect" value="/admin/bot-jobs" />
-              <button class="button primary" type="submit">{copy.runNow}</button>
-            </form>
-          </article>
-        ))}
-      </div>
-    </section>
-
-    <section class="admin-panel-section">
-      <div class="section-head compact">
-        <div>
-          <h2>{copy.externalHot}</h2>
-          <p>{copy.externalHotDescription}</p>
-        </div>
-        <span class="count-pill">{externalHotItems.length}</span>
-      </div>
-
-      {externalHotItems.length > 0 ? (
-        <div class="admin-table external-hot-list">
-          {externalHotItems.map((item) => (
-            <article class="admin-table-row external-hot-row">
-              <div>
+                <p>{task.description}</p>
                 <div class="topic-meta">
-                  <span>{item.source}</span>
-                  {item.rank && <span>#{item.rank}</span>}
-                  {item.heatText && <span>{copy.heat}: {item.heatText}</span>}
-                  <span>{copy.lastSeen}: {formatRelative(item.lastSeenAt, lang)}</span>
-                  <span>{copy.firstSeen}: {formatRelative(item.firstSeenAt, lang)}</span>
-                  <span>{item.seenCount}x</span>
+                  <span>{copy.bot}: @{task.botUsername}</span>
+                  <span>{copy.type}: {task.taskType}</span>
+                  <span>{copy.interval}: {formatSeconds(task.scheduleIntervalSeconds)}</span>
                 </div>
-                <strong>{item.title}</strong>
-                {item.summary && <p>{item.summary}</p>}
               </div>
-              <div class="admin-row-actions">
-                <a class="button secondary" href={item.url} target="_blank" rel="noreferrer">{copy.openSource}</a>
-              </div>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <p class="auth-message muted">{copy.hotEmpty}</p>
-      )}
-    </section>
-
-    <section class="admin-panel-section">
-      <div class="section-head compact">
-        <div>
-          <h2>{copy.reviewResults}</h2>
-          <p>{copy.description}</p>
-        </div>
-        <span class="count-pill">{reviews.length}</span>
-      </div>
-
-      <div class="admin-filter-tabs">
-        {reviewFilters.map((item) => <a class={item === reviewStatus ? "is-active" : ""} href={`/admin/bot-jobs?reviewStatus=${item}`}>{reviewLabel(item)}</a>)}
-      </div>
-
-      {reviews.length > 0 ? (
-        <div class="admin-table review-result-list">
-          {reviews.map((review) => (
-            <article class="admin-table-row review-result-row">
-              <div>
-                <div class="topic-meta">
-                  <span class:list={["admin-status", review.resultStatus === "applied" ? "published" : review.resultStatus === "failed" ? "deleted" : "pending"]}>
-                    {reviewLabel(review.resultStatus)}
-                  </span>
-                  <span>{decisionLabel(review.decision)}</span>
-                  <span>{copy.risk}: {review.riskScore}</span>
-                  {review.botUsername && <span>@{review.botUsername}</span>}
-                </div>
-                <strong>{review.topicTitle || `${copy.target}: ${review.targetType} #${review.targetId}`}</strong>
-                <span>
-                  {copy.topic} #{review.targetId}
-                  {review.topicStatus ? ` · ${review.topicStatus}` : ""}
-                  {" · "}
-                  {formatRelative(review.createdAt, lang)}
+              <div class="bot-task-state">
+                <span class:list={["admin-status", task.status === "active" ? "published" : "hidden"]}>
+                  {task.status === "active" ? copy.active : copy.paused}
                 </span>
-                {review.reasons.length > 0 && <p>{copy.reasons}: {review.reasons.join("，")}</p>}
-                {review.error && <p class="auth-message error">{review.error}</p>}
+                <span>{copy.nextRun}: {task.nextRunAt ? formatRelative(task.nextRunAt, lang) : "-"}</span>
+                <span>{copy.lastRun}: {task.lastRunAt ? formatRelative(task.lastRunAt, lang) : "-"}</span>
+                <span>{copy.lastStatus}: {task.lastStatus || "-"}</span>
               </div>
               <div class="admin-row-actions">
-                <a class="button secondary" href={`/admin/topics/${review.targetId}/edit`}>{copy.editTopic}</a>
+                <a class="button primary" href={`/admin/bot-jobs/${task.id}`}>{copy.details}</a>
               </div>
             </article>
           ))}
         </div>
       ) : (
-        <p class="auth-message muted">{copy.emptyReviews}</p>
+        <p class="auth-message muted">{copy.emptyTasks}</p>
       )}
-    </section>
-
-    <section class="admin-panel-section">
-      <div class="section-head compact">
-        <div>
-          <h2>{copy.recentRuns}</h2>
-        </div>
-        <span class="count-pill">{runs.length}</span>
-      </div>
-
-      {runs.length > 0 ? (
-        <div class="admin-table bot-run-list">
-          {runs.map((run) => (
-            <article class="admin-table-row">
-              <div>
-                <strong>{run.taskName} · {run.status}</strong>
-                <span>{run.outputSummary || run.inputSummary}</span>
-                <small>{formatRelative(run.startedAt, lang)}{run.completedAt ? ` · ${formatRelative(run.completedAt, lang)}` : ""}</small>
-                {run.error && <p class="auth-message error">{run.error}</p>}
-              </div>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <p class="auth-message muted">{copy.emptyRuns}</p>
-      )}
-    </section>
-
-    <section class="admin-panel-section">
-      <div class="section-head compact">
-        <div>
-          <h2>{copy.mentionJobs}</h2>
-        </div>
-        <span class="count-pill">{jobs.length}</span>
-      </div>
-
-    <div class="admin-filter-tabs">
-      {filters.map((item) => <a class={item === status ? "is-active" : ""} href={`/admin/bot-jobs?status=${item}`}>{label(item)}</a>)}
-    </div>
-
-    <form class="admin-actions" method="post" action="/api/admin/bot-jobs/process">
-      <input type="hidden" name="redirect" value={`/admin/bot-jobs?status=${status}`} />
-      <button class="button secondary" type="submit">{copy.process}</button>
-    </form>
-
-    {jobs.length > 0 ? (
-      <div class="admin-table">
-        {jobs.map((job) => (
-          <article class="admin-table-row">
-            <div>
-              <strong>@{job.botUsername} · {label(job.status)}</strong>
-              <span>{copy.actor}: @{job.actorUsername} · {copy.source}: {job.sourceType} #{job.sourceId}</span>
-              <small>{copy.updated}: {formatRelative(job.updatedAt, lang)} · {formatRelative(job.createdAt, lang)}</small>
-              {job.prompt && <p>{job.prompt}</p>}
-              {job.resultPostId && <p>{copy.result}: post #{job.resultPostId}</p>}
-              {job.error && <p class="auth-message error">{job.error}</p>}
-            </div>
-          </article>
-        ))}
-      </div>
-    ) : (
-      <p class="auth-message muted">{copy.empty}</p>
-    )}
     </section>
   </section>
 </BaseLayout>

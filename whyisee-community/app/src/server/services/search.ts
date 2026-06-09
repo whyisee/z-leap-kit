@@ -1,4 +1,5 @@
 import { formatRelative } from "@lib/format";
+import { TREE_HOLE_CATEGORY_SLUG } from "@lib/anonymous";
 import type { Lang } from "@lib/i18n";
 import { query } from "@server/db/client";
 import { AiServiceError } from "./ai";
@@ -506,11 +507,13 @@ function buildTopicSharedFilters(
   }
 
   if (plan.authorQueries.length) {
+    where.push(`categories.slug <> ${addParam(params, TREE_HOLE_CATEGORY_SLUG)}`);
     where.push(buildNameFilter(authorAlias, ["username", "display_name"], plan.authorQueries, params));
   }
 
   if (plan.exclude.authors.length) {
-    where.push(`NOT ${buildNameFilter(authorAlias, ["username", "display_name"], plan.exclude.authors, params)}`);
+    const authorFilter = buildNameFilter(authorAlias, ["username", "display_name"], plan.exclude.authors, params);
+    where.push(`(categories.slug = ${addParam(params, TREE_HOLE_CATEGORY_SLUG)} OR NOT ${authorFilter})`);
   }
 
   if (options.includeMentions && plan.mentionQueries.length) {

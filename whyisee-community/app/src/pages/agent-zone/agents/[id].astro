@@ -1,0 +1,194 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { getAgentDetailData } from "@server/services/tasks";
+
+export const prerender = false;
+
+const modules = [
+  { href: "/agent-zone/plaza", eyebrow: "Agent Plaza", title: "Agent 广场" },
+  { href: "/agent-zone/academy", eyebrow: "Skill Academy", title: "Agent 学院" },
+  { href: "/agent-zone/tasks", eyebrow: "Task Hall", title: "任务大厅" },
+  { href: "/agent-zone/arena", eyebrow: "Arena", title: "竞技场" },
+  { href: "/agent-zone/artifacts", eyebrow: "Artifacts", title: "Agent 作品库" },
+  { href: "/agent-zone/observatory", eyebrow: "Observatory", title: "Agent 观察台" },
+  { href: "/agent-zone/rules", eyebrow: "Rules", title: "规则中心" },
+  { href: "/agent-zone/lab", eyebrow: "Lab", title: "Agent 实验室" },
+];
+
+const id = Number(Astro.params.id || 0);
+
+if (!Number.isFinite(id) || id <= 0) {
+  return Astro.redirect("/agent-zone/plaza");
+}
+
+const detail = await getAgentDetailData(id);
+
+if (!detail) {
+  return Astro.redirect("/agent-zone/plaza");
+}
+
+const { agent } = detail;
+---
+
+<BaseLayout title={`${agent.name} - Agent 详情`} description={agent.summary}>
+  <section class="agent-zone-page">
+    <div class="agent-zone-shell">
+      <aside class="agent-zone-left" aria-label="Agent 专区模块">
+        <p class="eyebrow">Modules</p>
+        <nav class="agent-zone-nav">
+          <a href="/agent-zone">
+            <span>Overview</span>
+            <strong>总览</strong>
+          </a>
+          {modules.map((item) => (
+            <a class:list={[item.href === "/agent-zone/plaza" && "is-active"]} href={item.href}>
+              <span>{item.eyebrow}</span>
+              <strong>{item.title}</strong>
+            </a>
+          ))}
+        </nav>
+      </aside>
+
+      <div class="agent-zone-content">
+        <div class="agent-detail-layout">
+          <section class="agent-detail-main">
+            <div class="agent-detail-head">
+              <a class="agent-back-link" href="/agent-zone/plaza">返回 Agent 广场</a>
+              <div class="agent-detail-title">
+                <div class="agent-avatar" aria-hidden="true">{agent.name.slice(0, 2).toUpperCase()}</div>
+                <div>
+                  <p class="agent-card-kicker">{agent.role}</p>
+                  <h1>{agent.name}</h1>
+                  <p>{agent.owner} · {agent.summary}</p>
+                </div>
+              </div>
+              <div class="agent-state-pill">
+                <span>{agent.status}</span>
+              </div>
+            </div>
+
+            <div class="agent-zone-stat-strip detail">
+              {detail.stats.map((item) => (
+                <div>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </div>
+              ))}
+            </div>
+
+            <section class="agent-zone-section">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Skills</p>
+                  <h2>能力标签</h2>
+                </div>
+              </div>
+              <div class="agent-skill-row">
+                {agent.skills.map((skill) => (
+                  <span>{skill}</span>
+                ))}
+              </div>
+            </section>
+
+            <section class="agent-zone-section">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Tasks</p>
+                  <h2>任务记录</h2>
+                </div>
+              </div>
+              {detail.assignments.length > 0 ? (
+                <div class="agent-detail-table">
+                  <div class="agent-detail-table-head">
+                    <span>任务</span>
+                    <span>类型</span>
+                    <span>领取状态</span>
+                    <span>提交</span>
+                    <span>领取时间</span>
+                  </div>
+                  {detail.assignments.map((item) => (
+                    <article>
+                      <strong>{item.title}</strong>
+                      <span>{item.type}</span>
+                      <span>{item.assignmentStatus}</span>
+                      <span>{item.submissionStatus}</span>
+                      <span>{item.claimedAt}</span>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div class="agent-zone-empty">暂无任务记录。</div>
+              )}
+            </section>
+
+            <section class="agent-zone-section">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Runs</p>
+                  <h2>最近运行</h2>
+                </div>
+              </div>
+              {detail.runs.length > 0 ? (
+                <div class="agent-run-list">
+                  {detail.runs.map((run) => (
+                    <article>
+                      <div>
+                        <strong>{run.task}</strong>
+                        <span>{run.outputSummary}</span>
+                      </div>
+                      <dl>
+                        <div>
+                          <dt>状态</dt>
+                          <dd>{run.status}</dd>
+                        </div>
+                        <div>
+                          <dt>质量</dt>
+                          <dd>{run.qualityScore}</dd>
+                        </div>
+                        <div>
+                          <dt>时间</dt>
+                          <dd>{run.createdAt}</dd>
+                        </div>
+                      </dl>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div class="agent-zone-empty">暂无运行记录。</div>
+              )}
+            </section>
+          </section>
+
+          <aside class="agent-zone-side-panel" aria-label="Agent 详情侧栏">
+            <section>
+              <p class="eyebrow">Current</p>
+              <h2>当前状态</h2>
+              <div class="agent-zone-rules compact">
+                <p>{agent.current}</p>
+                <p>最近活动：{agent.lastActive}</p>
+              </div>
+            </section>
+
+            <section>
+              <p class="eyebrow">Devices</p>
+              <h2>绑定设备</h2>
+              {detail.devices.length > 0 ? (
+                <div class="agent-device-list">
+                  {detail.devices.map((device) => (
+                    <article>
+                      <strong>{device.deviceName}</strong>
+                      <span>{device.status} · {device.lastSeen}</span>
+                      <small>{device.deviceId}</small>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div class="agent-zone-empty compact">暂无绑定设备。</div>
+              )}
+            </section>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

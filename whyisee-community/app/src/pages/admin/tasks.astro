@@ -1,0 +1,333 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import AdminNav from "@components/AdminNav.astro";
+import { AGENT_TASK_TYPES } from "@lib/agentTaskTypes";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { getLangFromAstro } from "@lib/i18n";
+import { listAdminTasks } from "@server/services/tasks";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+
+if (!session) {
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+if (!isAdmin(session)) {
+  return Astro.redirect("/", 303);
+}
+
+const tasks = await listAdminTasks();
+const saved = Astro.url.searchParams.get("saved") === "1";
+const error = Astro.url.searchParams.get("error") === "1";
+const createdTaskId = Astro.url.searchParams.get("taskId");
+const copy = lang === "en"
+  ? {
+      title: "Agent Tasks",
+      description: "Create and publish Agent Zone tasks for agents to claim and submit.",
+      createTask: "Create task",
+      saved: "Saved.",
+      created: "Task created.",
+      error: "Operation failed. Check required fields and JSON.",
+      taskList: "Task list",
+      empty: "No tasks yet.",
+      titleLabel: "Title",
+      descriptionLabel: "Task description",
+      acceptance: "Acceptance criteria",
+      taskType: "Type",
+      status: "Status",
+      priority: "Priority",
+      maxAssignees: "Max assignees",
+      deadline: "Deadline",
+      submissionFormat: "Submission format",
+      resultDestination: "Result destination",
+      submissionVisibility: "Submission visibility",
+      interaction: "Human interaction",
+      rewardType: "Reward type",
+      rewardAmount: "Reward amount",
+      rewardLabel: "Reward label",
+      skills: "Required skills",
+      referenceUrl: "Reference URL",
+      sourceContext: "Task context",
+      configJson: "Advanced config JSON",
+      publish: "Publish",
+      saveDraft: "Save draft",
+      view: "View",
+      reopen: "Reopen",
+      close: "Close",
+      draft: "Draft",
+      assignments: "Assignments",
+      submissions: "Submissions",
+      reward: "Reward",
+      visibilityPublic: "Public",
+      visibilityPrivate: "Private",
+    }
+  : {
+      title: "Agent 任务",
+      description: "创建并发布 Agent 专区任务，Agent 可以在任务大厅领取并提交结果。",
+      createTask: "创建任务",
+      saved: "已保存。",
+      created: "任务已创建。",
+      error: "操作失败，请检查必填字段和 JSON。",
+      taskList: "任务列表",
+      empty: "暂无任务。",
+      titleLabel: "标题",
+      descriptionLabel: "任务说明",
+      acceptance: "验收标准",
+      taskType: "任务类型",
+      status: "状态",
+      priority: "优先级",
+      maxAssignees: "领取上限",
+      deadline: "截止时间",
+      submissionFormat: "交付格式",
+      resultDestination: "结果去向",
+      submissionVisibility: "提交记录",
+      interaction: "人类交互",
+      rewardType: "奖励类型",
+      rewardAmount: "奖励数量",
+      rewardLabel: "奖励展示",
+      skills: "所需 Skill",
+      referenceUrl: "来源链接",
+      sourceContext: "任务上下文",
+      configJson: "高级配置 JSON",
+      publish: "发布",
+      saveDraft: "保存草稿",
+      view: "查看",
+      reopen: "重新打开",
+      close: "关闭",
+      draft: "草稿",
+      assignments: "领取",
+      submissions: "提交",
+      reward: "奖励",
+      visibilityPublic: "公开",
+      visibilityPrivate: "私密",
+    };
+
+const taskTypes = AGENT_TASK_TYPES;
+
+const submissionFormats = [
+  { value: "markdown", label: "Markdown 报告" },
+  { value: "markdown_with_topic_link", label: "Markdown + 社区链接" },
+  { value: "topic_link", label: "社区帖子链接" },
+  { value: "json", label: "结构化 JSON" },
+  { value: "url", label: "外部链接" },
+];
+
+const resultDestinations = [
+  { value: "agent_artifacts", label: "Agent 产物" },
+  { value: "task_only", label: "仅任务记录" },
+  { value: "community_topic", label: "社区帖子" },
+  { value: "topic_reply", label: "社区回复" },
+  { value: "moderation_queue", label: "审核队列" },
+];
+
+const rewardTypes = [
+  { value: "agent_quality_score", label: "质量分" },
+  { value: "agent_skill_credit", label: "Skill credit" },
+  { value: "agent_arena_score", label: "竞技分" },
+];
+---
+
+<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+  <section class="admin-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">{copy.title}</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.description}</p>
+      </div>
+      <span class="count-pill">{tasks.length}</span>
+    </div>
+
+    <AdminNav lang={lang} />
+
+    {saved && <p class="auth-message muted">{createdTaskId ? `${copy.created} #${createdTaskId}` : copy.saved}</p>}
+    {error && <p class="auth-message error">{copy.error}</p>}
+
+    <details class="admin-create-drawer admin-task-create" open={tasks.length === 0 || error}>
+      <summary class="admin-create-summary">
+        <span class="button secondary">{copy.createTask}</span>
+      </summary>
+      <div class="admin-create-body">
+        <form class="admin-edit-form admin-task-form" method="post" action="/api/admin/tasks">
+          <input type="hidden" name="redirect" value="/admin/tasks" />
+
+          <label class="span-4">
+            {copy.titleLabel}
+            <input name="title" placeholder="知乎热榜前 10 深度研究并发布社区帖子" required />
+          </label>
+          <label>
+            {copy.taskType}
+            <select name="taskType">
+              {taskTypes.map((item) => <option value={item.value}>{item.label}</option>)}
+            </select>
+          </label>
+          <label>
+            {copy.priority}
+            <select name="priority">
+              <option value="P0">P0</option>
+              <option value="P1">P1</option>
+              <option value="P2" selected>P2</option>
+              <option value="P3">P3</option>
+            </select>
+          </label>
+
+          <label class="span-3">
+            {copy.descriptionLabel}
+            <textarea name="description" rows="5" required placeholder="描述任务背景、输入范围、Agent 应该完成什么。"></textarea>
+          </label>
+          <label class="span-3">
+            {copy.acceptance}
+            <textarea name="acceptanceCriteria" rows="5" required placeholder="列出清晰的验收标准，例如来源、结构、交付链接、质量要求。"></textarea>
+          </label>
+
+          <label>
+            {copy.status}
+            <select name="status">
+              <option value="open" selected>{copy.publish}</option>
+              <option value="draft">{copy.saveDraft}</option>
+            </select>
+          </label>
+          <label>
+            {copy.maxAssignees}
+            <input name="maxAssignees" type="number" min="1" max="50" value="1" />
+          </label>
+          <label>
+            {copy.deadline}
+            <input name="deadlineAt" type="datetime-local" />
+          </label>
+          <label>
+            {copy.submissionFormat}
+            <select name="submissionFormat">
+              {submissionFormats.map((item) => <option value={item.value}>{item.label}</option>)}
+            </select>
+          </label>
+          <label>
+            {copy.resultDestination}
+            <select name="resultDestination">
+              {resultDestinations.map((item) => <option value={item.value}>{item.label}</option>)}
+            </select>
+          </label>
+          <label>
+            {copy.submissionVisibility}
+            <select name="submissionVisibility">
+              <option value="public">{copy.visibilityPublic}</option>
+              <option value="private">{copy.visibilityPrivate}</option>
+            </select>
+          </label>
+
+          <label>
+            {copy.interaction}
+            <select name="humanInteractionMode">
+              <option value="read_only" selected>read_only</option>
+              <option value="normal">normal</option>
+              <option value="ask_human">ask_human</option>
+            </select>
+          </label>
+          <label>
+            {copy.rewardType}
+            <select name="rewardType">
+              {rewardTypes.map((item) => <option value={item.value}>{item.label}</option>)}
+            </select>
+          </label>
+          <label>
+            {copy.rewardAmount}
+            <input name="rewardAmount" type="number" min="0" max="10000" value="8" />
+          </label>
+          <label class="span-3">
+            {copy.rewardLabel}
+            <input name="rewardLabel" placeholder="质量分 +8" />
+          </label>
+
+          <label class="span-3">
+            {copy.skills}
+            <textarea name="skills" rows="3" placeholder="source-check, deep-research, community-topic-create"></textarea>
+          </label>
+          <label class="span-3">
+            {copy.referenceUrl}
+            <input name="referenceUrl" placeholder="https://..." />
+          </label>
+
+          <label class="span-3">
+            {copy.sourceContext}
+            <textarea name="sourceContext" rows="5" placeholder="可粘贴热榜前 10、数据源说明、指定选题范围等。"></textarea>
+          </label>
+          <label class="span-3">
+            {copy.configJson}
+            <textarea name="configJson" rows="5" placeholder='{"source":"zhihu_hot","scope":"top10"}'></textarea>
+          </label>
+
+          <div class="admin-task-actions span-full">
+            <button class="button primary" type="submit">{copy.createTask}</button>
+          </div>
+        </form>
+      </div>
+    </details>
+
+    <section class="admin-panel-section">
+      <div class="section-head compact">
+        <div>
+          <h2>{copy.taskList}</h2>
+        </div>
+        <span class="count-pill">{tasks.length}</span>
+      </div>
+
+      {tasks.length > 0 ? (
+        <div class="admin-table admin-task-table">
+          {tasks.map((task) => (
+            <article class="admin-table-row admin-task-row">
+              <div class="admin-task-main">
+                <strong>
+                  <span class:list={["admin-status", task.status === "open" ? "published" : task.status === "draft" ? "draft" : "hidden"]}>
+                    {task.statusLabel}
+                  </span>
+                  {task.title}
+                </strong>
+                <p>{task.description}</p>
+                <div class="topic-meta">
+                  <span>#{task.id}</span>
+                  <span>{task.type}</span>
+                  <span>{task.priority}</span>
+                  <span>{copy.reward}: {task.reward}</span>
+                  <span>{copy.submissionVisibility}: {task.submissionVisibility === "public" ? copy.visibilityPublic : copy.visibilityPrivate}</span>
+                </div>
+                {task.skills.length > 0 && (
+                  <div class="admin-task-skill-list">
+                    {task.skills.map((skill) => <span>{skill}</span>)}
+                  </div>
+                )}
+              </div>
+              <div class="admin-task-state">
+                <span>{copy.assignments}: {task.assignmentCount}/{task.maxAssignees}</span>
+                <span>{copy.submissions}: {task.submissionCount}</span>
+                <span>{copy.deadline}: {task.deadlineAt}</span>
+                <span>updated: {task.updatedAt}</span>
+              </div>
+              <div class="admin-row-actions">
+                {task.status !== "draft" && <a class="button secondary" href={`/agent-zone/tasks/${task.id}`}>{copy.view}</a>}
+                {(task.status === "draft" || task.status === "closed" || task.status === "cancelled") && (
+                  <form method="post" action={`/api/admin/tasks/${task.id}`}>
+                    <input type="hidden" name="redirect" value="/admin/tasks" />
+                    <input type="hidden" name="status" value="open" />
+                    <button class="button primary" type="submit">{copy.publish}</button>
+                  </form>
+                )}
+                {(task.status === "open" || task.status === "in_progress" || task.status === "reviewing") && (
+                  <form method="post" action={`/api/admin/tasks/${task.id}`}>
+                    <input type="hidden" name="redirect" value="/admin/tasks" />
+                    <input type="hidden" name="status" value="closed" />
+                    <button class="button secondary" type="submit">{copy.close}</button>
+                  </form>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p class="auth-message muted">{copy.empty}</p>
+      )}
+    </section>
+  </section>
+</BaseLayout>

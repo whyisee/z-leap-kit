@@ -1,0 +1,133 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import ForumFrame from "@components/ForumFrame.astro";
+import { getSessionFromAstro } from "@lib/auth";
+import { getLangFromAstro, t } from "@lib/i18n";
+import { categoryPath, tagPath } from "@lib/routes";
+import { listCategories, listTags } from "@server/services/categories";
+import { listFeaturedTopics } from "@server/services/topics";
+import { listFollowingFeed, type FollowingFilter } from "@server/services/recommendations";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+const categories = await listCategories(lang);
+const tags = await listTags(lang);
+const featuredTopics = await listFeaturedTopics(4, lang);
+const filter = readFilter(Astro.url.searchParams.get("filter"));
+const items = session
+  ? await listFollowingFeed({
+      userId: session.userId,
+      lang,
+      filter,
+      limit: 80,
+    })
+  : [];
+const loginHref = `/login?redirect=${encodeURIComponent(`/following${Astro.url.search}`)}`;
+const copy = lang === "en"
+  ? {
+      all: "All",
+      topics: "Topics",
+      users: "Authors",
+      categories: "Categories",
+      tags: "Tags",
+      count: "updates",
+      empty: "No updates from your followed sources yet.",
+      loginTitle: "Log in to see your follows",
+      loginBody: "Follow topics, authors, categories, and tags to build your own subscription feed.",
+      loginAction: "Log in",
+      source: "From",
+    }
+  : {
+      all: "全部",
+      topics: "话题",
+      users: "作者",
+      categories: "分类",
+      tags: "标签",
+      count: "条更新",
+      empty: "你关注的内容暂时还没有新动态。",
+      loginTitle: "登录后查看你的关注",
+      loginBody: "关注话题、作者、分类和标签后，这里会变成你的订阅流。",
+      loginAction: "去登录",
+      source: "来自",
+    };
+const filters: Array<{ key: FollowingFilter; label: string }> = [
+  { key: "all", label: copy.all },
+  { key: "topics", label: copy.topics },
+  { key: "users", label: copy.users },
+  { key: "categories", label: copy.categories },
+  { key: "tags", label: copy.tags },
+];
+
+function readFilter(value: string | null): FollowingFilter {
+  if (value === "topics" || value === "users" || value === "categories" || value === "tags") {
+    return value;
+  }
+
+  return "all";
+}
+
+function filterHref(value: FollowingFilter) {
+  return value === "all" ? "/following" : `/following?filter=${value}`;
+}
+---
+
+<BaseLayout title={`${t(lang, "page.following")} - whyisee.xyz`} description={t(lang, "page.followingDescription")}>
+  <ForumFrame categories={categories} tags={tags} featuredTopics={featuredTopics} lang={lang} showSidebar={false}>
+    <section class="recommendation-page following-page">
+      <div class="category-hero-panel" style="--pill-color: #f3c969">
+        <span class="category-hero-mark" aria-hidden="true">
+          <span></span>
+        </span>
+        <div>
+          <h1>{t(lang, "page.following")}</h1>
+          <p>{t(lang, "page.followingDescription")}</p>
+        </div>
+      </div>
+
+      {session ? (
+        <>
+          <div class="recommendation-toolbar">
+            <nav class="topic-sort-tabs" aria-label={t(lang, "page.following")}>
+              {filters.map((item) => (
+                <a class:list={[filter === item.key && "is-active"]} href={filterHref(item.key)}>{item.label}</a>
+              ))}
+            </nav>
+            <span class="count-pill">{items.length} {copy.count}</span>
+          </div>
+
+          {items.length > 0 ? (
+            <div class="following-feed-list">
+              {items.map((item) => (
+                <article class="following-feed-card">
+                  <div class="following-feed-main">
+                    <div class="following-feed-kicker">
+                      <span>{copy.source} {item.sourceLabel}</span>
+                      <a href={categoryPath(item.category.slug)} style={`--pill-color: ${item.category.color}`}>{item.category.name}</a>
+                    </div>
+                    <h2><a href={item.href}>{item.title}</a></h2>
+                    <p>{item.summary}</p>
+                    <div class="tag-row">
+                      {item.tags.slice(0, 5).map((tag) => <a href={tagPath(tag.slug)}>#{tag.name}</a>)}
+                    </div>
+                  </div>
+                  <time>{item.meta}</time>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p class="auth-message muted">{copy.empty}</p>
+          )}
+        </>
+      ) : (
+        <div class="following-login-panel">
+          <h2>{copy.loginTitle}</h2>
+          <p>{copy.loginBody}</p>
+          <a class="button primary" href={loginHref}>{copy.loginAction}</a>
+        </div>
+      )}
+    </section>
+  </ForumFrame>
+</BaseLayout>
+

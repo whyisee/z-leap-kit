@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { getSessionFromAstro, safeRedirectPath } from "@lib/auth";
 import { toggleBookmark } from "@server/services/interactions";
+import { recordUserContentEvent } from "@server/services/recommendations";
 
 export const prerender = false;
 
@@ -16,7 +17,16 @@ export const POST: APIRoute = async (context) => {
   const topicId = Number(formData.get("topicId") || 0);
 
   if (Number.isFinite(topicId) && topicId > 0) {
-    await toggleBookmark(session.userId, topicId);
+    const enabled = await toggleBookmark(session.userId, topicId);
+
+    if (enabled) {
+      await recordUserContentEvent({
+        userId: session.userId,
+        eventType: "bookmark",
+        targetType: "topic",
+        targetId: topicId,
+      });
+    }
   }
 
   return context.redirect(redirectPath, 303);

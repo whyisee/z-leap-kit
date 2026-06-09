@@ -1,4 +1,6 @@
+import { getAnonymousAuthor, isTreeHoleCategorySlug } from "@lib/anonymous";
 import { renderMarkdown } from "@lib/markdown";
+import { defaultLang, type Lang } from "@lib/i18n";
 import type { Post, PostStatus, TopicAuthor } from "@lib/types";
 import { query, withTransaction } from "@server/db/client";
 import { createNotification } from "./notifications";
@@ -19,6 +21,7 @@ interface PostRow {
   username: string;
   display_name: string;
   role: TopicAuthor["role"];
+  category_slug?: string;
 }
 
 interface CreatedPostResult {
@@ -28,13 +31,15 @@ interface CreatedPostResult {
   topicTitle: string;
   topicAuthorId: number;
   parentAuthorId: number | null;
+  isAnonymousTopic: boolean;
 }
 
 export interface EditablePost extends Post {
   topicSlug: string;
+  categorySlug?: string;
 }
 
-export async function listPostsForTopic(topicId: number, viewerUserId?: number): Promise<Post[]> {
+export async function listPostsForTopic(topicId: number, viewerUserId?: number, lang: Lang = defaultLang): Promise<Post[]> {
   const rows = await query<PostRow>(
     `
     SELECT
@@ -49,8 +54,11 @@ export async function listPostsForTopic(topicId: number, viewerUserId?: number):
       users.id AS author_id,
       users.username,
       users.display_name,
-      users.role
+      users.role,
+      categories.slug AS category_slug
     FROM posts
+    INNER JOIN topics ON topics.id = posts.topic_id
+    INNER JOIN categories ON categories.id = topics.category_id
     INNER JOIN users ON users.id = posts.author_id
     WHERE posts.topic_id = $1 AND posts.status = 'published'
       AND (
@@ -67,7 +75,10 @@ export async function listPostsForTopic(topicId: number, viewerUserId?: number):
     [topicId, viewerUserId || null],
   );
 
-  return rows.map(mapPostRow);
+  return rows.map((row) => mapPostRow(row, {
+    anonymize: isTreeHoleCategorySlug(row.category_slug),
+    lang,
+  }));
 }
 
 export async function getPostForEdit(postId: number): Promise<EditablePost | undefined> {
@@ -83,12 +94,14 @@ export async function getPostForEdit(postId: number): Promise<EditablePost | und
       posts.created_at,
       posts.updated_at,
       topics.slug AS topic_slug,
+      categories.slug AS category_slug,
       users.id AS author_id,
       users.username,
       users.display_name,
       users.role
     FROM posts
     INNER JOIN topics ON topics.id = posts.topic_id
+    INNER JOIN categories ON categories.id = topics.category_id
     INNER JOIN users ON users.id = posts.author_id
     WHERE posts.id = $1
     LIMIT 1
@@ -104,6 +117,7 @@ export async function getPostForEdit(postId: number): Promise<EditablePost | und
   return {
     ...mapPostRow(row),
     topicSlug: row.topic_slug,
+    categorySlug: row.category_slug,
   };
 }
 
@@ -122,8 +136,21 @@ export async function createPost(input: {
   const now = new Date().toISOString();
 
   const result = await withTransaction(async (client) => {
-    const topicResult = await client.query<{ id: number; slug: string; status: string; title: string; author_id: number }>(
-      "SELECT id, slug, title, author_id, status FROM topics WHERE id = $1 LIMIT 1",
+    const topicResult = await client.query<{
+      id: number;
+      slug: string;
+      status: string;
+      title: string;
+      author_id: number;
+      category_slug: string;
+    }>(
+      `
+      SELECT topics.id, topics.slug, topics.title, topics.author_id, topics.status, categories.slug AS category_slug
+      FROM topics
+      INNER JOIN categories ON categories.id = topics.category_id
+      WHERE topics.id = $1
+      LIMIT 1
+      `,
       [input.topicId],
     );
     const topic = topicResult.rows[0];
@@ -187,13 +214,15 @@ export async function createPost(input: {
       topicTitle: topic.title,
       topicAuthorId: topic.author_id,
       parentAuthorId,
+      isAnonymousTopic: isTreeHoleCategorySlug(topic.category_slug),
     };
   });
 
+  const notificationActorId = result.isAnonymousTopic ? null : input.authorId;
   const notifications: Promise<unknown>[] = [
     createNotification({
       userId: result.topicAuthorId,
-      actorId: input.authorId,
+      actorId: notificationActorId,
       type: "topic_reply",
       targetType: "post",
       targetId: result.postId,
@@ -208,6 +237,7 @@ export async function createPost(input: {
       "关注的话题有新回复",
       result.topicTitle,
       topicHref(result.topicId, result.topicSlug, `post-${result.postId}`),
+      { anonymousActor: result.isAnonymousTopic },
     ),
     syncMentions({
       sourceType: "post",
@@ -218,6 +248,7 @@ export async function createPost(input: {
       body: result.topicTitle,
       href: topicHref(result.topicId, result.topicSlug, `post-${result.postId}`),
       skipUserIds: [result.topicAuthorId],
+      anonymousActor: result.isAnonymousTopic,
     }),
   ];
 
@@ -225,7 +256,7 @@ export async function createPost(input: {
     notifications.push(
       createNotification({
         userId: result.parentAuthorId,
-        actorId: input.authorId,
+        actorId: notificationActorId,
         type: "post_reply",
         targetType: "post",
         targetId: result.postId,
@@ -290,6 +321,7 @@ export async function updatePost(input: {
     title: "有人在回复中提到了你",
     body: updated.contentMarkdown.slice(0, 120),
     href: topicHref(updated.topicId, updated.topicSlug, `post-${updated.id}`),
+    anonymousActor: isTreeHoleCategorySlug(updated.categorySlug),
   });
 
   return updated;
@@ -330,7 +362,16 @@ export async function softDeletePost(input: {
   };
 }
 
-function mapPostRow(row: PostRow): Post {
+function mapPostRow(row: PostRow, options: { anonymize?: boolean; lang?: Lang } = {}): Post {
+  const author = options.anonymize
+    ? getAnonymousAuthor(options.lang || defaultLang)
+    : {
+        id: row.author_id,
+        username: row.username,
+        displayName: row.display_name,
+        role: row.role,
+      };
+
   return {
     id: row.id,
     topicId: row.topic_id,
@@ -340,12 +381,7 @@ function mapPostRow(row: PostRow): Post {
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    author: {
-      id: row.author_id,
-      username: row.username,
-      displayName: row.display_name,
-      role: row.role,
-    },
+    author,
   };
 }
 

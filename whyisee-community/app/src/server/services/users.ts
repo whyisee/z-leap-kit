@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { isTreeHoleCategorySlug } from "@lib/anonymous";
 import { hashPassword, verifyPassword } from "@lib/password";
 import type { AuthSession } from "@lib/auth";
 import { createUserSession } from "@lib/auth";
@@ -52,7 +53,9 @@ export async function listUserTopics(
   lang?: import("@lib/i18n").Lang,
   includeDrafts = false,
 ): Promise<Topic[]> {
-  return listTopics({ authorId: userId, limit: 50, lang, includeDrafts });
+  const topics = await listTopics({ authorId: userId, limit: 50, lang, includeDrafts });
+
+  return includeDrafts ? topics : topics.filter((topic) => !isTreeHoleCategorySlug(topic.category.slug));
 }
 
 export async function createUserWithInvitation(input: {

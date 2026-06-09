@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
 import { getAgentPlazaData, getAgentTaskHallData } from "@server/services/tasks";
 
 export const prerender = false;
@@ -62,6 +63,10 @@ const sections: Record<string, {
 
 const sectionKey = Astro.params.section || "";
 const section = sections[sectionKey];
+const session = await getSessionFromAstro(Astro);
+const canCreateTasks = sectionKey === "tasks" && isAdmin(session);
+const taskSaved = sectionKey === "tasks" && Astro.url.searchParams.get("saved") === "1";
+const createdTaskId = sectionKey === "tasks" ? Astro.url.searchParams.get("taskId") : "";
 const navItems = Object.entries(sections).map(([key, item]) => ({
   href: `/agent-zone/${key}`,
   key,
@@ -79,14 +84,6 @@ const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData() : nul
 
 <BaseLayout title={`${section.title} - Agent 专区`} description={section.summary}>
   <section class="agent-zone-page">
-    <div class="agent-zone-hero compact">
-      <div>
-        <p class="eyebrow">{section.eyebrow}</p>
-        <h1>{section.title}</h1>
-        <p>{section.summary}</p>
-      </div>
-    </div>
-
     <div class="agent-zone-shell">
       <aside class="agent-zone-left" aria-label="Agent 专区模块">
         <p class="eyebrow">Modules</p>
@@ -137,7 +134,7 @@ const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData() : nul
                   </div>
 
                   {plazaData.agents.map((agent) => (
-                    <article class:list={["agent-list-row", `state-${agent.status}`]} role="row">
+                    <a class:list={["agent-list-row", `state-${agent.status}`]} href={`/agent-zone/agents/${agent.id}`} role="row">
                       <div class="agent-list-identity" role="cell">
                         <div class="agent-avatar compact" aria-hidden="true">{agent.name.slice(0, 2).toUpperCase()}</div>
                         <div>
@@ -171,7 +168,7 @@ const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData() : nul
                       </div>
 
                       <small class="agent-list-time" role="cell">{agent.lastActive}</small>
-                    </article>
+                    </a>
                   ))}
                 </div>
               ) : (
@@ -213,7 +210,14 @@ const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData() : nul
                   <h2>任务池</h2>
                   <p>任务只面向 Agent 执行，结果归档到 Agent 专区，不自动进入主社区。</p>
                 </div>
+                {canCreateTasks && (
+                  <a class="button primary agent-task-create-link" href="/agent-zone/tasks/new">创建任务</a>
+                )}
               </div>
+
+              {taskSaved && (
+                <p class="auth-message muted">任务已创建{createdTaskId ? ` #${createdTaskId}` : ""}。</p>
+              )}
 
               <div class="agent-zone-stat-strip">
                 {taskHallData?.stats.map((item) => (
@@ -224,50 +228,40 @@ const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData() : nul
                 ))}
               </div>
 
-              <div class="task-board">
-                {taskHallData?.columns.map((column) => (
-                  <section class="task-column">
-                    <div class="task-column-head">
-                      <h2>{column.title}</h2>
-                      <span>{column.items.length}</span>
-                    </div>
+              {taskHallData && taskHallData.tasks.length > 0 ? (
+                <div class="task-zone-list" role="table" aria-label="Agent 专区任务列表">
+                  <div class="task-list-head" role="row">
+                    <span>任务</span>
+                    <span>状态</span>
+                    <span>优先级</span>
+                    <span>类型</span>
+                    <span>Skill</span>
+                    <span>执行</span>
+                    <span>提交</span>
+                    <span>截止</span>
+                  </div>
 
-                    <div class="task-card-list">
-                      {column.items.map((task) => (
-                        <article class:list={["task-card", `state-${task.state}`]}>
-                          <div class="task-card-top">
-                            <span>{task.type}</span>
-                            <em>{task.priority}</em>
-                          </div>
-                          <h3>{task.title}</h3>
-                          <p>{task.acceptance}</p>
-                          <div class="agent-skill-row">
-                            {task.skills.map((skill) => (
-                              <span>{skill}</span>
-                            ))}
-                          </div>
-                          <dl class="task-meta-grid">
-                            <div>
-                              <dt>执行</dt>
-                              <dd>{task.assignee}</dd>
-                            </div>
-                            <div>
-                              <dt>奖励</dt>
-                              <dd>{task.reward}</dd>
-                            </div>
-                            <div>
-                              <dt>截止</dt>
-                              <dd>{task.due}</dd>
-                            </div>
-                          </dl>
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
-
-              {taskHallData && taskHallData.columns.every((column) => column.items.length === 0) && (
+                  {taskHallData.tasks.map((task) => (
+                    <a class:list={["task-list-row", `state-${task.state}`]} href={`/agent-zone/tasks/${task.id}`} role="row">
+                      <div class="task-list-title" role="cell">
+                        <strong>{task.title}</strong>
+                        <span>{task.acceptance}</span>
+                      </div>
+                      <span class="task-state-pill" role="cell">{task.statusLabel}</span>
+                      <span class="task-priority-pill" role="cell">{task.priority}</span>
+                      <span role="cell">{task.type}</span>
+                      <div class="agent-skill-row compact" role="cell">
+                        {task.skills.length > 0 ? task.skills.map((skill) => (
+                          <span>{skill}</span>
+                        )) : <span>agent-api</span>}
+                      </div>
+                      <span role="cell">{task.assignee}</span>
+                      <span role="cell">{task.submissionCount}</span>
+                      <small role="cell">{task.due}</small>
+                    </a>
+                  ))}
+                </div>
+              ) : (
                 <div class="agent-zone-empty">暂无 Agent 专区任务。运行迁移后会写入首批系统任务。</div>
               )}
             </section>

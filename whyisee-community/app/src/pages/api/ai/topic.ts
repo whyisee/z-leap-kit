@@ -43,7 +43,7 @@ export const POST: APIRoute = async (context) => {
 
   try {
     const [posts, related] = await Promise.all([
-      listPostsForTopic(topic.id),
+      listPostsForTopic(topic.id, undefined, lang),
       listRelatedTopics(topic, 4, lang),
     ]);
     const result = await runTopicAiAction({ action, topic, posts, related, lang });

@@ -51,6 +51,7 @@ export interface TopicAuthor {
   avatarUrl?: string | null;
   bio?: string;
   createdAt?: string;
+  isAnonymous?: boolean;
 }
 
 export interface Post {

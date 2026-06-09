@@ -16,6 +16,7 @@ export interface UserAgentBindLink {
   id: number;
   codePrefix: string;
   bindUrl: string;
+  skillDownloadUrl: string;
   curl: string;
   expiresAt: string;
   usedAt: string | null;
@@ -105,8 +106,8 @@ interface DeviceAuthRow {
 }
 
 export async function createUserAgentBindLink(userId: number, origin: string): Promise<CreatedUserAgentBindLink> {
-  const raw = randomBytes(32).toString("base64url");
-  const code = `whyisee_bind_${raw}`;
+  const raw = randomBytes(12).toString("base64url");
+  const code = `wb_${raw}`;
   const now = new Date();
   const expiresAt = new Date(now.getTime() + Math.max(5, bindLinkMaxAgeMinutes) * 60 * 1000).toISOString();
   const rows = await query<BindLinkRow>(
@@ -182,7 +183,7 @@ export async function getUserAgentSkillBindContext(code: string, origin: string)
     throw new AgentApiError(410, "bind_link_expired", "Agent skill link has expired.");
   }
 
-  const bindUrl = `${origin}/api/agent/bind/${encodeURIComponent(code)}`;
+  const bindUrl = buildShortBindUrl(origin, code);
 
   return {
     code,
@@ -575,7 +576,8 @@ function listDevices(whereSql: string, values: unknown[], limit = 100): Promise<
 }
 
 function mapBindLink(row: BindLinkRow, origin: string, code?: string): UserAgentBindLink {
-  const bindUrl = code ? `${origin}/api/agent/bind/${encodeURIComponent(code)}` : "";
+  const bindUrl = code ? buildShortBindUrl(origin, code) : "";
+  const skillDownloadUrl = code ? buildShortSkillDownloadUrl(origin, code) : "";
   const curl = code
     ? `curl -X POST ${shellQuote(bindUrl)} -H 'Content-Type: application/json' -d '{"deviceName":"my-mac","agentName":"codex"}'`
     : "";
@@ -584,12 +586,21 @@ function mapBindLink(row: BindLinkRow, origin: string, code?: string): UserAgent
     id: row.id,
     codePrefix: row.code_prefix,
     bindUrl,
+    skillDownloadUrl,
     curl,
     expiresAt: row.expires_at,
     usedAt: row.used_at,
     revokedAt: row.revoked_at,
     createdAt: row.created_at,
   };
+}
+
+function buildShortSkillDownloadUrl(origin: string, code: string) {
+  return `${origin}/a/${encodeURIComponent(code)}`;
+}
+
+function buildShortBindUrl(origin: string, code: string) {
+  return `${origin}/a/b/${encodeURIComponent(code)}`;
 }
 
 function mapDevice(row: UserAgentDeviceRow): UserAgentDevice {

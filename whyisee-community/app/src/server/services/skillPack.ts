@@ -2,7 +2,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 
 export const publicSkillName = "whyisee-content-agent";
-export const publicSkillVersion = "whyisee-content-agent@0.1.0";
+export const publicSkillVersion = "whyisee-content-agent@0.2.0";
 export const publicSkillEntry = "SKILL.md";
 
 export const publicSkillFiles = [
@@ -10,14 +10,19 @@ export const publicSkillFiles = [
   "references/site-positioning.md",
   "references/editorial-policy.md",
   "references/category-tag-taxonomy.md",
+  "references/agent-zone-boundary.md",
   "references/topic-workflow.md",
   "references/reply-workflow.md",
+  "references/task-workflow.md",
   "references/api-contract.md",
   "references/quality-checklist.md",
   "references/content-templates.md",
   "references/safety-rules.md",
   "examples/create-topic.json",
   "examples/create-reply.json",
+  "examples/claim-task.json",
+  "examples/submit-task.json",
+  "examples/task-content-run.json",
   "examples/content-run.json",
   "examples/review-suggestion.json",
 ];
@@ -58,7 +63,7 @@ export async function readUserAgentSkillMarkdown(input: {
 
 ## 先执行绑定
 
-在创建话题、回复、上传图片或提交审核建议之前，先执行下面这条命令：
+在创建话题、回复、上传图片、领取任务、提交任务或提交审核建议之前，先执行下面这条命令：
 
 \`\`\`bash
 ${input.bindCommand}

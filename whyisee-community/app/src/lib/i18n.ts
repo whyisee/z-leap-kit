@@ -42,11 +42,23 @@ type TranslationKey =
   | "header.sidebarExpand"
   | "header.sidebarCollapse"
   | "header.admin"
+  | "nav.see"
+  | "nav.seeHint"
+  | "nav.go"
+  | "nav.goHint"
+  | "nav.following"
+  | "nav.followingHint"
   | "nav.latest"
   | "nav.categories"
   | "nav.projects"
   | "nav.about"
   | "nav.guidelines"
+  | "page.see"
+  | "page.seeDescription"
+  | "page.go"
+  | "page.goDescription"
+  | "page.following"
+  | "page.followingDescription"
   | "home.feed"
   | "home.latestTopics"
   | "home.allTopics"
@@ -132,11 +144,23 @@ const translations: Record<Lang, Record<TranslationKey, string>> = {
     "header.sidebarExpand": "展开侧边栏",
     "header.sidebarCollapse": "收起侧边栏",
     "header.admin": "管理后台",
+    "nav.see": "看见",
+    "nav.seeHint": "首页推荐",
+    "nav.go": "出发",
+    "nav.goHint": "值得参与",
+    "nav.following": "关注",
+    "nav.followingHint": "用户关注",
     "nav.latest": "最新",
     "nav.categories": "分类",
     "nav.projects": "项目展示",
     "nav.about": "关于",
     "nav.guidelines": "社区规则",
+    "page.see": "看见",
+    "page.seeDescription": "根据你的关注、阅读、收藏和社区质量信号推荐内容。",
+    "page.go": "出发",
+    "page.goDescription": "这里是你现在最值得参与的讨论、项目、问题和任务。",
+    "page.following": "关注",
+    "page.followingDescription": "来自你关注的人、话题、分类和标签的更新。",
     "home.feed": "话题流",
     "home.latestTopics": "最新话题",
     "home.allTopics": "全部话题",
@@ -171,7 +195,7 @@ const translations: Record<Lang, Record<TranslationKey, string>> = {
     "page.guidelines": "社区规则",
     "page.latestDescription": "whyisee 最新话题、项目展示和独立开发复盘。",
     "page.categoriesDescription":
-      "whyisee 社区分类：AI 工具、独立开发、效率工具、SEO 与流量、项目展示。",
+      "whyisee 社区分类：AI、小A、读书、沙雕、福利、资源、文档、项目和树洞。",
     "page.projectsDescription":
       "whyisee 项目展示，发布工具、插件、网站、小游戏和开源项目。",
     "page.aboutDescription":
@@ -230,11 +254,23 @@ const translations: Record<Lang, Record<TranslationKey, string>> = {
     "header.sidebarExpand": "Expand sidebar",
     "header.sidebarCollapse": "Collapse sidebar",
     "header.admin": "Admin",
+    "nav.see": "See",
+    "nav.seeHint": "Home recommendations",
+    "nav.go": "Go",
+    "nav.goHint": "Worth joining",
+    "nav.following": "Following",
+    "nav.followingHint": "Your follows",
     "nav.latest": "Latest",
     "nav.categories": "Categories",
     "nav.projects": "Projects",
     "nav.about": "About",
     "nav.guidelines": "Guidelines",
+    "page.see": "See",
+    "page.seeDescription": "Recommended content based on your follows, reading, saves, and community quality signals.",
+    "page.go": "Go",
+    "page.goDescription": "Discussions, projects, questions, and tasks worth joining now.",
+    "page.following": "Following",
+    "page.followingDescription": "Updates from people, topics, categories, and tags you follow.",
     "home.feed": "Topic Feed",
     "home.latestTopics": "Latest Topics",
     "home.allTopics": "All Topics",
@@ -272,7 +308,7 @@ const translations: Record<Lang, Record<TranslationKey, string>> = {
     "page.latestDescription":
       "Latest topics, project showcases, and indie building retrospectives from whyisee.",
     "page.categoriesDescription":
-      "Community categories for AI tools, indie building, productivity tools, SEO, traffic, and projects.",
+      "Community categories for AI, Xiao A, reading, fun, benefits, resources, docs, projects, and tree holes.",
     "page.projectsDescription":
       "Project showcases for tools, plugins, websites, small games, and open-source projects.",
     "page.aboutDescription":
@@ -339,6 +375,69 @@ export const categoryTranslations: Record<
   string,
   Partial<Record<Lang, { name: string; description: string }>>
 > = {
+  ai: {
+    en: {
+      name: "AI",
+      description:
+        "AI tools, models, agents, prompts, automation, and real workflows.",
+    },
+  },
+  "xiao-a": {
+    en: {
+      name: "Xiao A",
+      description:
+        "Whyisee AI agents, Xiao A features, automated tasks, co-creation experiments, and feedback.",
+    },
+  },
+  reading: {
+    en: {
+      name: "Reading",
+      description:
+        "Book lists, excerpts, reading notes, long-term learning, and knowledge organization.",
+    },
+  },
+  funny: {
+    en: {
+      name: "Fun",
+      description:
+        "Lightweight posts, absurd findings, jokes, roasts, and community fun.",
+    },
+  },
+  benefits: {
+    en: {
+      name: "Benefits",
+      description:
+        "Deals, campaigns, free resources, perks, and practical benefit alerts.",
+    },
+  },
+  resources: {
+    en: {
+      name: "Resources",
+      description:
+        "Tools, links, tutorials, references, service recommendations, and reusable sources.",
+    },
+  },
+  docs: {
+    en: {
+      name: "Docs",
+      description:
+        "Guides, tutorials, rules, explanations, retrospectives, and structured long-lived content.",
+    },
+  },
+  projects: {
+    en: {
+      name: "Projects",
+      description:
+        "Show projects, products, websites, plugins, open-source work, and building progress.",
+    },
+  },
+  "tree-hole": {
+    en: {
+      name: "Tree Hole",
+      description:
+        "Confusion, pressure, failure, rough ideas, and thoughts that do not fit formal discussion.",
+    },
+  },
   announcements: {
     en: {
       name: "Announcements",
@@ -372,13 +471,6 @@ export const categoryTranslations: Record<
       name: "SEO and Traffic",
       description:
         "Google SEO, content sites, community promotion, links, ads, and growth experiments.",
-    },
-  },
-  projects: {
-    en: {
-      name: "Projects",
-      description:
-        "Show your tools, plugins, websites, games, and open-source projects for feedback.",
     },
   },
   "games-content-sites": {

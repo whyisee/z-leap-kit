@@ -5,12 +5,19 @@ import { t, type Lang } from "@lib/i18n";
 import type { Topic } from "@lib/types";
 
 interface Props {
-  topic: Topic;
+  topic: Topic & {
+    recommendation?: {
+      score: number;
+      reasons: string[];
+    };
+  };
   lang: Lang;
   latestOrder?: number;
+  showRecommendationReason?: boolean;
 }
 
-const { topic, lang, latestOrder = 0 } = Astro.props;
+const { topic, lang, latestOrder = 0, showRecommendationReason = false } = Astro.props;
+const recommendationReasons = showRecommendationReason ? topic.recommendation?.reasons ?? [] : [];
 ---
 
 <article
@@ -21,6 +28,8 @@ const { topic, lang, latestOrder = 0 } = Astro.props;
   data-topic-views={topic.viewCount}
   data-topic-activity={new Date(topic.lastActivityAt).getTime()}
   data-topic-pinned={topic.isPinned ? "1" : "0"}
+  data-topic-featured={topic.isFeatured ? "1" : "0"}
+  data-topic-recommend-score={topic.recommendation?.score ?? 0}
   data-topic-category={topic.category.slug}
   data-topic-tags={topic.tags.map((tag) => tag.slug).join(" ")}
 >
@@ -37,6 +46,11 @@ const { topic, lang, latestOrder = 0 } = Astro.props;
     <div class="tag-row">
       {topic.tags.map((tag) => <a href={tagPath(tag.slug)}>#{tag.name}</a>)}
     </div>
+    {recommendationReasons.length > 0 && (
+      <div class="recommendation-reason-row">
+        {recommendationReasons.map((reason) => <span>{reason}</span>)}
+      </div>
+    )}
   </div>
   <span class="topic-cell"><strong>{topic.replyCount}</strong></span>
   <span class="topic-cell"><strong>{topic.viewCount}</strong></span>

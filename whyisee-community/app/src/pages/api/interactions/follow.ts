@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { getSessionFromAstro, safeRedirectPath } from "@lib/auth";
 import { toggleFollow } from "@server/services/interactions";
+import { recordUserContentEvent } from "@server/services/recommendations";
 
 export const prerender = false;
 
@@ -17,7 +18,14 @@ export const POST: APIRoute = async (context) => {
   const targetId = Number(formData.get("targetId") || 0);
 
   if (targetType && Number.isFinite(targetId) && targetId > 0) {
-    await toggleFollow(session.userId, targetType, targetId);
+    const enabled = await toggleFollow(session.userId, targetType, targetId);
+
+    await recordUserContentEvent({
+      userId: session.userId,
+      eventType: enabled ? "follow" : "dismiss",
+      targetType,
+      targetId,
+    });
   }
 
   return context.redirect(redirectPath, 303);

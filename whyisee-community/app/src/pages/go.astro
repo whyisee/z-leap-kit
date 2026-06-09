@@ -1,0 +1,102 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import ForumFrame from "@components/ForumFrame.astro";
+import ParticipationCard from "@components/ParticipationCard.astro";
+import { getSessionFromAstro } from "@lib/auth";
+import { getLangFromAstro, t } from "@lib/i18n";
+import { listCategories, listTags } from "@server/services/categories";
+import { listFeaturedTopics } from "@server/services/topics";
+import { listParticipationRecommendations, type ParticipationFilter } from "@server/services/recommendations";
+
+export const prerender = false;
+
+const lang = getLangFromAstro(Astro);
+const session = await getSessionFromAstro(Astro);
+const categories = await listCategories(lang);
+const tags = await listTags(lang);
+const featuredTopics = await listFeaturedTopics(4, lang);
+const filter = readFilter(Astro.url.searchParams.get("filter"));
+const items = await listParticipationRecommendations({
+  userId: session?.userId,
+  lang,
+  filter,
+  limit: 80,
+});
+const copy = lang === "en"
+  ? {
+      all: "All",
+      questions: "Questions",
+      feedback: "Feedback",
+      tasks: "Tasks",
+      supplement: "Additions",
+      stale: "Updates",
+      empty: "Nothing needs your input right now.",
+      count: "items",
+    }
+  : {
+      all: "全部",
+      questions: "待回答",
+      feedback: "求反馈",
+      tasks: "可领取",
+      supplement: "可补充",
+      stale: "可更新",
+      empty: "暂时没有匹配的参与项。",
+      count: "项",
+    };
+const filters: Array<{ key: ParticipationFilter; label: string }> = [
+  { key: "all", label: copy.all },
+  { key: "questions", label: copy.questions },
+  { key: "feedback", label: copy.feedback },
+  { key: "tasks", label: copy.tasks },
+  { key: "supplement", label: copy.supplement },
+  { key: "stale", label: copy.stale },
+];
+
+function readFilter(value: string | null): ParticipationFilter {
+  if (value === "questions" || value === "feedback" || value === "tasks" || value === "supplement" || value === "stale") {
+    return value;
+  }
+
+  return "all";
+}
+
+function filterHref(value: ParticipationFilter) {
+  return value === "all" ? "/go" : `/go?filter=${value}`;
+}
+---
+
+<BaseLayout title={`${t(lang, "page.go")} - whyisee.xyz`} description={t(lang, "page.goDescription")}>
+  <ForumFrame categories={categories} tags={tags} featuredTopics={featuredTopics} lang={lang} showSidebar={false}>
+    <section class="recommendation-page participation-page">
+      <div class="category-hero-panel" style="--pill-color: #66d08c">
+        <span class="category-hero-mark" aria-hidden="true">
+          <span></span>
+        </span>
+        <div>
+          <h1>{t(lang, "page.go")}</h1>
+          <p>{t(lang, "page.goDescription")}</p>
+        </div>
+      </div>
+
+      <div class="recommendation-toolbar">
+        <nav class="topic-sort-tabs" aria-label={t(lang, "page.go")}>
+          {filters.map((item) => (
+            <a class:list={[filter === item.key && "is-active"]} href={filterHref(item.key)}>{item.label}</a>
+          ))}
+        </nav>
+        <span class="count-pill">{items.length} {copy.count}</span>
+      </div>
+
+      {items.length > 0 ? (
+        <div class="participation-list">
+          {items.map((item) => (
+            <ParticipationCard item={item} lang={lang} isLoggedIn={Boolean(session)} redirectPath={`/go${Astro.url.search}`} />
+          ))}
+        </div>
+      ) : (
+        <p class="auth-message muted">{copy.empty}</p>
+      )}
+    </section>
+  </ForumFrame>
+</BaseLayout>
+

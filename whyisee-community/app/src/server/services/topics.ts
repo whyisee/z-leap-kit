@@ -1,3 +1,4 @@
+import { getAnonymousAuthor, isTreeHoleCategorySlug } from "@lib/anonymous";
 import { query, queryOne, withTransaction } from "@server/db/client";
 import { categoryTranslations, defaultLang, tagTranslations, topicTranslations, type Lang } from "@lib/i18n";
 import { renderMarkdown } from "@lib/markdown";
@@ -47,6 +48,10 @@ interface TagRow {
 
 interface TransactionClient {
   query<T = unknown>(sql: string, values?: unknown[]): Promise<{ rows: T[] }>;
+}
+
+interface MapTopicOptions {
+  anonymizeTreeHole?: boolean;
 }
 
 export interface TopicWriteInput {
@@ -141,7 +146,7 @@ export async function getTopicByIdForAdmin(id: number, lang: Lang = defaultLang)
     [id],
   );
 
-  return row ? mapTopicRow(row, lang) : undefined;
+  return row ? mapTopicRow(row, lang, { anonymizeTreeHole: false }) : undefined;
 }
 
 export async function listFeaturedTopics(limit = 5, lang: Lang = defaultLang): Promise<Topic[]> {
@@ -173,6 +178,7 @@ export async function createTopic(input: TopicWriteInput): Promise<number> {
 
   const created = await withTransaction(async (client) => {
     const slug = await getUniqueTopicSlug(input.slug || title, undefined, client);
+    const category = await getCategoryForWrite(input.categoryId, client);
     const result = await client.query<{ id: number }>(
       `
       INSERT INTO topics (
@@ -206,7 +212,7 @@ export async function createTopic(input: TopicWriteInput): Promise<number> {
     }
 
     await syncTopicTags(client, topicId, input.tags, now);
-    return { topicId, slug };
+    return { topicId, slug, categorySlug: category?.slug || "" };
   });
 
   if (input.status === "published") {
@@ -218,6 +224,7 @@ export async function createTopic(input: TopicWriteInput): Promise<number> {
       title,
       body: title,
       href: topicHref(created.topicId, created.slug),
+      anonymousActor: isTreeHoleCategorySlug(created.categorySlug),
     });
     await refreshUserReputation(input.authorId);
   }
@@ -240,6 +247,7 @@ export async function updateTopic(id: number, input: TopicWriteInput): Promise<v
 
   const updated = await withTransaction(async (client) => {
     const slug = await getUniqueTopicSlug(input.slug || title, id, client);
+    const category = await getCategoryForWrite(input.categoryId, client);
 
     await client.query(
       `
@@ -280,7 +288,7 @@ export async function updateTopic(id: number, input: TopicWriteInput): Promise<v
     );
 
     await syncTopicTags(client, id, input.tags, now);
-    return { slug };
+    return { slug, categorySlug: category?.slug || "" };
   });
 
   if (input.status === "published") {
@@ -292,6 +300,7 @@ export async function updateTopic(id: number, input: TopicWriteInput): Promise<v
       title,
       body: title,
       href: topicHref(id, updated.slug),
+      anonymousActor: isTreeHoleCategorySlug(updated.categorySlug),
     });
   }
 }
@@ -334,7 +343,17 @@ export async function updateTopicAdminState(
       title: string;
       content_markdown: string;
       author_id: number;
-    }>("SELECT id, slug, title, content_markdown, author_id FROM topics WHERE id = $1 LIMIT 1", [id]);
+      category_slug: string;
+    }>(
+      `
+      SELECT topics.id, topics.slug, topics.title, topics.content_markdown, topics.author_id, categories.slug AS category_slug
+      FROM topics
+      INNER JOIN categories ON categories.id = topics.category_id
+      WHERE topics.id = $1
+      LIMIT 1
+      `,
+      [id],
+    );
 
     if (topic) {
       if (patch.status === "published") {
@@ -346,6 +365,7 @@ export async function updateTopicAdminState(
           title: topic.title,
           body: topic.title,
           href: topicHref(topic.id, topic.slug),
+          anonymousActor: isTreeHoleCategorySlug(topic.category_slug),
         });
       }
       await refreshUserReputation(topic.author_id);
@@ -389,10 +409,22 @@ INNER JOIN categories ON categories.id = topics.category_id
 INNER JOIN users ON users.id = topics.author_id
 `;
 
-async function mapTopicRow(row: TopicRow, lang: Lang): Promise<Topic> {
+async function mapTopicRow(row: TopicRow, lang: Lang, options: MapTopicOptions = {}): Promise<Topic> {
   const translated = topicTranslations[row.slug]?.[lang];
   const translatedCategory = categoryTranslations[row.category_slug]?.[lang];
   const contentMarkdown = translated?.contentMarkdown || row.content_markdown;
+  const shouldAnonymize = options.anonymizeTreeHole !== false && isTreeHoleCategorySlug(row.category_slug);
+  const author = shouldAnonymize
+    ? getAnonymousAuthor(lang)
+    : {
+        id: row.author_id,
+        username: row.author_username,
+        displayName: row.author_display_name,
+        role: row.author_role,
+        avatarUrl: row.author_avatar_url,
+        bio: row.author_bio,
+        createdAt: row.author_created_at,
+      };
 
   return {
     id: row.id,
@@ -401,16 +433,8 @@ async function mapTopicRow(row: TopicRow, lang: Lang): Promise<Topic> {
     summary: translated?.summary || row.summary,
     contentMarkdown,
     contentHtml: translated ? renderMarkdown(contentMarkdown) : row.content_html,
-    authorId: row.author_id,
-    author: {
-      id: row.author_id,
-      username: row.author_username,
-      displayName: row.author_display_name,
-      role: row.author_role,
-      avatarUrl: row.author_avatar_url,
-      bio: row.author_bio,
-      createdAt: row.author_created_at,
-    },
+    authorId: shouldAnonymize ? 0 : row.author_id,
+    author,
     type: row.type,
     status: row.status,
     isPinned: Boolean(row.is_pinned),
@@ -431,6 +455,11 @@ async function mapTopicRow(row: TopicRow, lang: Lang): Promise<Topic> {
     } satisfies Category,
     tags: await listTagsForTopic(row.id, lang),
   };
+}
+
+async function getCategoryForWrite(categoryId: number, client: TransactionClient) {
+  const result = await client.query<{ slug: string }>("SELECT slug FROM categories WHERE id = $1 LIMIT 1", [categoryId]);
+  return result.rows[0];
 }
 
 async function listTagsForTopic(topicId: number, lang: Lang): Promise<Tag[]> {

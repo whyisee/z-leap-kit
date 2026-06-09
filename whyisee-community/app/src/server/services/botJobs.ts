@@ -8,6 +8,15 @@ import {
   type ExternalHotScanConfig,
   type ExternalHotScanMetrics,
 } from "./externalHotSources.ts";
+import {
+  generateExternalHotDeepAnalysisReport,
+  generateExternalHotDigestReport,
+  normalizeExternalHotDeepAnalysisConfig,
+  normalizeExternalHotDigestConfig,
+  type ExternalHotDeepAnalysisTaskConfig,
+  type ExternalHotDigestTaskConfig,
+  type ExternalHotReportMetrics,
+} from "./externalHotReports.ts";
 import { createNotification } from "./notifications.ts";
 
 interface BotJobRow {
@@ -216,7 +225,7 @@ export interface AutoReviewTaskConfig {
   dryRun: boolean;
 }
 
-export type BotTaskConfig = AutoReviewTaskConfig | ExternalHotScanConfig;
+export type BotTaskConfig = AutoReviewTaskConfig | ExternalHotScanConfig | ExternalHotDigestTaskConfig | ExternalHotDeepAnalysisTaskConfig;
 
 interface AutoReviewDecision {
   decision: "approve" | "needs_human" | "reject";
@@ -236,7 +245,7 @@ interface AutoReviewMetrics {
   failed: number;
 }
 
-type BotTaskMetrics = AutoReviewMetrics | ExternalHotScanMetrics;
+type BotTaskMetrics = AutoReviewMetrics | ExternalHotScanMetrics | ExternalHotReportMetrics;
 
 interface BotTaskProcessResult {
   id: number;
@@ -324,6 +333,39 @@ export async function listBotTasks(): Promise<BotTaskListItem[]> {
   return rows.map(mapBotTaskRow);
 }
 
+export async function getBotTask(id: number): Promise<BotTaskListItem | undefined> {
+  const row = await queryOne<BotTaskRow>(
+    `
+    SELECT
+      bot_tasks.id,
+      bot_tasks.task_key,
+      bot_tasks.name,
+      bot_tasks.description,
+      bot_tasks.task_type,
+      bot_tasks.bot_user_id,
+      bot_tasks.trigger_type,
+      bot_tasks.status,
+      bot_tasks.schedule_interval_seconds,
+      bot_tasks.config_json,
+      bot_tasks.next_run_at,
+      bot_tasks.locked_at,
+      bot_tasks.last_run_at,
+      bot_tasks.last_status,
+      bot_tasks.created_at,
+      bot_tasks.updated_at,
+      users.username AS bot_username,
+      users.display_name AS bot_name
+    FROM bot_tasks
+    INNER JOIN users ON users.id = bot_tasks.bot_user_id
+    WHERE bot_tasks.id = $1
+    LIMIT 1
+    `,
+    [id],
+  );
+
+  return row ? mapBotTaskRow(row) : undefined;
+}
+
 export async function listBotTaskRuns(limit = 40): Promise<BotTaskRunItem[]> {
   const rows = await query<BotTaskRunRow>(
     `
@@ -362,7 +404,46 @@ export async function listBotTaskRuns(limit = 40): Promise<BotTaskRunItem[]> {
   }));
 }
 
-export async function listContentReviewResults(status = "all", limit = 80): Promise<ContentReviewResultItem[]> {
+export async function listBotTaskRunsForTask(taskId: number, limit = 40): Promise<BotTaskRunItem[]> {
+  const rows = await query<BotTaskRunRow>(
+    `
+    SELECT
+      bot_task_runs.id,
+      bot_task_runs.task_id,
+      bot_tasks.name AS task_name,
+      bot_tasks.task_key,
+      bot_task_runs.status,
+      bot_task_runs.input_summary,
+      bot_task_runs.output_summary,
+      bot_task_runs.error,
+      bot_task_runs.metrics_json,
+      bot_task_runs.started_at,
+      bot_task_runs.completed_at
+    FROM bot_task_runs
+    INNER JOIN bot_tasks ON bot_tasks.id = bot_task_runs.task_id
+    WHERE bot_task_runs.task_id = $1
+    ORDER BY bot_task_runs.started_at DESC, bot_task_runs.id DESC
+    LIMIT $2
+    `,
+    [taskId, limit],
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    taskId: row.task_id,
+    taskName: row.task_name,
+    taskKey: row.task_key,
+    status: row.status,
+    inputSummary: row.input_summary,
+    outputSummary: row.output_summary,
+    error: row.error,
+    metrics: parseObjectJson(row.metrics_json),
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+  }));
+}
+
+export async function listContentReviewResults(status = "all", limit = 80, taskId?: number): Promise<ContentReviewResultItem[]> {
   const rows = await query<ContentReviewResultRow>(
     `
     SELECT
@@ -389,10 +470,11 @@ export async function listContentReviewResults(status = "all", limit = 80): Prom
     LEFT JOIN users ON users.id = content_review_results.bot_user_id
     LEFT JOIN topics ON content_review_results.target_type = 'topic' AND topics.id = content_review_results.target_id
     WHERE ($1 = 'all' OR content_review_results.result_status = $1)
+      AND ($3::integer IS NULL OR content_review_results.task_id = $3)
     ORDER BY content_review_results.created_at DESC, content_review_results.id DESC
     LIMIT $2
     `,
-    [status, limit],
+    [status, limit, taskId ?? null],
   );
 
   return rows.map((row) => ({
@@ -424,9 +506,18 @@ export async function updateBotTaskSettings(input: {
   batchSize: number;
   dryRun: boolean;
   sourceUrl?: string;
+  apiBaseUrl?: string;
+  boards?: string;
   maxItems?: number;
   timeoutMs?: number;
   userAgent?: string;
+  windowHours?: number;
+  minSeenCount?: number;
+  publishMode?: string;
+  categorySlug?: string;
+  tagNames?: string;
+  style?: string;
+  itemId?: number;
 }) {
   const existing = await queryOne<{ task_type: string; config_json: string }>(
     "SELECT task_type, config_json FROM bot_tasks WHERE id = $1 LIMIT 1",
@@ -676,8 +767,71 @@ async function processClaimedBotTask(task: BotTaskListItem): Promise<BotTaskProc
         `抓取 ${metrics.fetched}`,
         `新增 ${metrics.inserted}`,
         `更新 ${metrics.updated}`,
+        `快照 ${metrics.snapshotted}`,
         `跳过 ${metrics.skipped}`,
         `失败 ${metrics.failed}`,
+      ].join(" · ");
+
+      await completeBotTaskRun(runId, "succeeded", outputSummary, undefined, metrics);
+      await releaseBotTask(task, "succeeded");
+
+      return {
+        id: task.id,
+        taskKey: task.taskKey,
+        status: "succeeded",
+        outputSummary,
+        metrics,
+      };
+    }
+
+    if (task.taskType === "external_hot_digest") {
+      const config = normalizeExternalHotDigestConfig(task.config);
+      const { metrics } = await generateExternalHotDigestReport({
+        taskId: task.id,
+        taskRunId: runId,
+        botUserId: task.botUserId,
+        config,
+      });
+      const outputSummary = [
+        `扫描 ${metrics.scanned}`,
+        `生成 ${metrics.generated}`,
+        `发布 ${metrics.published}`,
+        `跳过 ${metrics.skipped}`,
+        `失败 ${metrics.failed}`,
+      ].join(" · ");
+
+      await completeBotTaskRun(runId, "succeeded", outputSummary, undefined, metrics);
+      await releaseBotTask(task, "succeeded");
+
+      return {
+        id: task.id,
+        taskKey: task.taskKey,
+        status: "succeeded",
+        outputSummary,
+        metrics,
+      };
+    }
+
+    if (task.taskType === "external_hot_deep_analysis") {
+      const config = normalizeExternalHotDeepAnalysisConfig(task.config);
+      const report = await generateExternalHotDeepAnalysisReport({
+        itemId: config.itemId,
+        taskId: task.id,
+        taskRunId: runId,
+        botUserId: task.botUserId,
+        config,
+      });
+      const metrics: ExternalHotReportMetrics = {
+        scanned: 1,
+        generated: 1,
+        published: report.topicId ? 1 : 0,
+        skipped: 0,
+        failed: 0,
+      };
+      const outputSummary = [
+        `分析 1`,
+        `生成 ${metrics.generated}`,
+        `发布 ${metrics.published}`,
       ].join(" · ");
 
       await completeBotTaskRun(runId, "succeeded", outputSummary, undefined, metrics);
@@ -1286,6 +1440,14 @@ function normalizeBotTaskConfig(taskType: string, value: unknown): BotTaskConfig
     return normalizeExternalHotScanConfig(value);
   }
 
+  if (taskType === "external_hot_digest") {
+    return normalizeExternalHotDigestConfig(value);
+  }
+
+  if (taskType === "external_hot_deep_analysis") {
+    return normalizeExternalHotDeepAnalysisConfig(value);
+  }
+
   return normalizeAutoReviewConfig(value);
 }
 
@@ -1297,18 +1459,53 @@ function buildUpdatedTaskConfig(
     batchSize: number;
     dryRun: boolean;
     sourceUrl?: string;
+    apiBaseUrl?: string;
+    boards?: string;
     maxItems?: number;
     timeoutMs?: number;
     userAgent?: string;
+    windowHours?: number;
+    minSeenCount?: number;
+    publishMode?: string;
+    categorySlug?: string;
+    tagNames?: string;
+    style?: string;
+    itemId?: number;
   },
 ): BotTaskConfig {
   if (taskType === "external_hot_scan") {
     return normalizeExternalHotScanConfig({
       ...current,
       sourceUrl: input.sourceUrl,
+      apiBaseUrl: input.apiBaseUrl,
+      boards: input.boards,
       maxItems: input.maxItems ?? input.batchSize,
       timeoutMs: input.timeoutMs,
       userAgent: input.userAgent,
+    });
+  }
+
+  if (taskType === "external_hot_digest") {
+    return normalizeExternalHotDigestConfig({
+      ...current,
+      windowHours: input.windowHours,
+      topN: input.maxItems ?? input.batchSize,
+      minSeenCount: input.minSeenCount,
+      publishMode: input.publishMode,
+      categorySlug: input.categorySlug,
+      tagNames: input.tagNames,
+      style: input.style,
+    });
+  }
+
+  if (taskType === "external_hot_deep_analysis") {
+    return normalizeExternalHotDeepAnalysisConfig({
+      ...current,
+      itemId: input.itemId,
+      publishMode: input.publishMode,
+      categorySlug: input.categorySlug,
+      tagNames: input.tagNames,
+      style: input.style,
     });
   }
 

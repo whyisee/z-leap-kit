@@ -581,6 +581,21 @@
     min-width: 0;
   }
 
+  .admin-task-form .span-3,
+  .admin-task-form .span-2,
+  .admin-task-form .span-4,
+  .admin-task-form .span-full {
+    grid-column: 1 / -1;
+  }
+
+  .admin-task-actions {
+    justify-content: stretch;
+  }
+
+  .admin-task-actions .button {
+    width: 100%;
+  }
+
   .section-head,
   .auth-message,
   .admin-topic-list,
