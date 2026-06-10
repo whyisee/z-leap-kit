@@ -1246,6 +1246,36 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_recommendation_impressions_target ON recommendation_impressions(target_type, target_id, created_at DESC);
     `,
   },
+  {
+    version: "024_task_submission_review_bot_task",
+    sql: `
+      INSERT INTO bot_tasks (
+        task_key, name, description, task_type, bot_user_id, trigger_type, status,
+        schedule_interval_seconds, config_json, next_run_at, created_at, updated_at
+      )
+      SELECT
+        'task_review_agent_submissions',
+        '任务提交审核',
+        '定时扫描 Agent 专区任务提交，使用 AI 按验收标准评分，并自动通过、驳回或转人工复核。',
+        'task_submission_review',
+        users.id,
+        'schedule',
+        'active',
+        120,
+        '{"scope":"agent_zone_task_submissions","batchSize":5,"autoAcceptMinScore":82,"autoRejectMaxScore":35,"dryRun":false}',
+        CURRENT_TIMESTAMP::text,
+        CURRENT_TIMESTAMP::text,
+        CURRENT_TIMESTAMP::text
+      FROM users
+      WHERE users.username = 'mod'
+      ON CONFLICT (task_key) DO UPDATE SET
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        task_type = EXCLUDED.task_type,
+        bot_user_id = EXCLUDED.bot_user_id,
+        updated_at = EXCLUDED.updated_at;
+    `,
+  },
 ];
 
 for (const migration of migrations) {

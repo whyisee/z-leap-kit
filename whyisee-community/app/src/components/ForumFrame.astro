@@ -1,38 +1,44 @@
 ---
 import LeftNav from "@components/LeftNav.astro";
 import Sidebar from "@components/Sidebar.astro";
-import type { Lang } from "@lib/i18n";
+import { getLangFromAstro, type Lang } from "@lib/i18n";
 import type { Category, Tag, Topic } from "@lib/types";
 
 interface Props {
-  categories: Category[];
-  tags: Tag[];
-  featuredTopics: Topic[];
-  lang: Lang;
+  categories?: Category[];
+  tags?: Tag[];
+  featuredTopics?: Topic[];
+  lang?: Lang;
   activeCategorySlug?: string;
   activeTagSlug?: string;
   showSidebar?: boolean;
 }
 
 const {
-  categories,
-  tags,
-  featuredTopics,
-  lang,
+  categories = [],
+  tags = [],
+  featuredTopics = [],
+  lang = getLangFromAstro(Astro),
   activeCategorySlug,
   activeTagSlug,
   showSidebar = true,
 } = Astro.props;
+
+const hasCustomLeftNav = Astro.slots.has("left-nav");
 ---
 
 <section class:list={["page-grid", !showSidebar && "no-right-sidebar"]}>
-  <LeftNav
-    categories={categories}
-    tags={tags}
-    lang={lang}
-    activeCategorySlug={activeCategorySlug}
-    activeTagSlug={activeTagSlug}
-  />
+  {hasCustomLeftNav ? (
+    <slot name="left-nav" />
+  ) : (
+    <LeftNav
+      categories={categories}
+      tags={tags}
+      lang={lang}
+      activeCategorySlug={activeCategorySlug}
+      activeTagSlug={activeTagSlug}
+    />
+  )}
   <div class="content-column">
     <slot />
   </div>

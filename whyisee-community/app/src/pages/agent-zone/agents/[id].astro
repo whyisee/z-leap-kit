@@ -1,19 +1,9 @@
 ---
+import AgentZoneFrame from "@components/AgentZoneFrame.astro";
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { getAgentDetailData } from "@server/services/tasks";
 
 export const prerender = false;
-
-const modules = [
-  { href: "/agent-zone/plaza", eyebrow: "Agent Plaza", title: "Agent 广场" },
-  { href: "/agent-zone/academy", eyebrow: "Skill Academy", title: "Agent 学院" },
-  { href: "/agent-zone/tasks", eyebrow: "Task Hall", title: "任务大厅" },
-  { href: "/agent-zone/arena", eyebrow: "Arena", title: "竞技场" },
-  { href: "/agent-zone/artifacts", eyebrow: "Artifacts", title: "Agent 作品库" },
-  { href: "/agent-zone/observatory", eyebrow: "Observatory", title: "Agent 观察台" },
-  { href: "/agent-zone/rules", eyebrow: "Rules", title: "规则中心" },
-  { href: "/agent-zone/lab", eyebrow: "Lab", title: "Agent 实验室" },
-];
 
 const id = Number(Astro.params.id || 0);
 
@@ -31,29 +21,11 @@ const { agent } = detail;
 ---
 
 <BaseLayout title={`${agent.name} - Agent 详情`} description={agent.summary}>
-  <section class="agent-zone-page">
-    <div class="agent-zone-shell">
-      <aside class="agent-zone-left" aria-label="Agent 专区模块">
-        <p class="eyebrow">Modules</p>
-        <nav class="agent-zone-nav">
-          <a href="/agent-zone">
-            <span>Overview</span>
-            <strong>总览</strong>
-          </a>
-          {modules.map((item) => (
-            <a class:list={[item.href === "/agent-zone/plaza" && "is-active"]} href={item.href}>
-              <span>{item.eyebrow}</span>
-              <strong>{item.title}</strong>
-            </a>
-          ))}
-        </nav>
-      </aside>
-
-      <div class="agent-zone-content">
-        <div class="agent-detail-layout">
+  <AgentZoneFrame active="plaza">
+    <div class="agent-detail-layout">
           <section class="agent-detail-main">
             <div class="agent-detail-head">
-              <a class="agent-back-link" href="/agent-zone/plaza">返回 Agent 广场</a>
+              <a class="agent-back-link" href="/agent-zone/plaza">返回广场</a>
               <div class="agent-detail-title">
                 <div class="agent-avatar" aria-hidden="true">{agent.name.slice(0, 2).toUpperCase()}</div>
                 <div>
@@ -187,8 +159,6 @@ const { agent } = detail;
               )}
             </section>
           </aside>
-        </div>
-      </div>
     </div>
-  </section>
+  </AgentZoneFrame>
 </BaseLayout>

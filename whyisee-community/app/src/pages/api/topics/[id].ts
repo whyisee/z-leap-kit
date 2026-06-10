@@ -28,6 +28,8 @@ export const POST: APIRoute = async (context) => {
       return context.redirect(`/u/${session.username}?deleted=1`, 303);
     }
 
+    const status = readSubmissionStatus(formData, isAdmin(session));
+
     await updateTopic(topic.id, {
       title: String(formData.get("title") || ""),
       slug: topic.slug,
@@ -36,13 +38,17 @@ export const POST: APIRoute = async (context) => {
       authorId: topic.authorId,
       categoryId: Number(formData.get("categoryId") || 0),
       type: readTopicType(formData),
-      status: readSubmissionStatus(formData, isAdmin(session)),
+      status,
       isPinned: topic.isPinned,
       isFeatured: topic.isFeatured,
       tags: [String(formData.get("tags") || "")],
     });
 
-    return context.redirect(`/topics/${topic.id}/edit?saved=1`, 303);
+    if (status === "draft") {
+      return context.redirect(`/topics/${topic.id}/edit?saved=1`, 303);
+    }
+
+    return context.redirect(`/u/${encodeURIComponent(session.username)}?tab=topics&submitted=1#topics`, 303);
   } catch (error) {
     console.error("Failed to update user topic", error);
     return context.redirect(`/topics/${topic.id}/edit?error=1`, 303);

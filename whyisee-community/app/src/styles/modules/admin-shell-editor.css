@@ -1067,6 +1067,10 @@ main > .article-page > .draft-form.public-topic-form:has(.public-topic-ai-panel[
   font-weight: 850;
 }
 
+.writing-footer-status.is-saved {
+  color: #9ee8b5;
+}
+
 .writing-footer-count::before {
   content: attr(data-label) " ";
 }

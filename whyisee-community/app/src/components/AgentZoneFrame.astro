@@ -1,0 +1,17 @@
+---
+import AgentZoneNav from "@components/AgentZoneNav.astro";
+import ForumFrame from "@components/ForumFrame.astro";
+
+interface Props {
+  active?: string;
+}
+
+const { active = "plaza" } = Astro.props;
+---
+
+<ForumFrame showSidebar={false}>
+  <AgentZoneNav slot="left-nav" active={active} />
+  <section class="agent-zone-page">
+    <slot />
+  </section>
+</ForumFrame>

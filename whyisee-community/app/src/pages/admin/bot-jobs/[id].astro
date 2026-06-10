@@ -8,6 +8,7 @@ import {
   getBotTask,
   listBotTaskRunsForTask,
   listContentReviewResults,
+  listTaskSubmissionReviewResultsForBotTask,
 } from "@server/services/botJobs";
 import { listExternalHotItems, listExternalHotSnapshots } from "@server/services/externalHotSources";
 import { listExternalHotReports } from "@server/services/externalHotReports";
@@ -39,6 +40,12 @@ if (!task) {
 const autoConfig = task.taskType === "auto_review" ? task.config as {
   batchSize: number;
   autoApproveMaxRisk: number;
+  dryRun: boolean;
+} : undefined;
+const taskReviewConfig = task.taskType === "task_submission_review" ? task.config as {
+  batchSize: number;
+  autoAcceptMinScore: number;
+  autoRejectMaxScore: number;
   dryRun: boolean;
 } : undefined;
 const externalConfig = task.taskType === "external_hot_scan" ? task.config as {
@@ -73,6 +80,9 @@ const reviewStatus = Astro.url.searchParams.get("reviewStatus") || "all";
 const runs = await listBotTaskRunsForTask(task.id, 30);
 const reviews = task.taskType === "auto_review"
   ? await listContentReviewResults(reviewStatus, 60, task.id)
+  : [];
+const taskSubmissionReviews = task.taskType === "task_submission_review"
+  ? await listTaskSubmissionReviewResultsForBotTask(task.id, 80)
   : [];
 const externalHotItems = task.taskType === "external_hot_scan"
   ? await listExternalHotItems("all", 80)
@@ -118,6 +128,7 @@ const copy = lang === "en"
       config: "Task Configuration",
       overview: "Overview",
       reviewResults: "AI Review Results",
+      taskReviewResults: "Task Review Results",
       externalHot: "External Hot List Items",
       externalHotDescription: "Scanned external trends from this provider.",
       externalHotSnapshots: "Scan Snapshots",
@@ -155,8 +166,11 @@ const copy = lang === "en"
       style: "Style",
       itemId: "Hot item ID",
       autoApproveMaxRisk: "Auto approve max risk",
+      autoAcceptMinScore: "Auto accept min score",
+      autoRejectMaxScore: "Auto reject max score",
       dryRun: "Dry run only",
       emptyReviews: "No AI review results in this status.",
+      emptyTaskReviews: "No task submission review results yet.",
       emptyRuns: "No task runs yet.",
       taskProcessed: "Processed one automatic task.",
       reportCreated: "Generated one AI report.",
@@ -171,7 +185,12 @@ const copy = lang === "en"
       reasons: "Reasons",
       target: "Target",
       topic: "Topic",
+      submission: "Submission",
+      agent: "Agent",
+      score: "Score",
+      comment: "Comment",
       editTopic: "Edit topic",
+      viewSubmission: "View submission",
       dryRunHint: "When enabled, AI writes suggestions but never publishes content.",
       hotEmpty: "No external hot list items yet.",
       snapshotEmpty: "No scan snapshots yet.",
@@ -196,6 +215,7 @@ const copy = lang === "en"
       config: "任务配置",
       overview: "任务概览",
       reviewResults: "AI 审核结果",
+      taskReviewResults: "任务审核结果",
       externalHot: "外部热榜条目",
       externalHotDescription: "当前来源扫描入库的外部趋势。",
       externalHotSnapshots: "扫描快照",
@@ -233,8 +253,11 @@ const copy = lang === "en"
       style: "写作风格",
       itemId: "热榜条目 ID",
       autoApproveMaxRisk: "自动通过最高风险分",
+      autoAcceptMinScore: "自动通过最低分",
+      autoRejectMaxScore: "自动驳回最高分",
       dryRun: "只建议不执行",
       emptyReviews: "当前状态下没有 AI 审核结果。",
+      emptyTaskReviews: "暂无任务提交审核结果。",
       emptyRuns: "暂无任务运行记录。",
       taskProcessed: "已运行一个自动任务。",
       reportCreated: "已生成一份 AI 报告。",
@@ -249,7 +272,12 @@ const copy = lang === "en"
       reasons: "原因",
       target: "对象",
       topic: "话题",
+      submission: "提交",
+      agent: "Agent",
+      score: "评分",
+      comment: "备注",
       editTopic: "编辑话题",
+      viewSubmission: "查看提交",
       dryRunHint: "开启后只记录 AI 建议，不会自动发布内容。",
       hotEmpty: "暂无外部热榜条目。",
       snapshotEmpty: "暂无扫描快照。",
@@ -275,6 +303,9 @@ const tabs = [
   ...(task.taskType === "auto_review"
     ? [{ id: "reviews", label: copy.reviewResults, count: reviews.length }]
     : []),
+  ...(task.taskType === "task_submission_review"
+    ? [{ id: "task-reviews", label: copy.taskReviewResults, count: taskSubmissionReviews.length }]
+    : []),
   ...(task.taskType === "external_hot_scan"
     ? [
         { id: "hot", label: copy.externalHot, count: externalHotItems.length },
@@ -296,7 +327,7 @@ function reviewLabel(value: string) {
 }
 
 function decisionLabel(value: string) {
-  if (value === "approve") return copy.approve;
+  if (value === "approve" || value === "accept") return copy.approve;
   if (value === "reject") return copy.reject;
   return copy.needsHumanDecision;
 }
@@ -404,6 +435,27 @@ function formatSeconds(value: number) {
               </label>
               <label class="bot-task-checkbox">
                 <input type="checkbox" name="dryRun" value="1" checked={Boolean(autoConfig?.dryRun)} />
+                <span>{copy.dryRun}</span>
+              </label>
+              <small>{copy.dryRunHint}</small>
+            </>
+          )}
+          {task.taskType === "task_submission_review" && (
+            <>
+              <label>
+                {copy.batchSize}
+                <input name="batchSize" inputmode="numeric" value={taskReviewConfig?.batchSize || 5} />
+              </label>
+              <label>
+                {copy.autoAcceptMinScore}
+                <input name="autoAcceptMinScore" inputmode="numeric" value={taskReviewConfig?.autoAcceptMinScore || 82} />
+              </label>
+              <label>
+                {copy.autoRejectMaxScore}
+                <input name="autoRejectMaxScore" inputmode="numeric" value={taskReviewConfig?.autoRejectMaxScore || 35} />
+              </label>
+              <label class="bot-task-checkbox">
+                <input type="checkbox" name="dryRun" value="1" checked={Boolean(taskReviewConfig?.dryRun)} />
                 <span>{copy.dryRun}</span>
               </label>
               <small>{copy.dryRunHint}</small>
@@ -693,6 +745,51 @@ function formatSeconds(value: number) {
           </div>
         ) : (
           <p class="auth-message muted">{copy.emptyReviews}</p>
+        )}
+      </section>
+    )}
+
+    {task.taskType === "task_submission_review" && activeTab === "task-reviews" && (
+      <section class="admin-panel-section">
+        <div class="section-head compact">
+          <div>
+            <h2>{copy.taskReviewResults}</h2>
+          </div>
+          <span class="count-pill">{taskSubmissionReviews.length}</span>
+        </div>
+
+        {taskSubmissionReviews.length > 0 ? (
+          <div class="admin-table review-result-list">
+            {taskSubmissionReviews.map((review) => (
+              <article class="admin-table-row review-result-row">
+                <div>
+                  <div class="topic-meta">
+                    <span class:list={["admin-status", review.resultStatus === "accepted" ? "published" : review.resultStatus === "rejected" ? "deleted" : "pending"]}>
+                      {review.resultStatus}
+                    </span>
+                    <span>{decisionLabel(review.decision)}</span>
+                    <span>{copy.score}: {review.score ?? "-"}</span>
+                    {review.dryRun && <span>{copy.dryRun}</span>}
+                  </div>
+                  <strong>{review.taskTitle}</strong>
+                  <span>
+                    {copy.submission} #{review.submissionId}
+                    {" · "}
+                    {copy.agent}: {review.agentName}
+                    {" · "}
+                    {formatRelative(review.createdAt, lang)}
+                  </span>
+                  {review.comment && <p>{copy.comment}: {review.comment}</p>}
+                  {review.reasons.length > 0 && <p>{copy.reasons}: {review.reasons.join("，")}</p>}
+                </div>
+                <div class="admin-row-actions">
+                  <a class="button secondary" href={`/agent-zone/tasks/${review.taskId}/submissions/${review.submissionId}`}>{copy.viewSubmission}</a>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p class="auth-message muted">{copy.emptyTaskReviews}</p>
         )}
       </section>
     )}

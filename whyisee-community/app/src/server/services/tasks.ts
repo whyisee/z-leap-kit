@@ -8,8 +8,12 @@ import { AgentApiError } from "./agentErrors";
 import type { AgentContext } from "./agents";
 
 type AgentUiState = "online" | "busy" | "idle";
-type TaskUiState = "open" | "running" | "reviewing" | "completed" | "closed";
+type TaskUiState = "draft" | "open" | "running" | "reviewing" | "completed" | "closed";
 export type AdminTaskStatus = "draft" | "open" | "closed" | "cancelled" | "completed";
+
+interface AgentTaskVisibilityOptions {
+  includeDrafts?: boolean;
+}
 
 interface AgentDirectoryRow {
   id: number;
@@ -100,6 +104,17 @@ interface TaskSubmissionDetailRow {
   score: number | null;
   decision: string | null;
   review_comment: string | null;
+}
+
+interface AdminTaskSubmissionReviewRow {
+  id: number;
+  task_id: number;
+  assignment_id: number | null;
+  submitter_type: string;
+  submitter_id: number;
+  status: string;
+  reward_policy_json: string;
+  task_title: string;
 }
 
 interface TaskEventDetailRow {
@@ -273,6 +288,7 @@ export interface AgentTaskSubmissionDetailData {
     submitterType: string;
     submitterId: number;
     agentName: string;
+    rawStatus: string;
     status: string;
     score: string;
     decision: string;
@@ -285,6 +301,15 @@ export interface AgentTaskSubmissionDetailData {
     submittedAt: string;
     updatedAt: string;
   };
+}
+
+export type AdminTaskSubmissionReviewDecision = "accept" | "reject" | "needs_human";
+
+export interface AdminTaskSubmissionReviewInput {
+  reviewerId: number;
+  decision: AdminTaskSubmissionReviewDecision;
+  score?: number;
+  comment?: string;
 }
 
 export interface AgentDetailData {
@@ -524,10 +549,12 @@ export async function getAgentDetailData(id: number): Promise<AgentDetailData | 
   };
 }
 
-export async function getAgentTaskHallData(): Promise<AgentTaskHallData> {
-  const tasks = await listAgentZoneTasks();
+export async function getAgentTaskHallData(options: AgentTaskVisibilityOptions = {}): Promise<AgentTaskHallData> {
+  const includeDrafts = Boolean(options.includeDrafts);
+  const tasks = await listAgentZoneTasks(300, { includeDrafts });
   const submissions = await listAgentZoneSubmissionSummaries();
 
+  const draftCount = tasks.filter((task) => task.state === "draft").length;
   const openCount = tasks.filter((task) => task.state === "open").length;
   const runningCount = tasks.filter((task) => task.state === "running").length;
   const reviewingCount = tasks.filter((task) => task.state === "reviewing").length;
@@ -537,6 +564,7 @@ export async function getAgentTaskHallData(): Promise<AgentTaskHallData> {
 
   return {
     stats: [
+      ...(includeDrafts ? [{ label: "草稿", value: String(draftCount) }] : []),
       { label: "可领取", value: String(openCount) },
       { label: "执行中", value: String(runningCount) },
       { label: "待评审", value: String(reviewingCount) },
@@ -544,6 +572,7 @@ export async function getAgentTaskHallData(): Promise<AgentTaskHallData> {
     ],
     tasks,
     columns: [
+      ...(includeDrafts ? [{ title: "草稿", status: "draft" as const, items: tasks.filter((task) => task.state === "draft") }] : []),
       { title: "可领取", status: "open", items: tasks.filter((task) => task.state === "open") },
       { title: "执行中", status: "running", items: tasks.filter((task) => task.state === "running") },
       { title: "待评审", status: "reviewing", items: tasks.filter((task) => task.state === "reviewing") },
@@ -552,8 +581,12 @@ export async function getAgentTaskHallData(): Promise<AgentTaskHallData> {
   };
 }
 
-export async function listAgentZoneTasks(limit = 300): Promise<AgentZoneTaskCard[]> {
+export async function listAgentZoneTasks(
+  limit = 300,
+  options: AgentTaskVisibilityOptions = {},
+): Promise<AgentZoneTaskCard[]> {
   const normalizedLimit = Math.max(1, Math.min(Number(limit || 300), 500));
+  const draftFilter = options.includeDrafts ? "" : "AND tasks.status <> 'draft'";
   const rows = await query<TaskRow>(
     `
     SELECT
@@ -588,10 +621,11 @@ export async function listAgentZoneTasks(limit = 300): Promise<AgentZoneTaskCard
       AND task_assignments.assignee_id = agent_profiles.id
     LEFT JOIN task_submissions ON task_submissions.task_id = tasks.id
     WHERE tasks.visibility = 'agent_zone'
-      AND tasks.status <> 'draft'
+      ${draftFilter}
     GROUP BY tasks.id
     ORDER BY
       CASE tasks.status
+        WHEN 'draft' THEN 0
         WHEN 'open' THEN 1
         WHEN 'in_progress' THEN 2
         WHEN 'reviewing' THEN 3
@@ -907,7 +941,11 @@ export async function updateAdminTaskStatus(
   });
 }
 
-export async function getAgentTaskDetailData(id: number): Promise<AgentTaskDetailData | null> {
+export async function getAgentTaskDetailData(
+  id: number,
+  options: AgentTaskVisibilityOptions = {},
+): Promise<AgentTaskDetailData | null> {
+  const draftFilter = options.includeDrafts ? "" : "AND tasks.status <> 'draft'";
   const rows = await query<TaskRow>(
     `
     SELECT
@@ -942,7 +980,7 @@ export async function getAgentTaskDetailData(id: number): Promise<AgentTaskDetai
       AND task_assignments.assignee_id = agent_profiles.id
     LEFT JOIN task_submissions ON task_submissions.task_id = tasks.id
     WHERE tasks.visibility = 'agent_zone'
-      AND tasks.status <> 'draft'
+      ${draftFilter}
       AND tasks.id = $1
     GROUP BY tasks.id
     LIMIT 1
@@ -995,10 +1033,11 @@ export async function getAgentTaskDetailData(id: number): Promise<AgentTaskDetai
 export async function getAgentTaskSubmissionDetailData(
   taskId: number,
   submissionId: number,
+  options: { includePrivate?: boolean } = {},
 ): Promise<AgentTaskSubmissionDetailData | null> {
   const detail = await getAgentTaskDetailData(taskId);
 
-  if (!detail || !detail.task.canViewSubmissions) {
+  if (!detail || (!detail.task.canViewSubmissions && !options.includePrivate)) {
     return null;
   }
 
@@ -1253,6 +1292,140 @@ export async function submitAgentZoneTask(
   });
 }
 
+export async function reviewTaskSubmissionAsAdmin(
+  taskId: number,
+  submissionId: number,
+  input: AdminTaskSubmissionReviewInput,
+) {
+  const decision = normalizeAdminReviewDecision(input.decision);
+  const score = normalizeAdminReviewScore(input.score, decision);
+  const comment = String(input.comment || "").trim();
+
+  return withTransaction(async (client) => {
+    const result = await client.query<AdminTaskSubmissionReviewRow>(
+      `
+      SELECT
+        task_submissions.id,
+        task_submissions.task_id,
+        task_submissions.assignment_id,
+        task_submissions.submitter_type,
+        task_submissions.submitter_id,
+        task_submissions.status,
+        tasks.reward_policy_json,
+        tasks.title AS task_title
+      FROM task_submissions
+      INNER JOIN tasks ON tasks.id = task_submissions.task_id
+      WHERE task_submissions.task_id = $1
+        AND task_submissions.id = $2
+      FOR UPDATE OF task_submissions
+      LIMIT 1
+      `,
+      [taskId, submissionId],
+    );
+    const submission = result.rows[0];
+
+    if (!submission) {
+      throw new Error("Task submission not found.");
+    }
+
+    const now = new Date().toISOString();
+    const resultStatus = decision === "accept"
+      ? "accepted"
+      : decision === "reject"
+        ? "rejected"
+        : "reviewing";
+    const reviewComment = comment || defaultAdminReviewComment(decision);
+
+    await client.query(
+      `
+      INSERT INTO task_reviews (
+        task_id, submission_id, reviewer_type, reviewer_id, score, decision, comment, rubric_json, created_at
+      )
+      VALUES ($1, $2, 'user', $3, $4, $5, $6, $7, $8)
+      `,
+      [
+        taskId,
+        submissionId,
+        input.reviewerId,
+        score,
+        decision,
+        reviewComment,
+        JSON.stringify({
+          source: "manual_admin_review",
+          resultStatus,
+          adminUserId: input.reviewerId,
+        }),
+        now,
+      ],
+    );
+
+    await client.query(
+      "UPDATE task_submissions SET status = $1, updated_at = $2 WHERE id = $3",
+      [resultStatus, now, submissionId],
+    );
+
+    if (decision === "accept" || decision === "reject") {
+      await completeReviewedAssignment(client, submission.assignment_id, now);
+    }
+
+    if (decision === "accept") {
+      await client.query(
+        "UPDATE tasks SET status = 'completed', updated_at = $1 WHERE id = $2",
+        [now, taskId],
+      );
+      await syncAcceptedReward(client, submission, now, reviewComment);
+    } else {
+      await revokeSubmissionRewards(client, submissionId, now);
+
+      if (decision === "reject") {
+        await client.query(
+          `
+          UPDATE tasks
+          SET status = CASE
+                WHEN EXISTS (
+                  SELECT 1 FROM task_submissions
+                  WHERE task_id = $2 AND status IN ('submitted', 'reviewing')
+                ) THEN 'reviewing'
+                ELSE 'open'
+              END,
+              updated_at = $1
+          WHERE id = $2
+          `,
+          [now, taskId],
+        );
+      } else {
+        await client.query("UPDATE tasks SET status = 'reviewing', updated_at = $1 WHERE id = $2", [now, taskId]);
+      }
+    }
+
+    await client.query(
+      `
+      INSERT INTO task_events (task_id, actor_type, actor_id, event_type, details_json, created_at)
+      VALUES ($1, 'user', $2, 'reviewed', $3, $4)
+      `,
+      [
+        taskId,
+        input.reviewerId,
+        JSON.stringify({
+          submissionId,
+          decision,
+          score,
+          resultStatus,
+          comment: reviewComment,
+        }),
+        now,
+      ],
+    );
+
+    return {
+      submissionId,
+      status: resultStatus,
+      decision,
+      score,
+    };
+  });
+}
+
 async function listAgentZoneSubmissionSummaries(): Promise<AgentZoneSubmissionSummary[]> {
   const rows = await query<SubmissionRow>(
     `
@@ -1373,6 +1546,7 @@ async function listTaskSubmissionsForDetail(
     submitterType: row.submitter_type,
     submitterId: row.submitter_id,
     agentName: row.agent_name || `${row.submitter_type}#${row.submitter_id}`,
+    rawStatus: row.status,
     status: submissionStatusLabel(row.status),
     score: typeof row.score === "number" ? String(row.score) : mapSubmissionScore(row.status),
     decision: row.decision || "-",
@@ -1430,6 +1604,7 @@ function mapTaskSubmissionDetail(row: TaskSubmissionDetailRow): AgentTaskSubmiss
     submitterType: row.submitter_type,
     submitterId: row.submitter_id,
     agentName: row.agent_name || `${row.submitter_type}#${row.submitter_id}`,
+    rawStatus: row.status,
     status: submissionStatusLabel(row.status),
     score: typeof row.score === "number" ? String(row.score) : mapSubmissionScore(row.status),
     decision: row.decision || "-",
@@ -1801,6 +1976,115 @@ function normalizeRewardType(value: string) {
   return "agent_quality_score";
 }
 
+function normalizeAdminReviewDecision(value: string): AdminTaskSubmissionReviewDecision {
+  if (value === "accept" || value === "reject") {
+    return value;
+  }
+
+  return "needs_human";
+}
+
+function normalizeAdminReviewScore(value: unknown, decision: AdminTaskSubmissionReviewDecision) {
+  const fallback = decision === "accept" ? 85 : decision === "reject" ? 30 : 50;
+  const score = Number(value);
+
+  if (!Number.isFinite(score)) {
+    return fallback;
+  }
+
+  return Math.min(100, Math.max(0, Math.round(score)));
+}
+
+function defaultAdminReviewComment(decision: AdminTaskSubmissionReviewDecision) {
+  if (decision === "accept") return "人工审核通过。";
+  if (decision === "reject") return "人工审核未通过。";
+  return "保留人工复核。";
+}
+
+async function completeReviewedAssignment(
+  client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  assignmentId: number | null,
+  now: string,
+) {
+  if (!assignmentId) {
+    return;
+  }
+
+  await client.query(
+    "UPDATE task_assignments SET status = 'completed', completed_at = COALESCE(completed_at, $1) WHERE id = $2",
+    [now, assignmentId],
+  );
+}
+
+async function syncAcceptedReward(
+  client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  submission: AdminTaskSubmissionReviewRow,
+  now: string,
+  reason: string,
+) {
+  const reward = safeJsonParse<Record<string, unknown>>(submission.reward_policy_json, {});
+  const rewardType = normalizeRewardType(String(reward.rewardType || ""));
+  const amount = Math.max(0, Math.round(Number(reward.amount || 0)));
+
+  if (!amount) {
+    return;
+  }
+
+  await client.query(
+    `
+    UPDATE reward_ledger
+    SET status = 'revoked',
+        reason = CASE WHEN reason = '' THEN '人工审核覆盖后撤销' ELSE reason END
+    WHERE submission_id = $1
+      AND status = 'granted'
+      AND reward_type <> $2
+    `,
+    [submission.id, rewardType],
+  );
+  await client.query(
+    `
+    INSERT INTO reward_ledger (
+      actor_type, actor_id, task_id, submission_id, reward_type, amount, reason, status, created_at
+    )
+    SELECT $1, $2, $3, $4, $5, $6, $7, 'granted', $8
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM reward_ledger
+      WHERE submission_id = $4
+        AND reward_type = $5
+        AND status = 'granted'
+    )
+    `,
+    [
+      submission.submitter_type,
+      submission.submitter_id,
+      submission.task_id,
+      submission.id,
+      rewardType,
+      amount,
+      reason || String(reward.label || `任务审核通过：${submission.task_title}`),
+      now,
+    ],
+  );
+}
+
+async function revokeSubmissionRewards(
+  client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  submissionId: number,
+  now: string,
+) {
+  await client.query(
+    `
+    UPDATE reward_ledger
+    SET status = 'revoked',
+        reason = CASE WHEN reason = '' THEN $2 ELSE reason END
+    WHERE submission_id = $1
+      AND status = 'granted'
+    `,
+    [submissionId, `人工审核撤销于 ${now}`],
+  );
+}
+
 function buildTaskKey(title: string) {
   const base = title
     .trim()
@@ -1815,6 +2099,7 @@ function buildTaskKey(title: string) {
 }
 
 function mapTaskState(status: string): TaskUiState {
+  if (status === "draft") return "draft";
   if (status === "in_progress" || status === "claimed") return "running";
   if (status === "reviewing") return "reviewing";
   if (status === "completed") return "completed";

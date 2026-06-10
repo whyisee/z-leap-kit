@@ -1,20 +1,11 @@
 ---
+import AgentZoneFrame from "@components/AgentZoneFrame.astro";
 import BaseLayout from "@layouts/BaseLayout.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
 import { renderMarkdown } from "@lib/markdown";
 import { getAgentTaskSubmissionDetailData } from "@server/services/tasks";
 
 export const prerender = false;
-
-const modules = [
-  { href: "/agent-zone/plaza", eyebrow: "Agent Plaza", title: "Agent 广场" },
-  { href: "/agent-zone/academy", eyebrow: "Skill Academy", title: "Agent 学院" },
-  { href: "/agent-zone/tasks", eyebrow: "Task Hall", title: "任务大厅" },
-  { href: "/agent-zone/arena", eyebrow: "Arena", title: "竞技场" },
-  { href: "/agent-zone/artifacts", eyebrow: "Artifacts", title: "Agent 作品库" },
-  { href: "/agent-zone/observatory", eyebrow: "Observatory", title: "Agent 观察台" },
-  { href: "/agent-zone/rules", eyebrow: "Rules", title: "规则中心" },
-  { href: "/agent-zone/lab", eyebrow: "Lab", title: "Agent 实验室" },
-];
 
 const taskId = Number(Astro.params.id || 0);
 const submissionId = Number(Astro.params.submissionId || 0);
@@ -23,7 +14,9 @@ if (!Number.isFinite(taskId) || taskId <= 0 || !Number.isFinite(submissionId) ||
   return Astro.redirect("/agent-zone/tasks");
 }
 
-const detail = await getAgentTaskSubmissionDetailData(taskId, submissionId);
+const session = await getSessionFromAstro(Astro);
+const canReviewSubmission = isAdmin(session);
+const detail = await getAgentTaskSubmissionDetailData(taskId, submissionId, { includePrivate: canReviewSubmission });
 
 if (!detail) {
   return Astro.redirect(`/agent-zone/tasks/${taskId}#submissions`);
@@ -31,29 +24,16 @@ if (!detail) {
 
 const { task, submission } = detail;
 const bodyHtml = renderMarkdown(submission.body);
+const reviewed = Astro.url.searchParams.get("reviewed") === "1";
+const error = Astro.url.searchParams.get("error") === "1";
+const parsedScore = Number.parseInt(submission.score, 10);
+const reviewScore = Number.isFinite(parsedScore) ? parsedScore : 80;
+const canManualReview = canReviewSubmission && submission.rawStatus !== "archived";
 ---
 
 <BaseLayout title={`提交 #${submission.id} - ${task.title}`} description={task.description}>
-  <section class="agent-zone-page">
-    <div class="agent-zone-shell">
-      <aside class="agent-zone-left" aria-label="Agent 专区模块">
-        <p class="eyebrow">Modules</p>
-        <nav class="agent-zone-nav">
-          <a href="/agent-zone">
-            <span>Overview</span>
-            <strong>总览</strong>
-          </a>
-          {modules.map((item) => (
-            <a class:list={[item.href === "/agent-zone/tasks" && "is-active"]} href={item.href}>
-              <span>{item.eyebrow}</span>
-              <strong>{item.title}</strong>
-            </a>
-          ))}
-        </nav>
-      </aside>
-
-      <div class="agent-zone-content">
-        <div class="agent-detail-layout">
+  <AgentZoneFrame active="tasks">
+    <div class="agent-detail-layout">
           <section class="agent-detail-main">
             <div class="agent-detail-head task-detail-head">
               <a class="agent-back-link" href={`/agent-zone/tasks/${task.id}#submissions`}>返回任务提交</a>
@@ -100,6 +80,35 @@ const bodyHtml = renderMarkdown(submission.body);
                 </article>
               </div>
             </section>
+
+            {reviewed && <p class="auth-message success">人工审核已保存。</p>}
+            {error && <p class="auth-message error">人工审核失败，请稍后再试。</p>}
+
+            {canManualReview && (
+              <section class="agent-zone-section task-manual-review">
+                <div class="section-head">
+                  <div>
+                    <p class="eyebrow">Manual Review</p>
+                    <h2>人工审核</h2>
+                  </div>
+                </div>
+                <form class="task-manual-review-form" method="post" action={`/api/admin/tasks/${task.id}/submissions/${submission.id}/review`}>
+                  <input type="hidden" name="redirect" value={`/agent-zone/tasks/${task.id}/submissions/${submission.id}`} />
+                  <label>
+                    <span>评分</span>
+                    <input name="score" type="number" min="0" max="100" step="1" value={reviewScore} />
+                  </label>
+                  <label class="task-manual-review-comment">
+                    <span>审核备注</span>
+                    <textarea name="comment" rows="4">{submission.reviewComment !== "-" ? submission.reviewComment : ""}</textarea>
+                  </label>
+                  <div class="task-manual-review-actions">
+                    <button class="button secondary" type="submit" name="decision" value="reject">驳回</button>
+                    <button class="button primary" type="submit" name="decision" value="accept">通过</button>
+                  </div>
+                </form>
+              </section>
+            )}
           </section>
 
           <aside class="agent-zone-side-panel" aria-label="提交详情侧栏">
@@ -144,8 +153,6 @@ const bodyHtml = renderMarkdown(submission.body);
               <pre class="task-json-block"><code>{submission.attachmentsJson}</code></pre>
             </section>
           </aside>
-        </div>
-      </div>
     </div>
-  </section>
+  </AgentZoneFrame>
 </BaseLayout>

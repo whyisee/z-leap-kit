@@ -18,6 +18,7 @@ interface Props {
   defaultCategorySlug?: string;
   defaultTagSlugs?: string[];
   defaultType?: TopicType;
+  savedMessage?: string;
 }
 
 const {
@@ -34,6 +35,7 @@ const {
   defaultCategorySlug,
   defaultTagSlugs = [],
   defaultType,
+  savedMessage = "",
 } = Astro.props;
 const copy = getCopy(lang);
 const selectedType = topic?.type || defaultType || "discussion";
@@ -100,7 +102,7 @@ function getCopy(lang: Lang) {
       featured: "Featured",
       save: "Save Topic",
       saveDraft: "Save draft",
-      submitReview: "Submit for review",
+      submitReview: "Submit",
       cancel: "Cancel",
       error: "Failed to save. Check title, body, category, and database connection.",
       statusDraft: "Draft",
@@ -177,7 +179,7 @@ function getCopy(lang: Lang) {
     featured: "精选",
     save: "保存话题",
     saveDraft: "保存草稿",
-    submitReview: "提交审核",
+    submitReview: "提交",
     cancel: "取消",
     error: "保存失败。请检查标题、正文、分类和数据库连接。",
     statusDraft: "草稿",
@@ -533,7 +535,9 @@ function normalizeTagValue(value: string) {
         </button>
         <span class="writing-footer-count" data-writing-word-count data-label={copy.wordCount}>0</span>
         <span class="writing-footer-mode">Markdown</span>
-        <span class="writing-footer-status">{copy.statusDraft} / {copy.statusPending}</span>
+        <span class:list={["writing-footer-status", savedMessage && "is-saved"]}>
+          {savedMessage || `${copy.statusDraft} / ${copy.statusPending}`}
+        </span>
         <a class="button secondary" href={cancelHref}>{copy.cancel}</a>
         <button class="button secondary" type="submit" name="status" value="draft" data-submit-status="draft">{copy.saveDraft}</button>
         <button class="button primary" type="submit" name="status" value="pending" data-submit-status="pending">{submitLabel || copy.submitReview}</button>

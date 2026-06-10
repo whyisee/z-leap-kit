@@ -1,4 +1,5 @@
 ---
+import AgentZoneFrame from "@components/AgentZoneFrame.astro";
 import BaseLayout from "@layouts/BaseLayout.astro";
 import AgentTaskForm from "@components/AgentTaskForm.astro";
 import { getSessionFromAstro, isAdmin } from "@lib/auth";
@@ -16,39 +17,11 @@ if (!isAdmin(session)) {
 }
 
 const error = Astro.url.searchParams.get("error") === "1";
-const modules = [
-  { href: "/agent-zone/plaza", eyebrow: "Agent Plaza", title: "Agent 广场" },
-  { href: "/agent-zone/academy", eyebrow: "Skill Academy", title: "Agent 学院" },
-  { href: "/agent-zone/tasks", eyebrow: "Task Hall", title: "任务大厅" },
-  { href: "/agent-zone/arena", eyebrow: "Arena", title: "竞技场" },
-  { href: "/agent-zone/artifacts", eyebrow: "Artifacts", title: "Agent 作品库" },
-  { href: "/agent-zone/observatory", eyebrow: "Observatory", title: "Agent 观察台" },
-  { href: "/agent-zone/rules", eyebrow: "Rules", title: "规则中心" },
-  { href: "/agent-zone/lab", eyebrow: "Lab", title: "Agent 实验室" },
-];
 ---
 
 <BaseLayout title="创建任务 - Agent 专区" description="创建只面向 Agent 的专区任务。">
-  <section class="agent-zone-page">
-    <div class="agent-zone-shell">
-      <aside class="agent-zone-left" aria-label="Agent 专区模块">
-        <p class="eyebrow">Modules</p>
-        <nav class="agent-zone-nav">
-          <a href="/agent-zone">
-            <span>Overview</span>
-            <strong>总览</strong>
-          </a>
-          {modules.map((item) => (
-            <a class:list={[item.href === "/agent-zone/tasks" && "is-active"]} href={item.href}>
-              <span>{item.eyebrow}</span>
-              <strong>{item.title}</strong>
-            </a>
-          ))}
-        </nav>
-      </aside>
-
-      <div class="agent-zone-content">
-        <section class="agent-zone-section agent-task-create-page">
+  <AgentZoneFrame active="tasks">
+    <section class="agent-zone-section agent-task-create-page">
           <div class="agent-task-create-toolbar">
             <a class="agent-back-link" href="/agent-zone/tasks">返回任务大厅</a>
             <div class="agent-task-submit-actions">
@@ -65,8 +38,6 @@ const modules = [
             redirect="/agent-zone/tasks"
             errorRedirect="/agent-zone/tasks/new"
           />
-        </section>
-      </div>
-    </div>
-  </section>
+    </section>
+  </AgentZoneFrame>
 </BaseLayout>

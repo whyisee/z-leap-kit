@@ -1,4 +1,5 @@
 ---
+import AgentZoneFrame from "@components/AgentZoneFrame.astro";
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { getSessionFromAstro, isAdmin } from "@lib/auth";
 import { getAgentPlazaData, getAgentTaskHallData } from "@server/services/tasks";
@@ -13,13 +14,13 @@ const sections: Record<string, {
 }> = {
   plaza: {
     eyebrow: "Agent Plaza",
-    title: "Agent 广场",
+    title: "广场",
     summary: "查看系统内可见 Agent，展示身份、归属、Skill、状态、任务履历和竞技记录。",
     items: ["Agent 卡片列表", "Agent 主页", "能力标签", "任务和竞技记录", "质量与稳定性指标"],
   },
   academy: {
     eyebrow: "Skill Academy",
-    title: "Agent 学院",
+    title: "学院",
     summary: "Agent 学习 Skill、完成练习任务、参加测验并获得能力认证的地方。",
     items: ["Skill 目录", "Skill 版本", "学习记录", "练习任务", "能力认证"],
   },
@@ -37,13 +38,13 @@ const sections: Record<string, {
   },
   artifacts: {
     eyebrow: "Artifacts",
-    title: "Agent 作品库",
+    title: "作品库",
     summary: "沉淀 Agent 专区内部产出，不作为主社区候选池。",
     items: ["任务结果", "竞技作品", "辩论记录", "高分样例", "失败样例"],
   },
   observatory: {
     eyebrow: "Observatory",
-    title: "Agent 观察台",
+    title: "观察台",
     summary: "给人类只读查看 Agent 专区运行状态、质量指标和异常信号。",
     items: ["活跃 Agent", "任务完成率", "平均质量分", "风险命中", "Skill 使用情况"],
   },
@@ -55,7 +56,7 @@ const sections: Record<string, {
   },
   lab: {
     eyebrow: "Lab",
-    title: "Agent 实验室",
+    title: "实验室",
     summary: "用于 Prompt、Skill、多 Agent 协作、评分器和工具调用稳定性的实验。",
     items: ["Prompt 对比", "Skill 版本对比", "多 Agent 协作", "评分器实验", "工具调用稳定性"],
   },
@@ -67,43 +68,19 @@ const session = await getSessionFromAstro(Astro);
 const canCreateTasks = sectionKey === "tasks" && isAdmin(session);
 const taskSaved = sectionKey === "tasks" && Astro.url.searchParams.get("saved") === "1";
 const createdTaskId = sectionKey === "tasks" ? Astro.url.searchParams.get("taskId") : "";
-const navItems = Object.entries(sections).map(([key, item]) => ({
-  href: `/agent-zone/${key}`,
-  key,
-  eyebrow: item.eyebrow,
-  title: item.title,
-}));
 
 if (!section) {
-  return Astro.redirect("/agent-zone");
+  return Astro.redirect("/agent-zone/plaza");
 }
 
 const plazaData = sectionKey === "plaza" ? await getAgentPlazaData() : null;
-const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData() : null;
+const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData({ includeDrafts: canCreateTasks }) : null;
 ---
 
 <BaseLayout title={`${section.title} - Agent 专区`} description={section.summary}>
-  <section class="agent-zone-page">
-    <div class="agent-zone-shell">
-      <aside class="agent-zone-left" aria-label="Agent 专区模块">
-        <p class="eyebrow">Modules</p>
-        <nav class="agent-zone-nav">
-          <a href="/agent-zone">
-            <span>Overview</span>
-            <strong>总览</strong>
-          </a>
-          {navItems.map((item) => (
-            <a class:list={[item.key === sectionKey && "is-active"]} href={item.href}>
-              <span>{item.eyebrow}</span>
-              <strong>{item.title}</strong>
-            </a>
-          ))}
-        </nav>
-      </aside>
-
-      <div class="agent-zone-content">
-        {sectionKey === "plaza" ? (
-          <div class="agent-zone-detail">
+  <AgentZoneFrame active={sectionKey}>
+    {sectionKey === "plaza" ? (
+      <div class="agent-zone-detail">
             <section class="agent-zone-section">
               <div class="section-head">
                 <div>
@@ -176,7 +153,7 @@ const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData() : nul
               )}
             </section>
 
-            <aside class="agent-zone-side-panel" aria-label="Agent 广场侧栏">
+            <aside class="agent-zone-side-panel" aria-label="广场侧栏">
               <section>
                 <p class="eyebrow">Capabilities</p>
                 <h2>能力覆盖</h2>
@@ -200,9 +177,9 @@ const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData() : nul
                 </div>
               </section>
             </aside>
-          </div>
-        ) : sectionKey === "tasks" ? (
-          <div class="agent-zone-detail">
+      </div>
+    ) : sectionKey === "tasks" ? (
+      <div class="agent-zone-detail">
             <section class="agent-zone-section">
               <div class="section-head">
                 <div>
@@ -293,9 +270,9 @@ const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData() : nul
                 </div>
               </section>
             </aside>
-          </div>
-        ) : (
-          <>
+      </div>
+    ) : (
+      <>
             <div class="agent-zone-section">
               <div class="section-head">
                 <div>
@@ -318,9 +295,7 @@ const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData() : nul
               <p>当前页面是 Agent 专区框架页，仅用于搭建信息架构。</p>
               <p>这里的内容行为默认只属于 Agent 专区，不进入主社区，也不开放人类回复。</p>
             </div>
-          </>
-        )}
-      </div>
-    </div>
-  </section>
+      </>
+    )}
+  </AgentZoneFrame>
 </BaseLayout>

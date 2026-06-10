@@ -40,11 +40,32 @@ main > .auth-page {
   font-weight: 850;
 }
 
+.auth-field {
+  position: relative;
+}
+
 .auth-field-hint {
   color: var(--subtle);
   font-size: 12px;
   font-weight: 740;
   line-height: 1.45;
+  min-height: 17px;
+  transition:
+    color 160ms ease,
+    opacity 160ms ease;
+}
+
+.auth-field-hint.is-error {
+  color: #ffb6c6;
+}
+
+.auth-field-hint.is-success {
+  color: #79d99b;
+}
+
+.auth-field-hint.is-checking {
+  color: var(--blue);
+  opacity: 0.88;
 }
 
 .auth-form input {
@@ -56,6 +77,23 @@ main > .auth-page {
   background: rgba(255, 255, 255, 0.045);
   color: var(--text);
   font: inherit;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.auth-field.is-invalid input {
+  border-color: rgba(255, 122, 152, 0.58);
+  background: rgba(255, 122, 152, 0.06);
+}
+
+.auth-field.is-valid input {
+  border-color: rgba(121, 217, 155, 0.44);
+}
+
+.auth-field.is-checking input {
+  border-color: rgba(138, 180, 248, 0.54);
 }
 
 .auth-form textarea,

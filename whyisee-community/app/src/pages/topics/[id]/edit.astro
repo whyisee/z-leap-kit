@@ -29,28 +29,22 @@ const copy = lang === "en"
   ? {
       title: "Edit topic",
       description: "Changes from regular users will return to review before becoming public.",
-      save: "Save changes",
+      save: "Submit",
       saved: "Topic saved.",
-      delete: "Delete topic",
       notFound: "Topic not found",
     }
   : {
       title: "编辑话题",
       description: "普通用户修改后会重新进入审核，通过后再公开展示。",
-      save: "保存修改",
+      save: "提交",
       saved: "话题已保存。",
-      delete: "删除话题",
       notFound: "话题未找到",
     };
 ---
 
 <BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
   {topic && (topic.authorId === session?.userId || isAdmin(session)) ? (
-    <section class="article-page">
-      <p class="eyebrow">{topic.status}</p>
-      <h1>{copy.title}</h1>
-      <p>{copy.description}</p>
-      {saved && <p class="auth-message muted">{copy.saved}</p>}
+    <section class="article-page new-topic-page topic-edit-page">
       <AdminTopicForm
         action={`/api/topics/${topic.id}`}
         categories={categories}
@@ -62,11 +56,8 @@ const copy = lang === "en"
         cancelHref={`/u/${session.username}`}
         showAdminFields={false}
         forcedStatus="pending"
+        savedMessage={saved ? copy.saved : ""}
       />
-      <form class="danger-zone" method="post" action={`/api/topics/${topic.id}`}>
-        <input type="hidden" name="intent" value="delete" />
-        <button class="button danger" type="submit">{copy.delete}</button>
-      </form>
     </section>
   ) : (
     <section class="article-page">

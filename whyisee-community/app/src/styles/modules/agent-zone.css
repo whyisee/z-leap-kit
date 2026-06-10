@@ -11,86 +11,21 @@
 }
 
 .agent-zone-page {
-  height: 100%;
-  overflow-y: auto;
-  padding: clamp(28px, 4vh, 44px) clamp(44px, 6vw, 96px) 48px;
-  scrollbar-gutter: stable;
-}
-
-.agent-zone-shell {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 26px;
-  align-items: start;
-}
-
-.agent-zone-left {
-  position: sticky;
-  top: 22px;
-  display: grid;
-  gap: 12px;
-  align-self: start;
-  border-right: 1px solid var(--line);
-  padding-right: 16px;
-}
-
-.agent-zone-nav {
-  display: grid;
-  gap: 8px;
-}
-
-.agent-zone-nav a {
-  display: grid;
-  align-content: center;
-  gap: 2px;
-  min-height: 54px;
-  border: 1px solid rgba(138, 180, 248, 0.2);
-  border-radius: 7px;
-  padding: 8px 11px;
-  background: rgba(138, 180, 248, 0.055);
-  color: #bdd3ff;
-}
-
-.agent-zone-nav a:hover {
-  border-color: rgba(138, 180, 248, 0.46);
-  background: rgba(138, 180, 248, 0.12);
-  color: var(--text);
-}
-
-.agent-zone-nav a.is-active {
-  border-color: rgba(102, 208, 140, 0.38);
-  background: rgba(102, 208, 140, 0.085);
-  color: var(--text);
-}
-
-.agent-zone-nav span {
-  color: var(--subtle);
-  font-size: 10px;
-  font-weight: 950;
-  letter-spacing: 0.05em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
-.agent-zone-nav strong {
-  color: #bdd3ff;
-  font-size: 14px;
-  font-weight: 950;
-  line-height: 1.25;
-}
-
-.agent-zone-nav a:hover span,
-.agent-zone-nav a.is-active span {
-  color: #9cf5ca;
-}
-
-.agent-zone-nav a:hover strong,
-.agent-zone-nav a.is-active strong {
-  color: var(--text);
-}
-
-.agent-zone-content {
+  gap: 20px;
   min-width: 0;
+  padding-bottom: 48px;
+}
+
+.agent-zone-left-nav {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.agent-zone-nav-marker {
+  border-radius: 4px;
+  background: var(--pill-color, var(--blue));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pill-color, var(--blue)) 42%, transparent);
 }
 
 .agent-zone-layout {
@@ -1309,6 +1244,60 @@
   margin: 0 0 12px;
 }
 
+.task-manual-review {
+  gap: 14px;
+}
+
+.task-manual-review-form {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.026);
+}
+
+.task-manual-review-form label {
+  display: grid;
+  gap: 7px;
+}
+
+.task-manual-review-form label > span {
+  color: var(--subtle);
+  font-size: 11px;
+  font-weight: 920;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.task-manual-review-form input,
+.task-manual-review-form textarea {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  padding: 10px 11px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text);
+  font: inherit;
+}
+
+.task-manual-review-form textarea {
+  resize: vertical;
+  min-height: 92px;
+}
+
+.task-manual-review-comment,
+.task-manual-review-actions {
+  grid-column: 1 / -1;
+}
+
+.task-manual-review-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .task-json-block {
   max-height: 260px;
   overflow: auto;
@@ -1719,25 +1708,11 @@
 
 @media (max-width: 980px) {
   .agent-zone-page {
-    height: auto;
-    overflow: visible;
-    padding: 22px 14px 36px;
+    padding-bottom: 36px;
   }
 
-  .agent-zone-shell,
   .agent-zone-layout {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .agent-zone-left {
-    position: static;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    padding: 0 0 14px;
-  }
-
-  .agent-zone-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .agent-zone-side {
@@ -1750,10 +1725,6 @@
 }
 
 @media (max-width: 640px) {
-  .agent-zone-nav {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .agent-zone-stat-strip,
   .agent-zone-agent-grid,
   .agent-zone-stat-strip.detail,
@@ -1772,6 +1743,10 @@
   .agent-task-submit-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .task-manual-review-form {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .agent-task-create-toolbar .button {

@@ -41,6 +41,8 @@ export const POST: APIRoute = async (context) => {
       status: formData.get("status") === "paused" ? "paused" : "active",
       scheduleIntervalSeconds: Number(formData.get("scheduleIntervalSeconds") || 60),
       autoApproveMaxRisk: Number(formData.get("autoApproveMaxRisk") || 25),
+      autoAcceptMinScore: Number(formData.get("autoAcceptMinScore") || 82),
+      autoRejectMaxScore: Number(formData.get("autoRejectMaxScore") || 35),
       batchSize: Number(formData.get("batchSize") || 5),
       dryRun: formData.get("dryRun") === "1",
       sourceUrl: String(formData.get("sourceUrl") || ""),

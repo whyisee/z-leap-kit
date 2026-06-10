@@ -2,13 +2,21 @@
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { getSessionFromAstro, safeRedirectPath } from "@lib/auth";
 import { getLangFromAstro } from "@lib/i18n";
+import {
+  getSignupIssueMessage,
+  type SignupErrorCode,
+  type SignupField,
+} from "@server/services/users";
 
 export const prerender = false;
 
 const lang = getLangFromAstro(Astro);
 const session = await getSessionFromAstro(Astro);
 const redirectTarget = safeRedirectPath(Astro.url.searchParams.get("redirect"), "/");
-const hasError = Astro.url.searchParams.get("error") === "1";
+const errorCode = Astro.url.searchParams.get("error") as SignupErrorCode | null;
+const errorField = Astro.url.searchParams.get("field") as SignupField | null;
+const hasError = Boolean(errorCode);
+const serverError = errorCode ? getSignupIssueMessage(errorCode, lang) : "";
 const copy = getCopy(lang);
 
 if (session) {
@@ -28,10 +36,26 @@ function getCopy(lang: "zh" | "en") {
       emailPlaceholder: "you@example.com",
       passwordPlaceholder: "at least 8 characters",
       invitePlaceholder: "Invitation code",
+      usernameHelp: "3-32 characters. Use letters, numbers, underscore, or hyphen.",
+      emailHelp: "Use an email you can access.",
+      passwordHelp: "At least 8 characters.",
       inviteHelp: "Required. Each invitation code has a limited number of uses.",
       action: "Create account",
-      error: "Sign up failed. Check invitation code, username, email, and password.",
+      error: "Sign up failed. Check the highlighted field.",
       login: "Already have an account? Log in",
+      validation: {
+        usernameRequired: "Enter a username first.",
+        usernameFormat: "Use 3-32 letters, numbers, underscore, or hyphen.",
+        emailRequired: "Enter an email first.",
+        emailFormat: "Email format looks wrong.",
+        passwordRequired: "Set a password first.",
+        passwordShort: "Password must be at least 8 characters.",
+        inviteRequired: "Enter an invitation code first.",
+        checking: "Checking...",
+        network: "Could not check it right now. Try again.",
+        submitting: "Creating...",
+        formError: "Fix the highlighted fields first.",
+      },
     };
   }
 
@@ -46,10 +70,26 @@ function getCopy(lang: "zh" | "en") {
     emailPlaceholder: "you@example.com",
     passwordPlaceholder: "至少 8 位",
     invitePlaceholder: "输入邀请码",
+    usernameHelp: "3-32 位，只能包含字母、数字、下划线或短横线。",
+    emailHelp: "使用你能收到邮件的邮箱。",
+    passwordHelp: "至少 8 位。",
     inviteHelp: "必填。每个邀请码都有使用次数限制。",
     action: "创建账号",
-    error: "注册失败，请检查邀请码、用户名、邮箱和密码。",
+    error: "注册失败，请检查标红的字段。",
     login: "已有账号？去登录",
+    validation: {
+      usernameRequired: "先填一个用户名。",
+      usernameFormat: "用户名需要 3-32 位，只能包含字母、数字、下划线或短横线。",
+      emailRequired: "先填邮箱。",
+      emailFormat: "邮箱格式不太对。",
+      passwordRequired: "先设置密码。",
+      passwordShort: "密码至少需要 8 位。",
+      inviteRequired: "先填邀请码。",
+      checking: "检查中...",
+      network: "暂时检查不了，稍后再试。",
+      submitting: "创建中...",
+      formError: "先把标红的字段改好。",
+    },
   };
 }
 ---
@@ -61,32 +101,317 @@ function getCopy(lang: "zh" | "en") {
       <h1>{copy.title}</h1>
       <p>{copy.description}</p>
 
-      {hasError && <p class="auth-message error">{copy.error}</p>}
+      <p class="auth-message error" data-signup-form-error hidden={!hasError}>{serverError || copy.error}</p>
 
-      <form class="auth-form" method="post" action="/api/signup">
+      <form class="auth-form signup-form" method="post" action="/api/signup" data-signup-form novalidate>
         <input type="hidden" name="redirect" value={redirectTarget} />
-        <label>
-          {copy.username}
-          <input autocomplete="username" name="username" placeholder={copy.usernamePlaceholder} required type="text" />
+        <label class:list={["auth-field", errorField === "username" && "is-invalid"]} data-signup-field="username">
+          <span>{copy.username}</span>
+          <input
+            autocomplete="username"
+            data-signup-input="username"
+            maxlength="32"
+            minlength="3"
+            name="username"
+            pattern="[A-Za-z0-9_-]{3,32}"
+            placeholder={copy.usernamePlaceholder}
+            required
+            type="text"
+          />
+          <small
+            class:list={["auth-field-hint", errorField === "username" && "is-error"]}
+            data-signup-message="username"
+          >
+            {errorField === "username" ? serverError : copy.usernameHelp}
+          </small>
         </label>
-        <label>
-          {copy.email}
-          <input autocomplete="email" name="email" placeholder={copy.emailPlaceholder} required type="email" />
+        <label class:list={["auth-field", errorField === "email" && "is-invalid"]} data-signup-field="email">
+          <span>{copy.email}</span>
+          <input autocomplete="email" data-signup-input="email" name="email" placeholder={copy.emailPlaceholder} required type="email" />
+          <small
+            class:list={["auth-field-hint", errorField === "email" && "is-error"]}
+            data-signup-message="email"
+          >
+            {errorField === "email" ? serverError : copy.emailHelp}
+          </small>
         </label>
-        <label>
-          {copy.password}
-          <input autocomplete="new-password" name="password" placeholder={copy.passwordPlaceholder} required type="password" />
+        <label class:list={["auth-field", errorField === "password" && "is-invalid"]} data-signup-field="password">
+          <span>{copy.password}</span>
+          <input
+            autocomplete="new-password"
+            data-signup-input="password"
+            minlength="8"
+            name="password"
+            placeholder={copy.passwordPlaceholder}
+            required
+            type="password"
+          />
+          <small
+            class:list={["auth-field-hint", errorField === "password" && "is-error"]}
+            data-signup-message="password"
+          >
+            {errorField === "password" ? serverError : copy.passwordHelp}
+          </small>
         </label>
-        <label>
-          {copy.inviteCode}
-          <input name="inviteCode" placeholder={copy.invitePlaceholder} required type="text" />
-          <small class="auth-field-hint">{copy.inviteHelp}</small>
+        <label class:list={["auth-field", errorField === "inviteCode" && "is-invalid"]} data-signup-field="inviteCode">
+          <span>{copy.inviteCode}</span>
+          <input autocomplete="one-time-code" data-signup-input="inviteCode" name="inviteCode" placeholder={copy.invitePlaceholder} required type="text" />
+          <small
+            class:list={["auth-field-hint", errorField === "inviteCode" && "is-error"]}
+            data-signup-message="inviteCode"
+          >
+            {errorField === "inviteCode" ? serverError : copy.inviteHelp}
+          </small>
         </label>
-        <button class="button primary" type="submit">{copy.action}</button>
+        <button class="button primary" data-signup-submit type="submit">{copy.action}</button>
         <div class="auth-links">
           <a href={`/login?redirect=${encodeURIComponent(redirectTarget)}`}>{copy.login}</a>
         </div>
       </form>
     </div>
   </section>
+
+  <script is:inline define:vars={{ lang, messages: copy.validation, submitText: copy.action }}>
+    const form = document.querySelector("[data-signup-form]");
+
+    if (form instanceof HTMLFormElement) {
+      const formError = document.querySelector("[data-signup-form-error]");
+      const submitButton = form.querySelector("[data-signup-submit]");
+      const inputs = {
+        username: form.querySelector('[data-signup-input="username"]'),
+        email: form.querySelector('[data-signup-input="email"]'),
+        password: form.querySelector('[data-signup-input="password"]'),
+        inviteCode: form.querySelector('[data-signup-input="inviteCode"]'),
+      };
+      const requestTokens = {
+        username: 0,
+        email: 0,
+        password: 0,
+        inviteCode: 0,
+      };
+      const defaultHints = {
+        username: form.querySelector('[data-signup-message="username"]')?.textContent?.trim() || "",
+        email: form.querySelector('[data-signup-message="email"]')?.textContent?.trim() || "",
+        password: form.querySelector('[data-signup-message="password"]')?.textContent?.trim() || "",
+        inviteCode: form.querySelector('[data-signup-message="inviteCode"]')?.textContent?.trim() || "",
+      };
+
+      const fieldNames = ["username", "email", "password", "inviteCode"];
+
+      for (const name of fieldNames) {
+        const input = inputs[name];
+
+        if (!(input instanceof HTMLInputElement)) continue;
+
+        input.addEventListener("input", () => {
+          hideFormError();
+          validateLocalField(name, false);
+        });
+        input.addEventListener("blur", () => {
+          checkField(name);
+        });
+      }
+
+      inputs.email?.addEventListener("blur", () => {
+        if (inputs.inviteCode?.value.trim()) {
+          checkField("inviteCode");
+        }
+      });
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        hideFormError();
+
+        const results = [];
+
+        for (const name of fieldNames) {
+          results.push(await checkField(name));
+        }
+
+        if (!results.every(Boolean)) {
+          showFormError(messages.formError);
+          focusFirstInvalidField();
+          return;
+        }
+
+        setSubmitting(true);
+
+        try {
+          const response = await fetch(form.action, {
+            method: "POST",
+            body: new FormData(form),
+            headers: {
+              accept: "application/json",
+              "x-requested-with": "fetch",
+            },
+          });
+          const data = await response.json();
+
+          if (data.ok && data.redirect) {
+            window.location.assign(data.redirect);
+            return;
+          }
+
+          if (data.field && data.message) {
+            setFieldState(data.field, "error", data.message);
+            focusField(data.field);
+          }
+
+          showFormError(data.message || messages.formError);
+        } catch (error) {
+          showFormError(messages.network);
+        } finally {
+          setSubmitting(false);
+        }
+      });
+
+      function validateLocalField(name, showValid) {
+        const input = inputs[name];
+
+        if (!(input instanceof HTMLInputElement)) return false;
+
+        const value = input.value.trim();
+        let message = "";
+
+        if (name === "username") {
+          if (!value) message = messages.usernameRequired;
+          else if (!/^[a-zA-Z0-9_-]{3,32}$/.test(value)) message = messages.usernameFormat;
+        }
+
+        if (name === "email") {
+          if (!value) message = messages.emailRequired;
+          else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) message = messages.emailFormat;
+        }
+
+        if (name === "password") {
+          if (!input.value) message = messages.passwordRequired;
+          else if (input.value.length < 8) message = messages.passwordShort;
+        }
+
+        if (name === "inviteCode" && !value) {
+          message = messages.inviteRequired;
+        }
+
+        input.setCustomValidity(message);
+
+        if (message) {
+          setFieldState(name, "error", message);
+          return false;
+        }
+
+        if (showValid) {
+          setFieldState(name, "success", "");
+        } else {
+          setFieldState(name, "idle", defaultHints[name]);
+        }
+
+        return true;
+      }
+
+      async function checkField(name) {
+        if (!validateLocalField(name, true)) return false;
+
+        if (name === "password") {
+          return true;
+        }
+
+        const input = inputs[name];
+
+        if (!(input instanceof HTMLInputElement)) return false;
+
+        const token = requestTokens[name] + 1;
+        requestTokens[name] = token;
+        setFieldState(name, "checking", messages.checking);
+
+        const params = new URLSearchParams({
+          field: name,
+          value: input.value.trim(),
+          lang,
+        });
+
+        if (name === "inviteCode" && inputs.email instanceof HTMLInputElement) {
+          params.set("email", inputs.email.value.trim());
+        }
+
+        try {
+          const response = await fetch(`/api/signup/check?${params.toString()}`, {
+            headers: {
+              accept: "application/json",
+            },
+          });
+          const data = await response.json();
+
+          if (requestTokens[name] !== token) return Boolean(data.ok);
+
+          if (data.ok) {
+            setFieldState(name, "success", data.message || "");
+            return true;
+          }
+
+          setFieldState(name, "error", data.message || messages.formError);
+          return false;
+        } catch (error) {
+          if (requestTokens[name] === token) {
+            setFieldState(name, "error", messages.network);
+          }
+
+          return false;
+        }
+      }
+
+      function setFieldState(name, state, text) {
+        const input = inputs[name];
+        const wrapper = form.querySelector(`[data-signup-field="${name}"]`);
+        const message = form.querySelector(`[data-signup-message="${name}"]`);
+
+        if (!(input instanceof HTMLInputElement) || !(wrapper instanceof HTMLElement) || !(message instanceof HTMLElement)) {
+          return;
+        }
+
+        wrapper.classList.toggle("is-invalid", state === "error");
+        wrapper.classList.toggle("is-valid", state === "success");
+        wrapper.classList.toggle("is-checking", state === "checking");
+        message.classList.toggle("is-error", state === "error");
+        message.classList.toggle("is-success", state === "success");
+        message.classList.toggle("is-checking", state === "checking");
+        message.textContent = text || defaultHints[name] || "";
+      }
+
+      function showFormError(text) {
+        if (!(formError instanceof HTMLElement)) return;
+
+        formError.textContent = text;
+        formError.hidden = false;
+      }
+
+      function hideFormError() {
+        if (formError instanceof HTMLElement) {
+          formError.hidden = true;
+        }
+      }
+
+      function focusFirstInvalidField() {
+        const invalid = form.querySelector(".auth-field.is-invalid input");
+
+        if (invalid instanceof HTMLInputElement) {
+          invalid.focus();
+        }
+      }
+
+      function focusField(name) {
+        const input = inputs[name];
+
+        if (input instanceof HTMLInputElement) {
+          input.focus();
+        }
+      }
+
+      function setSubmitting(isSubmitting) {
+        if (!(submitButton instanceof HTMLButtonElement)) return;
+
+        submitButton.disabled = isSubmitting;
+        submitButton.textContent = isSubmitting ? messages.submitting : submitText;
+      }
+    }
+  </script>
 </BaseLayout>

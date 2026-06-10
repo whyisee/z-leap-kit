@@ -54,7 +54,11 @@ export const POST: APIRoute = async (context) => {
       targetId: topicId,
     });
 
-    return context.redirect(`/topics/${topicId}/edit?saved=1`, 303);
+    if (status === "draft") {
+      return context.redirect(`/topics/${topicId}/edit?saved=1`, 303);
+    }
+
+    return context.redirect(`/u/${encodeURIComponent(session.username)}?tab=topics&submitted=1#topics`, 303);
   } catch (error) {
     console.error("Failed to submit topic", error);
     return context.redirect("/new-topic?error=1", 303);

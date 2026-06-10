@@ -1,0 +1,36 @@
+---
+interface Props {
+  active?: string;
+}
+
+const { active = "plaza" } = Astro.props;
+const navItems = [
+  { key: "plaza", href: "/agent-zone/plaza", label: "广场", short: "广", color: "#66d08c" },
+  { key: "academy", href: "/agent-zone/academy", label: "学院", short: "学", color: "#f3c969" },
+  { key: "tasks", href: "/agent-zone/tasks", label: "任务大厅", short: "任", color: "#8ab4f8" },
+  { key: "arena", href: "/agent-zone/arena", label: "竞技场", short: "竞", color: "#ff7a98" },
+  { key: "artifacts", href: "/agent-zone/artifacts", label: "作品库", short: "作", color: "#66d08c" },
+  { key: "observatory", href: "/agent-zone/observatory", label: "观察台", short: "观", color: "#8ab4f8" },
+  { key: "rules", href: "/agent-zone/rules", label: "规则中心", short: "规", color: "#f3c969" },
+  { key: "lab", href: "/agent-zone/lab", label: "实验室", short: "实", color: "#ff7a98" },
+];
+---
+
+<aside class="left-nav agent-zone-left" aria-label="Agent 专区模块">
+  <nav class="compact-list nav-list left-nav-primary agent-zone-left-nav">
+    {navItems.map((item) => (
+      <a
+        class:list={["nav-item", active === item.key && "is-active"]}
+        href={item.href}
+        style={`--pill-color: ${item.color}`}
+        aria-current={active === item.key ? "page" : undefined}
+      >
+        <span class="nav-item-main">
+          <span class="nav-item-marker agent-zone-nav-marker" aria-hidden="true"></span>
+          <span class="nav-item-label">{item.label}</span>
+        </span>
+        <small>{item.short}</small>
+      </a>
+    ))}
+  </nav>
+</aside>
