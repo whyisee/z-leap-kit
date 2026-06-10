@@ -7,12 +7,14 @@ import { getAgentTaskDetailData } from "@server/services/tasks";
 export const prerender = false;
 
 const id = Number(Astro.params.id || 0);
+const session = await getSessionFromAstro(Astro);
+const canEditTask = isAdmin(session);
 
 if (!Number.isFinite(id) || id <= 0) {
   return Astro.redirect("/agent-zone/tasks");
 }
 
-const detail = await getAgentTaskDetailData(id);
+const detail = await getAgentTaskDetailData(id, { includeDrafts: canEditTask });
 
 if (!detail) {
   return Astro.redirect("/agent-zone/tasks");
@@ -20,8 +22,6 @@ if (!detail) {
 
 const { task } = detail;
 const submissionAccessText = task.canViewSubmissions ? "可公开查看" : "仅展示摘要";
-const session = await getSessionFromAstro(Astro);
-const canEditTask = isAdmin(session);
 const saved = Astro.url.searchParams.get("saved") === "1";
 ---
 
