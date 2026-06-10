@@ -196,6 +196,35 @@ CREATE TABLE IF NOT EXISTS notifications (
   FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS direct_conversations (
+  id SERIAL PRIMARY KEY,
+  conversation_key TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS direct_conversation_participants (
+  conversation_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  last_read_at TEXT,
+  archived_at TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (conversation_id, user_id),
+  FOREIGN KEY (conversation_id) REFERENCES direct_conversations(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS direct_messages (
+  id SERIAL PRIMARY KEY,
+  conversation_id INTEGER NOT NULL,
+  sender_id INTEGER NOT NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  deleted_at TEXT,
+  FOREIGN KEY (conversation_id) REFERENCES direct_conversations(id) ON DELETE CASCADE,
+  FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS mentions (
   id SERIAL PRIMARY KEY,
   source_type TEXT NOT NULL,
@@ -646,6 +675,33 @@ CREATE TABLE IF NOT EXISTS content_run_items (
   FOREIGN KEY (content_run_id) REFERENCES content_runs(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS agent_skills (
+  id SERIAL PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  version TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending_review',
+  source_type TEXT NOT NULL DEFAULT 'uploaded',
+  entrypoint TEXT NOT NULL DEFAULT 'SKILL.md',
+  storage_path TEXT NOT NULL DEFAULT '',
+  files_json TEXT NOT NULL DEFAULT '[]',
+  created_by_id INTEGER,
+  submitted_by_agent_id INTEGER,
+  review_score INTEGER,
+  review_comment TEXT NOT NULL DEFAULT '',
+  review_reasons_json TEXT NOT NULL DEFAULT '[]',
+  reviewed_by_type TEXT,
+  reviewed_by_id INTEGER,
+  reviewed_at TEXT,
+  published_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (submitted_by_agent_id) REFERENCES agent_profiles(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS agent_idempotency_keys (
   id SERIAL PRIMARY KEY,
   agent_profile_id INTEGER NOT NULL,
@@ -770,6 +826,9 @@ CREATE INDEX IF NOT EXISTS idx_follows_target ON follows(target_type, target_id)
 CREATE INDEX IF NOT EXISTS idx_user_blocks_blocker ON user_blocks(blocker_id, blocked_user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, read_at);
+CREATE INDEX IF NOT EXISTS idx_direct_conversation_participants_user ON direct_conversation_participants(user_id, archived_at);
+CREATE INDEX IF NOT EXISTS idx_direct_messages_conversation_created ON direct_messages(conversation_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_direct_messages_sender_created ON direct_messages(sender_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mentions_user_created ON mentions(mentioned_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mentions_source ON mentions(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_bot_jobs_status_created ON bot_jobs(status, created_at ASC);
@@ -815,6 +874,10 @@ CREATE INDEX IF NOT EXISTS idx_agent_action_logs_device_created ON agent_action_
 CREATE INDEX IF NOT EXISTS idx_agent_action_logs_resource ON agent_action_logs(resource_type, resource_id);
 CREATE INDEX IF NOT EXISTS idx_content_runs_agent_created ON content_runs(agent_profile_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_run_items_item ON content_run_items(item_type, item_id);
+CREATE INDEX IF NOT EXISTS idx_agent_skills_status_updated ON agent_skills(status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_skills_source ON agent_skills(source_type, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_skills_pending_review ON agent_skills(status, updated_at ASC) WHERE status = 'pending_review';
+CREATE INDEX IF NOT EXISTS idx_agent_skills_submitted_agent ON agent_skills(submitted_by_agent_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_idempotency_agent_key ON agent_idempotency_keys(agent_profile_id, idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_tasks_visibility_status ON tasks(visibility, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_executor_status ON tasks(executor_type, status, created_at DESC);

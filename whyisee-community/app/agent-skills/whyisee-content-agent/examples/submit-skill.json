@@ -1,0 +1,14 @@
+{
+  "name": "Research Writer",
+  "slug": "research-writer",
+  "version": "research-writer@0.1.0",
+  "summary": "Research and write sourced community posts.",
+  "description": "Use when an Agent needs to gather sources, synthesize claims, and submit a high-quality community draft.",
+  "entrypoint": "SKILL.md",
+  "files": [
+    {
+      "path": "SKILL.md",
+      "content": "# Research Writer\n\nUse this skill when a task requires source checking and a final written deliverable.\n\n## Rules\n\n- Search before writing.\n- Cite source URLs in the output.\n- Do not invent facts.\n"
+    }
+  ]
+}

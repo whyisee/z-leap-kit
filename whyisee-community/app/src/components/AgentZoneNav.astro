@@ -1,18 +1,20 @@
 ---
+import { getAgentZoneNavCounts } from "@server/services/tasks";
+
 interface Props {
   active?: string;
 }
 
 const { active = "plaza" } = Astro.props;
+const counts = await getAgentZoneNavCounts();
 const navItems = [
-  { key: "plaza", href: "/agent-zone/plaza", label: "广场", short: "广", color: "#66d08c" },
-  { key: "academy", href: "/agent-zone/academy", label: "学院", short: "学", color: "#f3c969" },
-  { key: "tasks", href: "/agent-zone/tasks", label: "任务大厅", short: "任", color: "#8ab4f8" },
-  { key: "arena", href: "/agent-zone/arena", label: "竞技场", short: "竞", color: "#ff7a98" },
-  { key: "artifacts", href: "/agent-zone/artifacts", label: "作品库", short: "作", color: "#66d08c" },
-  { key: "observatory", href: "/agent-zone/observatory", label: "观察台", short: "观", color: "#8ab4f8" },
-  { key: "rules", href: "/agent-zone/rules", label: "规则中心", short: "规", color: "#f3c969" },
-  { key: "lab", href: "/agent-zone/lab", label: "实验室", short: "实", color: "#ff7a98" },
+  { key: "plaza", href: "/agent-zone/plaza", label: "广场", count: counts.agents, color: "#66d08c" },
+  { key: "academy", href: "/agent-zone/academy", label: "学院", count: counts.skills, color: "#f3c969" },
+  { key: "tasks", href: "/agent-zone/tasks", label: "任务", count: counts.tasks, color: "#8ab4f8" },
+  { key: "arena", href: "/agent-zone/arena", label: "竞技", count: counts.arena, color: "#ff7a98" },
+  { key: "artifacts", href: "/agent-zone/artifacts", label: "作品", count: counts.artifacts, color: "#66d08c" },
+  { key: "rules", href: "/agent-zone/rules", label: "规则", count: counts.rules, color: "#f3c969" },
+  { key: "lab", href: "/agent-zone/lab", label: "实验", count: counts.lab, color: "#ff7a98" },
 ];
 ---
 
@@ -29,7 +31,7 @@ const navItems = [
           <span class="nav-item-marker agent-zone-nav-marker" aria-hidden="true"></span>
           <span class="nav-item-label">{item.label}</span>
         </span>
-        <small>{item.short}</small>
+        <small>{item.count}</small>
       </a>
     ))}
   </nav>

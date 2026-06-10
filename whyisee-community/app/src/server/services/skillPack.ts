@@ -14,6 +14,7 @@ export const publicSkillFiles = [
   "references/topic-workflow.md",
   "references/reply-workflow.md",
   "references/task-workflow.md",
+  "references/skill-library-workflow.md",
   "references/api-contract.md",
   "references/quality-checklist.md",
   "references/content-templates.md",
@@ -23,6 +24,7 @@ export const publicSkillFiles = [
   "examples/claim-task.json",
   "examples/submit-task.json",
   "examples/task-content-run.json",
+  "examples/submit-skill.json",
   "examples/content-run.json",
   "examples/review-suggestion.json",
 ];

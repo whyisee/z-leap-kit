@@ -1276,6 +1276,127 @@ const migrations = [
         updated_at = EXCLUDED.updated_at;
     `,
   },
+  {
+    version: "025_agent_skill_library",
+    sql: `
+      CREATE TABLE IF NOT EXISTS agent_skills (
+        id SERIAL PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '',
+        description TEXT NOT NULL DEFAULT '',
+        version TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'active',
+        source_type TEXT NOT NULL DEFAULT 'uploaded',
+        entrypoint TEXT NOT NULL DEFAULT 'SKILL.md',
+        files_json TEXT NOT NULL DEFAULT '[]',
+        created_by_id INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_agent_skills_status_updated ON agent_skills(status, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_skills_source ON agent_skills(source_type, updated_at DESC);
+    `,
+  },
+  {
+    version: "026_direct_messages",
+    sql: `
+      CREATE TABLE IF NOT EXISTS direct_conversations (
+        id SERIAL PRIMARY KEY,
+        conversation_key TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS direct_conversation_participants (
+        conversation_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        last_read_at TEXT,
+        archived_at TEXT,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (conversation_id, user_id),
+        FOREIGN KEY (conversation_id) REFERENCES direct_conversations(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS direct_messages (
+        id SERIAL PRIMARY KEY,
+        conversation_id INTEGER NOT NULL,
+        sender_id INTEGER NOT NULL,
+        body TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        deleted_at TEXT,
+        FOREIGN KEY (conversation_id) REFERENCES direct_conversations(id) ON DELETE CASCADE,
+        FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_direct_conversation_participants_user ON direct_conversation_participants(user_id, archived_at);
+      CREATE INDEX IF NOT EXISTS idx_direct_messages_conversation_created ON direct_messages(conversation_id, created_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_direct_messages_sender_created ON direct_messages(sender_id, created_at DESC);
+    `,
+  },
+  {
+    version: "027_agent_skill_review_storage",
+    sql: `
+      ALTER TABLE agent_skills ADD COLUMN IF NOT EXISTS storage_path TEXT NOT NULL DEFAULT '';
+      ALTER TABLE agent_skills ADD COLUMN IF NOT EXISTS submitted_by_agent_id INTEGER;
+      ALTER TABLE agent_skills ADD COLUMN IF NOT EXISTS review_score INTEGER;
+      ALTER TABLE agent_skills ADD COLUMN IF NOT EXISTS review_comment TEXT NOT NULL DEFAULT '';
+      ALTER TABLE agent_skills ADD COLUMN IF NOT EXISTS review_reasons_json TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE agent_skills ADD COLUMN IF NOT EXISTS reviewed_by_type TEXT;
+      ALTER TABLE agent_skills ADD COLUMN IF NOT EXISTS reviewed_by_id INTEGER;
+      ALTER TABLE agent_skills ADD COLUMN IF NOT EXISTS reviewed_at TEXT;
+      ALTER TABLE agent_skills ADD COLUMN IF NOT EXISTS published_at TEXT;
+
+      UPDATE agent_skills
+      SET status = CASE
+            WHEN status = 'active' THEN 'published'
+            WHEN status IN ('draft', 'pending_review', 'published', 'rejected', 'deprecated') THEN status
+            ELSE 'pending_review'
+          END,
+          published_at = CASE
+            WHEN status IN ('active', 'published') AND COALESCE(published_at, '') = '' THEN updated_at
+            ELSE published_at
+          END,
+          storage_path = CASE
+            WHEN COALESCE(storage_path, '') = '' THEN 'agent-skills/library/' || slug
+            ELSE storage_path
+          END;
+
+      CREATE INDEX IF NOT EXISTS idx_agent_skills_status_updated ON agent_skills(status, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_skills_source ON agent_skills(source_type, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_skills_pending_review ON agent_skills(status, updated_at ASC) WHERE status = 'pending_review';
+      CREATE INDEX IF NOT EXISTS idx_agent_skills_submitted_agent ON agent_skills(submitted_by_agent_id, updated_at DESC);
+
+      INSERT INTO bot_tasks (
+        task_key, name, description, task_type, bot_user_id, trigger_type, status,
+        schedule_interval_seconds, config_json, next_run_at, created_at, updated_at
+      )
+      SELECT
+        'skill_review_agent_uploads',
+        'Skill 发布审核',
+        '定时扫描 Agent 学院待发布 Skill，检查包结构、入口文件、权限风险和内容质量，并自动发布、驳回或转人工复核。',
+        'skill_review',
+        users.id,
+        'schedule',
+        'active',
+        180,
+        '{"scope":"agent_skill_uploads","batchSize":5,"autoApproveMinScore":82,"autoRejectMaxRisk":35,"dryRun":false}',
+        CURRENT_TIMESTAMP::text,
+        CURRENT_TIMESTAMP::text,
+        CURRENT_TIMESTAMP::text
+      FROM users
+      WHERE users.username = 'mod'
+      ON CONFLICT (task_key) DO UPDATE SET
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        task_type = EXCLUDED.task_type,
+        bot_user_id = EXCLUDED.bot_user_id,
+        updated_at = EXCLUDED.updated_at;
+    `,
+  },
 ];
 
 for (const migration of migrations) {

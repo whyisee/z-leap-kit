@@ -161,6 +161,7 @@ const copy = lang === "en"
       signatureFallback: "No signature yet.",
       joined: "Joined",
       profile: "View profile",
+      message: "Message",
       role: "Role",
       followingCount: "Following",
       followersCount: "Followers",
@@ -221,6 +222,7 @@ const copy = lang === "en"
       signatureFallback: "还没有填写签名。",
       joined: "加入",
       profile: "查看主页",
+      message: "发私信",
       role: "身份",
       followingCount: "关注",
       followersCount: "粉丝",
@@ -455,7 +457,15 @@ const aiActions = lang === "en"
           )}
         </div>
 
-        <form class="topic-floating-action-form" method="post" action="/api/interactions/reaction">
+        <form
+          class="topic-floating-action-form"
+          method="post"
+          action="/api/interactions/reaction"
+          data-topic-interaction-form
+          data-interaction-kind="like"
+          data-active-label={copy.liked}
+          data-inactive-label={copy.like}
+        >
           <input type="hidden" name="targetType" value="topic" />
           <input type="hidden" name="targetId" value={topic.id} />
           <input type="hidden" name="redirect" value={Astro.url.pathname} />
@@ -463,26 +473,36 @@ const aiActions = lang === "en"
             class:list={["topic-floating-action", topicInteraction?.liked && "is-active"]}
             type="submit"
             aria-label={`${topicInteraction?.liked ? copy.liked : copy.like} ${topicInteraction?.likeCount ?? 0}`}
+            data-topic-interaction-button
           >
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M20.4 4.8a5.1 5.1 0 0 0-7.2 0L12 6l-1.2-1.2a5.1 5.1 0 0 0-7.2 7.2L12 20.4 20.4 12a5.1 5.1 0 0 0 0-7.2Z" />
             </svg>
-            <span class="topic-floating-action-count">{topicInteraction?.likeCount ?? 0}</span>
+            <span class="topic-floating-action-count" data-topic-interaction-count>{topicInteraction?.likeCount ?? 0}</span>
           </button>
         </form>
 
-        <form class="topic-floating-action-form" method="post" action="/api/interactions/bookmark">
+        <form
+          class="topic-floating-action-form"
+          method="post"
+          action="/api/interactions/bookmark"
+          data-topic-interaction-form
+          data-interaction-kind="bookmark"
+          data-active-label={copy.bookmarked}
+          data-inactive-label={copy.bookmark}
+        >
           <input type="hidden" name="topicId" value={topic.id} />
           <input type="hidden" name="redirect" value={Astro.url.pathname} />
           <button
             class:list={["topic-floating-action", topicInteraction?.bookmarked && "is-active"]}
             type="submit"
             aria-label={`${topicInteraction?.bookmarked ? copy.bookmarked : copy.bookmark} ${topicInteraction?.bookmarkCount ?? 0}`}
+            data-topic-interaction-button
           >
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M6.5 4.8A2.3 2.3 0 0 1 8.8 2.5h6.4a2.3 2.3 0 0 1 2.3 2.3v16.1L12 17.5l-5.5 3.4V4.8Z" />
             </svg>
-            <span class="topic-floating-action-count">{topicInteraction?.bookmarkCount ?? 0}</span>
+            <span class="topic-floating-action-count" data-topic-interaction-count>{topicInteraction?.bookmarkCount ?? 0}</span>
           </button>
         </form>
 
@@ -787,6 +807,64 @@ const aiActions = lang === "en"
         target?.scrollIntoView({ block: "start" });
       });
     }
+
+    const updateInteractionButton = (form, enabled, count) => {
+      const button = form.querySelector("[data-topic-interaction-button]");
+      const countNode = form.querySelector("[data-topic-interaction-count]");
+      const activeLabel = form.getAttribute("data-active-label") || "";
+      const inactiveLabel = form.getAttribute("data-inactive-label") || "";
+      const label = enabled ? activeLabel : inactiveLabel;
+
+      button?.classList.toggle("is-active", enabled);
+
+      if (countNode) {
+        countNode.textContent = String(Math.max(0, Number(count) || 0));
+      }
+
+      if (button && label) {
+        button.setAttribute("aria-label", `${label} ${Math.max(0, Number(count) || 0)}`);
+      }
+    };
+
+    page.querySelectorAll("[data-topic-interaction-form]").forEach((form) => {
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const button = form.querySelector("[data-topic-interaction-button]");
+
+        if (!(form instanceof HTMLFormElement) || button?.hasAttribute("disabled")) {
+          return;
+        }
+
+        button?.setAttribute("disabled", "disabled");
+
+        try {
+          const response = await window.fetch(form.action, {
+            method: form.method || "POST",
+            headers: {
+              accept: "application/json",
+              "x-requested-with": "fetch",
+            },
+            body: new FormData(form),
+          });
+          const data = await response.json().catch(() => ({}));
+
+          if (response.status === 401 && data.loginUrl) {
+            window.location.assign(String(data.loginUrl));
+            return;
+          }
+
+          if (!response.ok || !data.ok) {
+            return;
+          }
+
+          updateInteractionButton(form, Boolean(data.enabled), data.count);
+          requestUpdate();
+        } finally {
+          button?.removeAttribute("disabled");
+        }
+      });
+    });
 
     const flashShareState = () => {
       if (!shareButton) {

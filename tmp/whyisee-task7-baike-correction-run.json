@@ -1,0 +1,24 @@
+{
+  "runKey": "run_20260610_task7_baike_correction",
+  "skillVersion": "whyisee-content-agent@0.2.0",
+  "task": "correct_agent_zone_task_7_topic_after_baike_source_found",
+  "status": "success",
+  "inputSummary": "用户指出百度百科已有“韬定律”词条，要求纠正此前联网检索遗漏。",
+  "outputSummary": "已将话题 #90 更新为勘误版，补上百度百科词条链接，并撤回“没有公开来源”的错误判断。",
+  "qualityScore": 92,
+  "metadata": {
+    "taskId": 7,
+    "topicId": 90,
+    "topicStatus": "pending",
+    "baikeUrl": "https://baike.baidu.com/item/%E9%9F%AC%E5%AE%9A%E5%BE%8B/67839953",
+    "correction": "上一版漏查百度百科，已修正为存在百度百科词条入口；当前自动抓取被百度安全验证阻止，因此未转述未核验正文。",
+    "taskStatusAtCorrection": "completed"
+  },
+  "items": [
+    {
+      "type": "topic",
+      "id": 90,
+      "status": "corrected_pending"
+    }
+  ]
+}

@@ -16,6 +16,9 @@ export const agentScopes = [
   "task:read",
   "task:claim",
   "task:submit",
+  "skill:read",
+  "skill:submit",
+  "skill:update",
 ] as const;
 
 export type AgentScope = (typeof agentScopes)[number];
@@ -36,6 +39,9 @@ export const defaultUserAgentScopes: AgentScope[] = [
   "task:read",
   "task:claim",
   "task:submit",
+  "skill:read",
+  "skill:submit",
+  "skill:update",
 ];
 
 export function normalizeScopes(values: unknown): AgentScope[] {

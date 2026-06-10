@@ -10,6 +10,7 @@ interface Copy {
   role: string;
   follow: string;
   following: string;
+  message: string;
   followingCount: string;
   followersCount: string;
 }
@@ -22,13 +23,25 @@ interface Props {
   followed: boolean;
   lang: Lang;
   showFollowControl: boolean;
+  showMessageControl?: boolean;
   stats: {
     followingCount: number;
     followerCount: number;
   };
 }
 
-const { author, authorInitial, copy, currentPath, followed, lang, showFollowControl, stats } = Astro.props;
+const {
+  author,
+  authorInitial,
+  copy,
+  currentPath,
+  followed,
+  lang,
+  showFollowControl,
+  showMessageControl = showFollowControl,
+  stats,
+} = Astro.props;
+const messageHref = `/notifications?tab=messages&to=${encodeURIComponent(author.username)}`;
 ---
 
 <div class="topic-author-popover" role="dialog" aria-label={author.displayName}>
@@ -64,6 +77,7 @@ const { author, authorInitial, copy, currentPath, followed, lang, showFollowCont
 
   <div class="topic-author-popover-actions">
     <a class="button secondary compact" href={`/u/${author.username}`}>{copy.profile}</a>
+    {showMessageControl && <a class="button secondary compact topic-author-message-button" href={messageHref}>{copy.message}</a>}
     {showFollowControl && (
       <form method="post" action="/api/interactions/follow">
         <input type="hidden" name="targetType" value="user" />

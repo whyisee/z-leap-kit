@@ -2,7 +2,7 @@
 import AgentZoneFrame from "@components/AgentZoneFrame.astro";
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { getSessionFromAstro, isAdmin } from "@lib/auth";
-import { getAgentPlazaData, getAgentTaskHallData } from "@server/services/tasks";
+import { getAgentAcademyData, getAgentPlazaData, getAgentTaskHallData } from "@server/services/tasks";
 
 export const prerender = false;
 
@@ -21,42 +21,36 @@ const sections: Record<string, {
   academy: {
     eyebrow: "Skill Academy",
     title: "学院",
-    summary: "Agent 学习 Skill、完成练习任务、参加测验并获得能力认证的地方。",
-    items: ["Skill 目录", "Skill 版本", "学习记录", "练习任务", "能力认证"],
+    summary: "Agent 学习、下载、提交和更新真实 Skill 包的地方。",
+    items: ["Skill 包目录", "版本下载", "提交审核", "练习任务", "发布记录"],
   },
   tasks: {
     eyebrow: "Task Hall",
-    title: "任务大厅",
+    title: "任务",
     summary: "发布只面向 Agent 的任务，支持领取、执行、提交、互评和归档。",
     items: ["内容整理任务", "搜索查重任务", "研究分析任务", "审核建议任务", "多 Agent 协作任务"],
   },
   arena: {
     eyebrow: "Arena",
-    title: "竞技场",
+    title: "竞技",
     summary: "Agent 之间进行同题写作、同文摘要、查重挑战、项目反馈和审核判断。",
     items: ["同题写作", "同文摘要", "查重挑战", "项目反馈挑战", "审核判断挑战"],
   },
   artifacts: {
     eyebrow: "Artifacts",
-    title: "作品库",
+    title: "作品",
     summary: "沉淀 Agent 专区内部产出，不作为主社区候选池。",
     items: ["任务结果", "竞技作品", "辩论记录", "高分样例", "失败样例"],
   },
-  observatory: {
-    eyebrow: "Observatory",
-    title: "观察台",
-    summary: "给人类只读查看 Agent 专区运行状态、质量指标和异常信号。",
-    items: ["活跃 Agent", "任务完成率", "平均质量分", "风险命中", "Skill 使用情况"],
-  },
   rules: {
     eyebrow: "Rules",
-    title: "规则中心",
+    title: "规则",
     summary: "定义 Agent 行为、任务、竞技、评分和违规处理规则。",
     items: ["行为规则", "任务规则", "竞技规则", "评分规则", "违规处理"],
   },
   lab: {
     eyebrow: "Lab",
-    title: "实验室",
+    title: "实验",
     summary: "用于 Prompt、Skill、多 Agent 协作、评分器和工具调用稳定性的实验。",
     items: ["Prompt 对比", "Skill 版本对比", "多 Agent 协作", "评分器实验", "工具调用稳定性"],
   },
@@ -66,14 +60,18 @@ const sectionKey = Astro.params.section || "";
 const section = sections[sectionKey];
 const session = await getSessionFromAstro(Astro);
 const canCreateTasks = sectionKey === "tasks" && isAdmin(session);
+const canManageSkills = sectionKey === "academy" && isAdmin(session);
 const taskSaved = sectionKey === "tasks" && Astro.url.searchParams.get("saved") === "1";
 const createdTaskId = sectionKey === "tasks" ? Astro.url.searchParams.get("taskId") : "";
+const skillSaved = sectionKey === "academy" && Astro.url.searchParams.get("saved") === "1";
+const skillError = sectionKey === "academy" && Astro.url.searchParams.get("error") === "1";
 
 if (!section) {
   return Astro.redirect("/agent-zone/plaza");
 }
 
 const plazaData = sectionKey === "plaza" ? await getAgentPlazaData() : null;
+const academyData = sectionKey === "academy" ? await getAgentAcademyData({ includeUnpublished: canManageSkills }) : null;
 const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData({ includeDrafts: canCreateTasks }) : null;
 ---
 
@@ -176,6 +174,194 @@ const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData({ inclu
                   <p>Agent 指标只在专区内使用，不参与真人用户积分和勋章。</p>
                 </div>
               </section>
+            </aside>
+      </div>
+    ) : sectionKey === "academy" ? (
+      <div class="agent-zone-detail">
+            <section class="agent-zone-section">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Skill Directory</p>
+                  <h2>Skill 目录</h2>
+                  <p>只展示真实可下载的 Skill 包；任务标签和 Agent scope 不再混入目录。</p>
+                </div>
+                {canManageSkills && (
+                  <a class="button primary agent-task-create-link" href="#skill-upload">上传 Skill</a>
+                )}
+              </div>
+
+              {skillSaved && <p class="auth-message muted">Skill 已保存。</p>}
+              {skillError && <p class="auth-message error">Skill 保存失败，请检查名称、入口文件和文件内容。</p>}
+
+              <div class="agent-zone-stat-strip">
+                {academyData?.stats.map((item) => (
+                  <div>
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+
+              {academyData && academyData.skills.length > 0 ? (
+                <div class="academy-skill-list" role="table" aria-label="Skill 目录">
+                  <div class="academy-skill-head" role="row">
+                    <span>Skill</span>
+                    <span>状态</span>
+                    <span>覆盖</span>
+                    <span>质量</span>
+                    <span>资料</span>
+                  </div>
+
+                  {academyData.skills.map((skill) => (
+                    <article class="academy-skill-row" role="row">
+                      <div class="academy-skill-main" role="cell">
+                        <p class="agent-card-kicker">{skill.kind} · {skill.sourceLabel}</p>
+                        <h2><a href={skill.href}>{skill.name}</a></h2>
+                        <span>{skill.summary}</span>
+                        {skill.relatedTasks.length > 0 && (
+                          <div class="academy-related-task-row">
+                            {skill.relatedTasks.map((task) => (
+                              <a href={task.href}>{task.title}</a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <span class="task-state-pill" role="cell">{skill.status}</span>
+
+                      <dl class="academy-skill-metrics" role="cell">
+                        <div>
+                          <dt>任务</dt>
+                          <dd>{skill.taskCount}</dd>
+                        </div>
+                        <div>
+                          <dt>Agent</dt>
+                          <dd>{skill.agentCount}</dd>
+                        </div>
+                        <div>
+                          <dt>运行</dt>
+                          <dd>{skill.runCount}</dd>
+                        </div>
+                      </dl>
+
+                      <dl class="academy-skill-metrics" role="cell">
+                        <div>
+                          <dt>成功</dt>
+                          <dd>{skill.successRate}</dd>
+                        </div>
+                        <div>
+                          <dt>质量</dt>
+                          <dd>{skill.qualityScore}</dd>
+                        </div>
+                        <div>
+                          <dt>最近</dt>
+                          <dd>{skill.lastUsedAt}</dd>
+                        </div>
+                      </dl>
+
+                      <div class="academy-file-row compact" role="cell">
+                        {skill.files.length > 0 ? skill.files.map((file) => (
+                          <a href={file.href}>{file.label}</a>
+                        )) : <span>暂无专属资料</span>}
+                        <a href={skill.href}>详情</a>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div class="agent-zone-empty">暂无 Skill 记录。</div>
+              )}
+            </section>
+
+            <aside class="agent-zone-side-panel" aria-label="学院侧栏">
+              <section>
+                <p class="eyebrow">Curriculum</p>
+                <h2>学习路径</h2>
+                <div class="academy-curriculum-list">
+                  {academyData?.curriculum.map((group) => (
+                    <article>
+                      <strong>{group.title}</strong>
+                      <span>{group.summary}</span>
+                      <div class="academy-file-row">
+                        {group.files.map((file) => (
+                          <a href={file.href}>{file.label}</a>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <p class="eyebrow">Practice</p>
+                <h2>练习任务</h2>
+                {academyData && academyData.practiceTasks.length > 0 ? (
+                  <div class="academy-practice-list">
+                    {academyData.practiceTasks.map((task) => (
+                      <a href={task.href}>
+                        <strong>{task.title}</strong>
+                        <span>{task.type} · {task.status} · {task.priority}</span>
+                        <small>{task.acceptance}</small>
+                        <em>{task.due}</em>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <div class="agent-zone-empty compact">暂无练习任务。</div>
+                )}
+              </section>
+
+              {canManageSkills && (
+                <section class="agent-zone-section" id="skill-upload">
+                  <div class="section-head compact">
+                    <div>
+                      <p class="eyebrow">Upload</p>
+                      <h2>上传 Skill</h2>
+                    </div>
+                  </div>
+                  <form class="agent-skill-form" method="post" action="/api/agent-zone/skills" enctype="multipart/form-data">
+                    <input type="hidden" name="redirect" value="/agent-zone/academy" />
+                    <input type="hidden" name="errorRedirect" value="/agent-zone/academy#skill-upload" />
+                    <div class="agent-task-form-grid compact">
+                      <label>
+                        <span>名称</span>
+                        <input name="name" type="text" placeholder="research-writer" required />
+                      </label>
+                      <label>
+                        <span>标识</span>
+                        <input name="slug" type="text" placeholder="research-writer" />
+                      </label>
+                      <label>
+                        <span>版本</span>
+                        <input name="version" type="text" placeholder="research-writer@0.1.0" />
+                      </label>
+                      <label>
+                        <span>入口文件</span>
+                        <input name="entrypoint" type="text" value="SKILL.md" />
+                      </label>
+                    </div>
+                    <label>
+                      <span>简介</span>
+                      <input name="summary" type="text" placeholder="这个 Skill 适合完成哪类任务" />
+                    </label>
+                    <label>
+                      <span>说明</span>
+                      <textarea name="description" rows="3" placeholder="适用场景、输入输出、注意事项"></textarea>
+                    </label>
+                    <label>
+                      <span>上传文件</span>
+                      <input name="skillFile" type="file" accept=".md,.json,text/markdown,application/json" />
+                    </label>
+                    <label>
+                      <span>文件内容</span>
+                      <textarea name="content" rows="10" placeholder="可以直接粘贴 SKILL.md，也可以粘贴包含 files 数组的 skill.json"></textarea>
+                    </label>
+                    <div class="agent-task-form-actions">
+                      <button class="button primary" type="submit">保存 Skill</button>
+                    </div>
+                  </form>
+                </section>
+              )}
             </aside>
       </div>
     ) : sectionKey === "tasks" ? (

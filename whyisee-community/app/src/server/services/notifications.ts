@@ -9,7 +9,23 @@ export interface NotificationItem {
   href: string;
   readAt: string | null;
   createdAt: string;
+  actorId: number | null;
+  actorUsername: string | null;
   actorName: string | null;
+  actorAvatarUrl: string | null;
+}
+
+export interface NotificationGroup {
+  key: string;
+  actorId: number | null;
+  actorUsername: string | null;
+  actorName: string;
+  actorAvatarUrl: string | null;
+  lastTitle: string;
+  lastBody: string;
+  lastAt: string;
+  count: number;
+  unreadCount: number;
 }
 
 interface NotificationRow {
@@ -20,7 +36,23 @@ interface NotificationRow {
   href: string;
   read_at: string | null;
   created_at: string;
+  actor_id: number | null;
+  actor_username: string | null;
   actor_name: string | null;
+  actor_avatar_url: string | null;
+}
+
+interface NotificationGroupRow {
+  group_key: string;
+  actor_id: number | null;
+  actor_username: string | null;
+  actor_name: string | null;
+  actor_avatar_url: string | null;
+  title: string;
+  body: string;
+  created_at: string;
+  count: string;
+  unread_count: string;
 }
 
 export async function createNotification(input: {
@@ -82,7 +114,69 @@ export async function notifyAdmins(input: {
   }
 }
 
-export async function listNotifications(userId: number, limit = 50): Promise<NotificationItem[]> {
+export async function listNotificationGroups(userId: number, limit = 30): Promise<NotificationGroup[]> {
+  const rows = await query<NotificationGroupRow>(
+    `
+    WITH ranked_notifications AS (
+      SELECT
+        notifications.*,
+        users.username AS actor_username,
+        users.display_name AS actor_name,
+        users.avatar_url AS actor_avatar_url,
+        COALESCE(notifications.actor_id::text, 'system') AS group_key,
+        ROW_NUMBER() OVER (
+          PARTITION BY COALESCE(notifications.actor_id::text, 'system')
+          ORDER BY notifications.created_at DESC, notifications.id DESC
+        ) AS row_rank,
+        COUNT(*) OVER (
+          PARTITION BY COALESCE(notifications.actor_id::text, 'system')
+        )::text AS count,
+        COUNT(*) FILTER (WHERE notifications.read_at IS NULL) OVER (
+          PARTITION BY COALESCE(notifications.actor_id::text, 'system')
+        )::text AS unread_count
+      FROM notifications
+      LEFT JOIN users ON users.id = notifications.actor_id
+      WHERE notifications.user_id = $1
+        AND notifications.type <> 'direct_message'
+    )
+    SELECT
+      group_key,
+      actor_id,
+      actor_username,
+      actor_name,
+      actor_avatar_url,
+      title,
+      body,
+      created_at,
+      count,
+      unread_count
+    FROM ranked_notifications
+    WHERE row_rank = 1
+    ORDER BY created_at DESC, group_key ASC
+    LIMIT $2
+    `,
+    [userId, limit],
+  );
+
+  return rows.map((row) => ({
+    key: row.group_key,
+    actorId: row.actor_id,
+    actorUsername: row.actor_username,
+    actorName: row.actor_name || "系统通知",
+    actorAvatarUrl: row.actor_avatar_url,
+    lastTitle: row.title,
+    lastBody: row.body,
+    lastAt: row.created_at,
+    count: Number(row.count || 0),
+    unreadCount: Number(row.unread_count || 0),
+  }));
+}
+
+export async function listNotifications(
+  userId: number,
+  limit = 50,
+  filter: { actorId?: number; systemOnly?: boolean } = {},
+): Promise<NotificationItem[]> {
   const rows = await query<NotificationRow>(
     `
     SELECT
@@ -93,14 +187,28 @@ export async function listNotifications(userId: number, limit = 50): Promise<Not
       notifications.href,
       notifications.read_at,
       notifications.created_at,
-      users.display_name AS actor_name
+      notifications.actor_id,
+      users.username AS actor_username,
+      users.display_name AS actor_name,
+      users.avatar_url AS actor_avatar_url
     FROM notifications
     LEFT JOIN users ON users.id = notifications.actor_id
     WHERE notifications.user_id = $1
+      AND notifications.type <> 'direct_message'
+      AND (
+        $3 = 'all'
+        OR ($3 = 'system' AND notifications.actor_id IS NULL)
+        OR ($3 = 'actor' AND notifications.actor_id = $4)
+      )
     ORDER BY notifications.created_at DESC, notifications.id DESC
     LIMIT $2
     `,
-    [userId, limit],
+    [
+      userId,
+      limit,
+      filter.systemOnly ? "system" : typeof filter.actorId === "number" ? "actor" : "all",
+      filter.actorId || 0,
+    ],
   );
 
   return rows.map((row) => ({
@@ -111,13 +219,16 @@ export async function listNotifications(userId: number, limit = 50): Promise<Not
     href: row.href,
     readAt: row.read_at,
     createdAt: row.created_at,
+    actorId: row.actor_id,
+    actorUsername: row.actor_username,
     actorName: row.actor_name,
+    actorAvatarUrl: row.actor_avatar_url,
   }));
 }
 
 export async function countUnreadNotifications(userId: number) {
   const row = await queryOne<{ count: string }>(
-    "SELECT COUNT(*)::text AS count FROM notifications WHERE user_id = $1 AND read_at IS NULL",
+    "SELECT COUNT(*)::text AS count FROM notifications WHERE user_id = $1 AND read_at IS NULL AND type <> 'direct_message'",
     [userId],
   );
 
@@ -129,6 +240,20 @@ export async function markNotificationsRead(userId: number) {
     new Date().toISOString(),
     userId,
   ]);
+}
+
+export async function markNotificationsReadByTarget(userId: number, targetType: string, targetId: number) {
+  await execute(
+    `
+    UPDATE notifications
+    SET read_at = $1
+    WHERE user_id = $2
+      AND target_type = $3
+      AND target_id = $4
+      AND read_at IS NULL
+    `,
+    [new Date().toISOString(), userId, targetType, targetId],
+  );
 }
 
 async function maybeEmailNotification(userId: number, title: string, body: string, href: string) {

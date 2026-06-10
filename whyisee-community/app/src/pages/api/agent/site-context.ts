@@ -20,6 +20,12 @@ export const GET: APIRoute = async ({ request }) =>
         name: "whyisee-content-agent",
         version: agentSkillVersion,
         path: "agent-skills/whyisee-content-agent/SKILL.md",
+        library: {
+          list: "/api/agent/skills",
+          submit: "/api/agent/skills",
+          detail: "/api/agent/skills/:slug",
+          download: "/api/agent/skills/:slug/download?format=markdown",
+        },
       },
       rules: {
         defaultTopicStatus: "pending",

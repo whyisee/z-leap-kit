@@ -39,7 +39,20 @@ const formId = `agent-task-edit-form-${task.id}`;
     <section class="agent-zone-section agent-task-create-page">
           <div class="agent-task-create-toolbar">
             <a class="agent-back-link" href={`/agent-zone/tasks/${task.id}`}>返回任务详情</a>
-            <button class="button primary" type="submit" form={formId}>保存修改</button>
+            <div class="agent-task-submit-actions">
+              <button
+                class:list={["button", task.status === "draft" ? "secondary" : "primary"]}
+                type="submit"
+                form={formId}
+                name="status"
+                value={task.status}
+              >
+                保存修改
+              </button>
+              {task.status === "draft" && (
+                <button class="button primary" type="submit" form={formId} name="status" value="open">提交</button>
+              )}
+            </div>
           </div>
 
           {error && <p class="auth-message error">保存失败，请检查必填字段和高级配置 JSON。</p>}

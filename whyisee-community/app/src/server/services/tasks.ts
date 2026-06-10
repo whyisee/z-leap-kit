@@ -3,7 +3,14 @@ import {
   getAgentTaskTypeLabel,
   normalizeAgentTaskType,
 } from "@lib/agentTaskTypes";
+import type { PoolClient } from "pg";
 import { query, queryOne, withTransaction } from "@server/db/client";
+import {
+  listDownloadableAgentSkills,
+  skillStatusLabel,
+  type AgentSkillRecord,
+} from "@server/services/agentSkillLibrary";
+import { publicSkillFiles, publicSkillName, publicSkillVersion } from "@server/services/skillPack";
 import { AgentApiError } from "./agentErrors";
 import type { AgentContext } from "./agents";
 
@@ -117,6 +124,18 @@ interface AdminTaskSubmissionReviewRow {
   task_title: string;
 }
 
+interface TaskWorkflowStatusRow {
+  id: number;
+  status: string;
+  max_assignees: number;
+}
+
+interface TaskWorkflowCountsRow {
+  active_assignment_count: string;
+  pending_submission_count: string;
+  accepted_submission_count: string;
+}
+
 interface TaskEventDetailRow {
   id: number;
   actor_type: string;
@@ -162,6 +181,31 @@ interface AgentAssignmentSummaryRow {
   submitted_at: string | null;
 }
 
+interface AcademyTaskSkillRow {
+  id: number;
+  title: string;
+  task_type: string;
+  status: string;
+  priority: string;
+  acceptance_criteria: string;
+  deadline_at: string | null;
+  config_json: string;
+}
+
+interface AcademyAgentScopeRow {
+  id: number;
+  name: string;
+  default_scopes: string;
+}
+
+interface AcademyRunSkillRow {
+  skill_version: string;
+  run_count: string;
+  success_count: string;
+  avg_quality: number | null;
+  last_used_at: string | null;
+}
+
 export interface AgentZoneStat {
   label: string;
   value: string;
@@ -190,6 +234,88 @@ export interface AgentPlazaData {
   stats: AgentZoneStat[];
   agents: AgentZoneAgentCard[];
   capabilities: AgentZoneCapability[];
+}
+
+export interface AgentAcademyFile {
+  label: string;
+  path: string;
+  href: string;
+}
+
+export interface AgentAcademySkill {
+  id: string;
+  name: string;
+  href: string;
+  kind: string;
+  summary: string;
+  status: string;
+  sourceLabel: string;
+  taskCount: number;
+  agentCount: number;
+  runCount: number;
+  successRate: string;
+  qualityScore: string;
+  lastUsedAt: string;
+  relatedTasks: Array<{
+    id: number;
+    title: string;
+    type: string;
+    status: string;
+    href: string;
+  }>;
+  files: AgentAcademyFile[];
+}
+
+export interface AgentAcademyCurriculum {
+  title: string;
+  summary: string;
+  files: AgentAcademyFile[];
+}
+
+export interface AgentAcademyPracticeTask {
+  id: number;
+  title: string;
+  type: string;
+  status: string;
+  priority: string;
+  acceptance: string;
+  due: string;
+  href: string;
+  skills: string[];
+}
+
+export interface AgentAcademyData {
+  stats: AgentZoneStat[];
+  skills: AgentAcademySkill[];
+  curriculum: AgentAcademyCurriculum[];
+  practiceTasks: AgentAcademyPracticeTask[];
+}
+
+interface MutableAcademySkill {
+  id: string;
+  name: string;
+  kind: string;
+  summary: string;
+  status: string;
+  sourceLabel: string;
+  taskIds: Set<number>;
+  agentIds: Set<number>;
+  runCount: number;
+  successCount: number;
+  qualityScores: number[];
+  lastUsedAt: string;
+  relatedTasks: AgentAcademySkill["relatedTasks"];
+  files: AgentAcademyFile[];
+}
+
+export interface AgentZoneNavCounts {
+  agents: number;
+  skills: number;
+  tasks: number;
+  arena: number;
+  artifacts: number;
+  rules: number;
+  lab: number;
 }
 
 export interface AgentZoneTaskCard {
@@ -412,6 +538,188 @@ export interface AdminTaskEditData {
   referenceUrl: string;
   configJson: string;
   deadlineAt: string;
+}
+
+export async function getAgentZoneNavCounts(): Promise<AgentZoneNavCounts> {
+  const [summary, downloadableSkills] = await Promise.all([
+    queryOne<{
+      agent_count: string;
+      task_count: string;
+      arena_count: string;
+      artifact_count: string;
+    }>(
+      `
+      SELECT
+        (SELECT COUNT(*) FROM agent_profiles WHERE status = 'active')::text AS agent_count,
+        (SELECT COUNT(*) FROM tasks WHERE visibility = 'agent_zone' AND status <> 'draft')::text AS task_count,
+        (
+          SELECT COUNT(*)
+          FROM tasks
+          WHERE visibility = 'agent_zone'
+            AND status <> 'draft'
+            AND task_type = 'arena_challenge'
+        )::text AS arena_count,
+        (
+          SELECT COUNT(*)
+          FROM task_submissions
+          INNER JOIN tasks ON tasks.id = task_submissions.task_id
+          WHERE tasks.visibility = 'agent_zone'
+            AND task_submissions.status IN ('accepted', 'archived')
+        )::text AS artifact_count
+      `,
+    ),
+    listDownloadableAgentSkills(),
+  ]);
+
+  return {
+    agents: Number(summary?.agent_count || 0),
+    skills: downloadableSkills.length,
+    tasks: Number(summary?.task_count || 0),
+    arena: Number(summary?.arena_count || 0),
+    artifacts: Number(summary?.artifact_count || 0),
+    rules: 0,
+    lab: 0,
+  };
+}
+
+export async function getAgentAcademyData(options: { includeUnpublished?: boolean } = {}): Promise<AgentAcademyData> {
+  const [taskRows, agentRows, runRows, skillRows] = await Promise.all([
+    query<AcademyTaskSkillRow>(
+      `
+      SELECT id, title, task_type, status, priority, acceptance_criteria, deadline_at, config_json
+      FROM tasks
+      WHERE visibility = 'agent_zone'
+      ORDER BY updated_at DESC, id DESC
+      `,
+    ),
+    query<AcademyAgentScopeRow>(
+      "SELECT id, name, default_scopes FROM agent_profiles WHERE status = 'active' ORDER BY id ASC",
+    ),
+    query<AcademyRunSkillRow>(
+      `
+      SELECT
+        skill_version,
+        COUNT(*)::text AS run_count,
+        COUNT(*) FILTER (WHERE status = 'success')::text AS success_count,
+        ROUND(AVG(quality_score))::int AS avg_quality,
+        MAX(COALESCE(completed_at, created_at)) AS last_used_at
+      FROM content_runs
+      WHERE COALESCE(skill_version, '') <> ''
+      GROUP BY skill_version
+      ORDER BY MAX(COALESCE(completed_at, created_at)) DESC
+      `,
+    ),
+    listDownloadableAgentSkills({ includeUnpublished: options.includeUnpublished }),
+  ]);
+  const skills = new Map<string, MutableAcademySkill>();
+
+  for (const row of skillRows) {
+    const skill = ensureAcademySkill(
+      skills,
+      row.slug,
+      row.sourceType === "core" ? "核心包" : "Skill 包",
+      row.summary || row.description || "可下载的 Agent Skill 包。",
+    );
+
+    skill.name = row.name || row.slug;
+    skill.kind = row.sourceType === "core" ? "核心包" : "Skill 包";
+    skill.summary = row.summary || row.description || "可下载的 Agent Skill 包。";
+    skill.status = skillStatusLabel(row.status);
+    skill.sourceLabel = row.sourceType === "core" ? publicSkillVersion : row.version || "自定义";
+    skill.files = buildUploadedSkillFiles(row);
+  }
+
+  for (const row of taskRows) {
+    const config = safeJsonParse<Record<string, unknown>>(row.config_json, {});
+    const rowSkills = normalizeSkillList(config.skills);
+
+    for (const skillName of rowSkills) {
+      const skill = skills.get(normalizeSkillName(skillName));
+      if (!skill) continue;
+      skill.taskIds.add(row.id);
+
+      if (!skill.relatedTasks.some((task) => task.id === row.id)) {
+        skill.relatedTasks.push({
+          id: row.id,
+          title: row.title,
+          type: taskTypeLabel(row.task_type),
+          status: taskStatusLabel(row.status),
+          href: `/agent-zone/tasks/${row.id}`,
+        });
+      }
+    }
+  }
+
+  for (const row of agentRows) {
+    for (const skillName of agentScopeSkills(row.default_scopes)) {
+      const skill = skills.get(normalizeSkillName(skillName));
+      if (!skill) continue;
+      skill.agentIds.add(row.id);
+    }
+  }
+
+  for (const row of runRows) {
+    const skillName = normalizeSkillVersionName(row.skill_version);
+    const skill = skills.get(normalizeSkillName(skillName));
+    if (!skill) continue;
+    const runCount = Number(row.run_count || 0);
+    const successCount = Number(row.success_count || 0);
+
+    skill.runCount += runCount;
+    skill.successCount += successCount;
+    if (typeof row.avg_quality === "number") {
+      skill.qualityScores.push(row.avg_quality);
+    }
+    if (row.last_used_at && (!skill.lastUsedAt || Date.parse(row.last_used_at) > Date.parse(skill.lastUsedAt))) {
+      skill.lastUsedAt = row.last_used_at;
+    }
+  }
+
+  const skillList = [...skills.values()]
+    .map(mapAcademySkill)
+    .sort((a, b) => {
+      if (a.id === publicSkillName) return -1;
+      if (b.id === publicSkillName) return 1;
+      const scoreA = a.taskCount * 5 + a.agentCount * 3 + a.runCount;
+      const scoreB = b.taskCount * 5 + b.agentCount * 3 + b.runCount;
+      return scoreB - scoreA || a.name.localeCompare(b.name);
+    });
+  const practiceTasks = taskRows
+    .filter((row) => {
+      const config = safeJsonParse<Record<string, unknown>>(row.config_json, {});
+      const rowSkills = normalizeSkillList(config.skills);
+      return row.task_type === "agent_skill_practice" || rowSkills.some((skill) => skill.includes("practice") || skill.includes("skill"));
+    })
+    .slice(0, 8)
+    .map((row) => {
+      const config = safeJsonParse<Record<string, unknown>>(row.config_json, {});
+
+      return {
+        id: row.id,
+        title: row.title,
+        type: taskTypeLabel(row.task_type),
+        status: taskStatusLabel(row.status),
+        priority: row.priority || "P2",
+        acceptance: compactText(row.acceptance_criteria, 110),
+        due: formatDeadline(row.deadline_at),
+        href: `/agent-zone/tasks/${row.id}`,
+        skills: normalizeSkillList(config.skills),
+      };
+  });
+  const runCount = skillList.reduce((sum, skill) => sum + skill.runCount, 0);
+  const fileCount = skillRows.reduce((sum, skill) => sum + skill.files.length, 0);
+
+  return {
+    stats: [
+      { label: "Skill", value: String(skillList.length) },
+      { label: "学习资料", value: String(fileCount) },
+      { label: "练习任务", value: String(practiceTasks.length) },
+      { label: "运行记录", value: String(runCount) },
+    ],
+    skills: skillList,
+    curriculum: buildAcademyCurriculum(),
+    practiceTasks,
+  };
 }
 
 export async function getAgentPlazaData(limit = 200): Promise<AgentPlazaData> {
@@ -1035,7 +1343,7 @@ export async function getAgentTaskSubmissionDetailData(
   submissionId: number,
   options: { includePrivate?: boolean } = {},
 ): Promise<AgentTaskSubmissionDetailData | null> {
-  const detail = await getAgentTaskDetailData(taskId);
+  const detail = await getAgentTaskDetailData(taskId, { includeDrafts: options.includePrivate });
 
   if (!detail || (!detail.task.canViewSubmissions && !options.includePrivate)) {
     return null;
@@ -1158,15 +1466,7 @@ export async function claimAgentZoneTask(agent: AgentContext, taskId: number) {
     );
     const assignmentId = assignment.rows[0]?.id;
 
-    await client.query(
-      `
-      UPDATE tasks
-      SET status = CASE WHEN status = 'open' THEN 'in_progress' ELSE status END,
-        updated_at = $1
-      WHERE id = $2
-      `,
-      [now, taskId],
-    );
+    await syncTaskWorkflowStatus(client, taskId, now);
     await client.query(
       `
       INSERT INTO task_events (task_id, actor_type, actor_id, event_type, details_json, created_at)
@@ -1275,7 +1575,7 @@ export async function submitAgentZoneTask(
       "UPDATE task_assignments SET status = 'submitted', completed_at = $1 WHERE id = $2",
       [now, assignmentId],
     );
-    await client.query("UPDATE tasks SET status = 'reviewing', updated_at = $1 WHERE id = $2", [now, taskId]);
+    await syncTaskWorkflowStatus(client, taskId, now);
     await client.query(
       `
       INSERT INTO task_events (task_id, actor_type, actor_id, event_type, details_json, created_at)
@@ -1369,34 +1669,12 @@ export async function reviewTaskSubmissionAsAdmin(
     }
 
     if (decision === "accept") {
-      await client.query(
-        "UPDATE tasks SET status = 'completed', updated_at = $1 WHERE id = $2",
-        [now, taskId],
-      );
       await syncAcceptedReward(client, submission, now, reviewComment);
     } else {
       await revokeSubmissionRewards(client, submissionId, now);
-
-      if (decision === "reject") {
-        await client.query(
-          `
-          UPDATE tasks
-          SET status = CASE
-                WHEN EXISTS (
-                  SELECT 1 FROM task_submissions
-                  WHERE task_id = $2 AND status IN ('submitted', 'reviewing')
-                ) THEN 'reviewing'
-                ELSE 'open'
-              END,
-              updated_at = $1
-          WHERE id = $2
-          `,
-          [now, taskId],
-        );
-      } else {
-        await client.query("UPDATE tasks SET status = 'reviewing', updated_at = $1 WHERE id = $2", [now, taskId]);
-      }
     }
+
+    await syncTaskWorkflowStatus(client, taskId, now);
 
     await client.query(
       `
@@ -1712,6 +1990,189 @@ async function listAgentAssignmentsForDetail(agentProfileId: number): Promise<Ag
   }));
 }
 
+function ensureAcademySkill(
+  skills: Map<string, MutableAcademySkill>,
+  name: string,
+  kind: string,
+  summary: string,
+) {
+  const normalizedName = normalizeSkillName(name);
+  const existing = skills.get(normalizedName);
+
+  if (existing) {
+    if (existing.kind === "运行记录" && kind !== "运行记录") {
+      existing.kind = kind;
+      existing.summary = summary;
+      existing.sourceLabel = academySkillSourceLabel(kind);
+    }
+
+    return existing;
+  }
+
+  const skill: MutableAcademySkill = {
+    id: normalizedName,
+    name: normalizedName,
+    kind,
+    summary,
+    status: "可学习",
+    sourceLabel: academySkillSourceLabel(kind),
+    taskIds: new Set(),
+    agentIds: new Set(),
+    runCount: 0,
+    successCount: 0,
+    qualityScores: [],
+    lastUsedAt: "",
+    relatedTasks: [],
+    files: [],
+  };
+
+  skills.set(normalizedName, skill);
+  return skill;
+}
+
+function academySkillSourceLabel(kind: string) {
+  if (kind === "任务 Skill") return "任务配置";
+  if (kind === "Agent 能力") return "Agent scope";
+  if (kind === "运行记录") return "Content run";
+  return kind;
+}
+
+function mapAcademySkill(skill: MutableAcademySkill): AgentAcademySkill {
+  const qualityScore = average(skill.qualityScores);
+  const successRate = skill.runCount > 0 ? `${Math.round((skill.successCount / skill.runCount) * 100)}%` : "-";
+
+  return {
+    id: skill.id,
+    name: skill.name,
+    href: `/agent-zone/academy/skills/${encodeURIComponent(skill.id)}`,
+    kind: skill.kind,
+    summary: skill.summary,
+    status: skill.status,
+    sourceLabel: skill.sourceLabel,
+    taskCount: skill.taskIds.size,
+    agentCount: skill.agentIds.size,
+    runCount: skill.runCount,
+    successRate,
+    qualityScore: qualityScore ? String(qualityScore) : "-",
+    lastUsedAt: skill.lastUsedAt ? formatLastActive(skill.lastUsedAt) : "-",
+    relatedTasks: skill.relatedTasks.slice(0, 4),
+    files: skill.files,
+  };
+}
+
+function buildUploadedSkillFiles(skill: AgentSkillRecord): AgentAcademyFile[] {
+  return skill.files.map((file) => ({
+    label: skillFileLabel(file.path),
+    path: file.path,
+    href: `/api/agent-zone/skills/${encodeURIComponent(skill.slug)}/download?format=file&path=${encodeURIComponent(file.path)}`,
+  }));
+}
+
+function buildAcademyCurriculum(): AgentAcademyCurriculum[] {
+  return [
+    {
+      title: "站点与边界",
+      summary: "让 Agent 先理解 whyisee 的定位、内容边界、分类标签和安全要求。",
+      files: buildSkillFiles([
+        "references/site-positioning.md",
+        "references/editorial-policy.md",
+        "references/category-tag-taxonomy.md",
+        "references/agent-zone-boundary.md",
+        "references/safety-rules.md",
+      ]),
+    },
+    {
+      title: "执行工作流",
+      summary: "覆盖发帖、回复、领取任务、提交任务和调用 Agent API 的标准步骤。",
+      files: buildSkillFiles([
+        "references/topic-workflow.md",
+        "references/reply-workflow.md",
+        "references/task-workflow.md",
+        "references/skill-library-workflow.md",
+        "references/api-contract.md",
+      ]),
+    },
+    {
+      title: "质量与样例",
+      summary: "提供自检清单、内容模板和真实 API payload 示例，适合练习和回归测试。",
+      files: buildSkillFiles([
+        "references/quality-checklist.md",
+        "references/content-templates.md",
+        "examples/create-topic.json",
+        "examples/claim-task.json",
+        "examples/submit-task.json",
+        "examples/task-content-run.json",
+        "examples/submit-skill.json",
+      ]),
+    },
+  ];
+}
+
+function buildSkillFiles(paths: string[]): AgentAcademyFile[] {
+  return paths
+    .filter((filePath) => publicSkillFiles.includes(filePath))
+    .map((filePath) => ({
+      label: skillFileLabel(filePath),
+      path: filePath,
+      href: filePath === "SKILL.md" ? "/api/agent/skill.md" : `/api/agent/skill/${filePath}`,
+    }));
+}
+
+function skillFileLabel(filePath: string) {
+  if (filePath === "SKILL.md") return "入口说明";
+
+  const name = filePath.split("/").at(-1) || filePath;
+  return name
+    .replace(/\.(md|json)$/i, "")
+    .split(/[-_]+/)
+    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(" ");
+}
+
+function normalizeSkillList(value: unknown): string[] {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[\n,，]+/)
+      : [];
+
+  return raw
+    .map((item) => normalizeSkillName(String(item || "")))
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index);
+}
+
+function agentScopeSkills(scopesJson: string) {
+  const scopes = safeJsonParse<string[]>(scopesJson, []);
+  const skillNames = scopes.map((scope) => {
+    const value = String(scope || "").trim();
+    const labels: Record<string, string> = {
+      "topic:create": "topic-create",
+      "reply:create": "reply-create",
+      "upload:image": "image-upload",
+      "review:suggest": "review-suggest",
+      "task:claim": "task-claim",
+      "task:submit": "task-submit",
+      "content-run:create": "content-run",
+    };
+
+    return labels[value] || value.replaceAll(":", "-");
+  });
+
+  return normalizeSkillList(skillNames);
+}
+
+function normalizeSkillVersionName(value: string) {
+  const name = String(value || "").trim();
+  if (!name) return "unknown-skill";
+  if (name.startsWith(publicSkillName)) return publicSkillName;
+  return normalizeSkillName(name.split("@")[0] || name);
+}
+
+function normalizeSkillName(value: string) {
+  return value.trim().replace(/\s+/g, "-").replace(/_+/g, "-").toLowerCase();
+}
+
 function mapAgentCard(row: AgentDirectoryRow): AgentZoneAgentCard {
   const lastActivity = latestDate(row.last_action_at, row.last_device_seen_at, row.last_run_at, row.created_at);
   const activeAssignments = Number(row.active_assignment_count || 0);
@@ -1999,6 +2460,69 @@ function defaultAdminReviewComment(decision: AdminTaskSubmissionReviewDecision) 
   if (decision === "accept") return "人工审核通过。";
   if (decision === "reject") return "人工审核未通过。";
   return "保留人工复核。";
+}
+
+export async function syncTaskWorkflowStatus(client: PoolClient, taskId: number, now = new Date().toISOString()) {
+  const taskResult = await client.query<TaskWorkflowStatusRow>(
+    `
+    SELECT id, status, max_assignees
+    FROM tasks
+    WHERE id = $1
+      AND visibility = 'agent_zone'
+    FOR UPDATE
+    `,
+    [taskId],
+  );
+  const task = taskResult.rows[0];
+
+  if (!task || ["draft", "closed", "cancelled"].includes(task.status)) {
+    return task?.status || "";
+  }
+
+  const maxAssignees = Math.max(1, Number(task.max_assignees || 1));
+  const countsResult = await client.query<TaskWorkflowCountsRow>(
+    `
+    SELECT
+      (
+        SELECT COUNT(*)
+        FROM task_assignments
+        WHERE task_id = $1
+          AND status IN ('claimed', 'in_progress', 'submitted')
+      )::text AS active_assignment_count,
+      (
+        SELECT COUNT(*)
+        FROM task_submissions
+        WHERE task_id = $1
+          AND status IN ('submitted', 'reviewing')
+      )::text AS pending_submission_count,
+      (
+        SELECT COUNT(*)
+        FROM task_submissions
+        WHERE task_id = $1
+          AND status = 'accepted'
+      )::text AS accepted_submission_count
+    `,
+    [taskId],
+  );
+  const counts = countsResult.rows[0];
+  const activeAssignments = Number(counts?.active_assignment_count || 0);
+  const pendingSubmissions = Number(counts?.pending_submission_count || 0);
+  const acceptedSubmissions = Number(counts?.accepted_submission_count || 0);
+  const nextStatus = acceptedSubmissions >= maxAssignees
+    ? "completed"
+    : activeAssignments < maxAssignees
+      ? "open"
+      : pendingSubmissions > 0
+        ? "reviewing"
+        : activeAssignments > 0
+          ? "in_progress"
+          : "open";
+
+  if (task.status !== nextStatus) {
+    await client.query("UPDATE tasks SET status = $1, updated_at = $2 WHERE id = $3", [nextStatus, now, taskId]);
+  }
+
+  return nextStatus;
 }
 
 async function completeReviewedAssignment(

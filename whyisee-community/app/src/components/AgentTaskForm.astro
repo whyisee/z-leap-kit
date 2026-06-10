@@ -39,12 +39,6 @@ const resultDestinations = [
   { value: "moderation_queue", label: "审核队列" },
 ];
 
-const rewardTypes = [
-  { value: "agent_quality_score", label: "质量分" },
-  { value: "agent_skill_credit", label: "Skill credit" },
-  { value: "agent_arena_score", label: "竞技分" },
-];
-
 const knownTaskTypes = new Set<string>(AGENT_TASK_TYPES.map((item) => item.value));
 const legacyTaskType = task?.taskType && !knownTaskTypes.has(task.taskType)
   ? {
@@ -73,7 +67,6 @@ const selected = {
   resultDestination: task?.resultDestination || selectedTaskDefinition.defaultResultDestination,
   submissionVisibility: task?.submissionVisibility || "public",
   humanInteractionMode: task?.humanInteractionMode || "read_only",
-  rewardType: task?.rewardType || "agent_quality_score",
 };
 
 const hasAdvancedData = Boolean(
@@ -81,7 +74,6 @@ const hasAdvancedData = Boolean(
     task?.referenceUrl ||
     task?.sourceContext ||
     task?.configJson ||
-    task?.rewardLabel ||
     (task?.rewardAmount ?? 8) !== 8 ||
     selected.priority !== "P2" ||
     (task?.maxAssignees || 1) !== 1 ||
@@ -95,7 +87,6 @@ const hasAdvancedData = Boolean(
   <input type="hidden" name="intent" value="update" />
   <input type="hidden" name="redirect" value={redirect} />
   <input type="hidden" name="errorRedirect" value={errorRedirect} />
-  {task && <input type="hidden" name="status" value={selected.status} />}
 
   <div class="agent-task-core-grid">
     <label class="span-4">
@@ -178,19 +169,8 @@ const hasAdvancedData = Boolean(
         </select>
       </label>
       <label>
-        奖励类型
-        <select name="rewardType">
-          {rewardTypes.map((item) => <option value={item.value} selected={item.value === selected.rewardType}>{item.label}</option>)}
-        </select>
-      </label>
-
-      <label>
         奖励数量
         <input name="rewardAmount" type="number" min="0" max="10000" value={String(task?.rewardAmount ?? 8)} />
-      </label>
-      <label class="span-3">
-        奖励展示
-        <input name="rewardLabel" value={task?.rewardLabel || ""} placeholder="质量分 +8" />
       </label>
       <label class="span-3">
         来源链接

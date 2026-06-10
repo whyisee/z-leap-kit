@@ -1,0 +1,265 @@
+---
+import AgentZoneFrame from "@components/AgentZoneFrame.astro";
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { getSessionFromAstro, isAdmin } from "@lib/auth";
+import { getAgentAcademyData } from "@server/services/tasks";
+import { publicSkillName } from "@server/services/skillPack";
+import { normalizeSkillSlug, readAgentSkillRecord, skillStatusLabel } from "@server/services/agentSkillLibrary";
+
+export const prerender = false;
+
+const slug = normalizeSkillSlug(Astro.params.slug || "");
+const session = await getSessionFromAstro(Astro);
+const canManageSkills = isAdmin(session);
+
+if (!slug) {
+  return Astro.redirect("/agent-zone/academy");
+}
+
+const [academyData, skillRecord] = await Promise.all([
+  getAgentAcademyData({ includeUnpublished: canManageSkills }),
+  readAgentSkillRecord(slug, { includeUnpublished: canManageSkills, ownerUserId: session?.userId }),
+]);
+const academySkill = academyData.skills.find((item) => item.id === slug);
+
+if (!academySkill && !skillRecord) {
+  return Astro.redirect("/agent-zone/academy");
+}
+
+const skillName = skillRecord?.name || academySkill?.name || slug;
+const skillSummary = skillRecord?.summary || academySkill?.summary || "";
+const skillDescription = skillRecord?.description || skillSummary;
+const statusLabel = academySkill?.status || (skillRecord ? skillStatusLabel(skillRecord.status) : "未托管");
+const sourceLabel = skillRecord?.sourceType === "core" ? "系统内置" : skillRecord?.sourceType === "uploaded" ? "上传维护" : academySkill?.sourceLabel || "派生记录";
+const versionLabel = skillRecord?.version || academySkill?.sourceLabel || "-";
+const files = skillRecord?.files || [];
+const entryFile = files.find((file) => file.path === skillRecord?.entrypoint) || files[0];
+const preview = entryFile?.content ? entryFile.content.slice(0, 4800) : "";
+const saved = Astro.url.searchParams.get("saved") === "1";
+const error = Astro.url.searchParams.get("error") === "1";
+const canUpdateThisSkill = canManageSkills && slug !== publicSkillName;
+const stats = [
+  { label: "状态", value: statusLabel },
+  { label: "任务", value: String(academySkill?.taskCount || 0) },
+  { label: "Agent", value: String(academySkill?.agentCount || 0) },
+  { label: "运行", value: String(academySkill?.runCount || 0) },
+];
+---
+
+<BaseLayout title={`${skillName} - Skill 详情`} description={skillSummary}>
+  <AgentZoneFrame active="academy">
+    <div class="agent-detail-layout">
+      <section class="agent-detail-main">
+        <div class="agent-detail-head task-detail-head">
+          <a class="agent-back-link" href="/agent-zone/academy">返回学院</a>
+          <div class="task-detail-title">
+            <p class="agent-card-kicker">{sourceLabel} · {versionLabel}</p>
+            <h1>{skillName}</h1>
+            <p>{skillSummary || "暂无简介"}</p>
+          </div>
+          <div class="task-detail-badges">
+            {skillRecord && (
+              <>
+                <a class="button secondary compact" href={`/api/agent-zone/skills/${encodeURIComponent(slug)}/download?format=markdown`}>下载 MD</a>
+                <a class="button secondary compact" href={`/api/agent-zone/skills/${encodeURIComponent(slug)}/download?format=json`}>下载 JSON</a>
+              </>
+            )}
+            <span class="task-state-pill">{statusLabel}</span>
+          </div>
+        </div>
+
+        {saved && <p class="auth-message muted">Skill 已保存。</p>}
+        {error && <p class="auth-message error">Skill 保存失败，请检查入口文件和内容。</p>}
+
+        <div class="agent-zone-stat-strip detail">
+          {stats.map((item) => (
+            <div>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </div>
+          ))}
+        </div>
+
+        <section class="agent-zone-section">
+          <div class="section-head compact">
+            <div>
+              <p class="eyebrow">Overview</p>
+              <h2>说明</h2>
+            </div>
+          </div>
+          <div class="skill-detail-copy">
+            <p>{skillDescription || "这个 Skill 目前来自任务、Agent scope 或运行记录，还没有上传专属文件。"}</p>
+          </div>
+        </section>
+
+        <section class="agent-zone-section">
+          <div class="section-head compact">
+            <div>
+              <p class="eyebrow">Files</p>
+              <h2>文件</h2>
+            </div>
+          </div>
+          {files.length > 0 ? (
+            <div class="skill-file-list">
+              {files.map((file) => (
+                <a href={`/api/agent-zone/skills/${encodeURIComponent(slug)}/download?format=file&path=${encodeURIComponent(file.path)}`}>
+                  <strong>{file.path}</strong>
+                  <span>{file.content.length} chars</span>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div class="agent-zone-empty">暂无上传文件。</div>
+          )}
+        </section>
+
+        <section class="agent-zone-section">
+          <div class="section-head compact">
+            <div>
+              <p class="eyebrow">Preview</p>
+              <h2>{entryFile?.path || "内容预览"}</h2>
+            </div>
+          </div>
+          {preview ? (
+            <pre class="skill-content-preview"><code>{preview}</code></pre>
+          ) : (
+            <div class="agent-zone-empty">暂无可预览内容。</div>
+          )}
+        </section>
+      </section>
+
+      <aside class="agent-zone-side-panel" aria-label="Skill 详情侧栏">
+        <section>
+          <p class="eyebrow">Meta</p>
+          <h2>基础信息</h2>
+          <div class="task-detail-meta">
+            <div>
+              <span>标识</span>
+              <strong>{slug}</strong>
+            </div>
+            <div>
+              <span>入口</span>
+              <strong>{skillRecord?.entrypoint || "-"}</strong>
+            </div>
+            <div>
+              <span>存储</span>
+              <strong>{skillRecord?.storagePath || "-"}</strong>
+            </div>
+            <div>
+              <span>文件</span>
+              <strong>{files.length}</strong>
+            </div>
+            <div>
+              <span>更新</span>
+              <strong>{skillRecord?.updatedAt ? new Date(skillRecord.updatedAt).toLocaleString("zh-CN", { hour12: false }) : "-"}</strong>
+            </div>
+          </div>
+        </section>
+
+        {skillRecord && skillRecord.reviewComment && (
+          <section>
+            <p class="eyebrow">Review</p>
+            <h2>审核结果</h2>
+            <div class="agent-zone-rules compact">
+              <p>{skillRecord.reviewComment}</p>
+              {skillRecord.reviewScore !== null && <p>评分：{skillRecord.reviewScore}</p>}
+              {skillRecord.reviewReasons.map((reason) => <p>{reason}</p>)}
+            </div>
+          </section>
+        )}
+
+        <section>
+          <p class="eyebrow">Related</p>
+          <h2>关联任务</h2>
+          {academySkill && academySkill.relatedTasks.length > 0 ? (
+            <div class="academy-practice-list">
+              {academySkill.relatedTasks.map((task) => (
+                <a href={task.href}>
+                  <strong>{task.title}</strong>
+                  <span>{task.type} · {task.status}</span>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div class="agent-zone-empty compact">暂无关联任务。</div>
+          )}
+        </section>
+
+        {canUpdateThisSkill && (
+          <section id="skill-update">
+            <p class="eyebrow">Update</p>
+            <h2>更新 Skill</h2>
+            <form class="agent-skill-form compact" method="post" action={`/api/agent-zone/skills/${encodeURIComponent(slug)}`} enctype="multipart/form-data">
+              <input type="hidden" name="redirect" value={`/agent-zone/academy/skills/${slug}`} />
+              <input type="hidden" name="errorRedirect" value={`/agent-zone/academy/skills/${slug}#skill-update`} />
+              <label>
+                <span>名称</span>
+                <input name="name" type="text" value={skillName} required />
+              </label>
+              <label>
+                <span>标识</span>
+                <input name="slug" type="text" value={slug} readonly />
+              </label>
+              <label>
+                <span>版本</span>
+                <input name="version" type="text" value={skillRecord?.version || ""} />
+              </label>
+              <label>
+                <span>状态</span>
+                <select name="status">
+                  <option value="pending_review" selected={skillRecord?.status !== "draft" && skillRecord?.status !== "deprecated"}>提交审核</option>
+                  <option value="draft" selected={skillRecord?.status === "draft"}>草稿</option>
+                  <option value="deprecated" selected={skillRecord?.status === "deprecated"}>已废弃</option>
+                </select>
+              </label>
+              <label>
+                <span>入口文件</span>
+                <input name="entrypoint" type="text" value={skillRecord?.entrypoint || "SKILL.md"} />
+              </label>
+              <label>
+                <span>简介</span>
+                <input name="summary" type="text" value={skillSummary} />
+              </label>
+              <label>
+                <span>说明</span>
+                <textarea name="description" rows="4">{skillDescription}</textarea>
+              </label>
+              <label>
+                <span>上传新版</span>
+                <input name="skillFile" type="file" accept=".md,.json,text/markdown,application/json" />
+              </label>
+              <label>
+                <span>新版内容</span>
+                <textarea name="content" rows="8" placeholder="留空则保留现有文件；粘贴 SKILL.md 或 skill.json 会替换文件"></textarea>
+              </label>
+              <button class="button primary" type="submit">保存更新</button>
+            </form>
+          </section>
+        )}
+
+        {canManageSkills && skillRecord && slug !== publicSkillName && (
+          <section>
+            <p class="eyebrow">Review</p>
+            <h2>发布审核</h2>
+            <form class="agent-skill-form compact" method="post" action={`/api/agent-zone/skills/${encodeURIComponent(slug)}/review`}>
+              <input type="hidden" name="redirect" value={`/agent-zone/academy/skills/${slug}`} />
+              <label>
+                <span>评分</span>
+                <input name="score" type="number" min="0" max="100" value={skillRecord.reviewScore ?? 85} />
+              </label>
+              <label>
+                <span>审核说明</span>
+                <textarea name="comment" rows="4" placeholder="说明通过或驳回原因">{skillRecord.reviewComment}</textarea>
+              </label>
+              <div class="skill-review-actions">
+                <button class="button primary" type="submit" name="decision" value="approve">通过发布</button>
+                <button class="button secondary" type="submit" name="decision" value="needs_human">保留待审</button>
+                <button class="button danger" type="submit" name="decision" value="reject">驳回</button>
+              </div>
+            </form>
+          </section>
+        )}
+      </aside>
+    </div>
+  </AgentZoneFrame>
+</BaseLayout>

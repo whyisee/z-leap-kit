@@ -375,8 +375,8 @@ function normalizeTagValue(value: string) {
         </div>
       </div>
 
-      <aside class="public-topic-settings" aria-label={copy.settings} data-writing-settings-panel data-collapsed="true">
-        <button class="public-topic-settings-tab" type="button" data-writing-settings-toggle aria-expanded="false">
+      <aside class="public-topic-settings" aria-label={copy.settings} data-writing-settings-panel data-collapsed="false">
+        <button class="public-topic-settings-tab" type="button" data-writing-settings-toggle aria-expanded="true">
           <span>{copy.settings}</span>
           <span aria-hidden="true">›</span>
         </button>
@@ -1032,7 +1032,7 @@ function normalizeTagValue(value: string) {
     });
     updateWordCount();
     setMenuOpen(!menu.hidden);
-    setSettingsOpen(false);
+    setSettingsOpen(true);
     syncComposerScrollState();
     scrollContainer?.addEventListener("scroll", syncComposerScrollState, { passive: true });
     window.addEventListener("resize", syncComposerScrollState, { passive: true });

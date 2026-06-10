@@ -3,7 +3,15 @@ import BaseLayout from "@layouts/BaseLayout.astro";
 import { getSessionFromAstro } from "@lib/auth";
 import { formatRelative } from "@lib/format";
 import { getLangFromAstro } from "@lib/i18n";
-import { listNotifications } from "@server/services/notifications";
+import {
+  countUnreadDirectMessages,
+  listDirectConversations,
+  listDirectMessages,
+  markConversationRead,
+  type DirectMessageItem,
+  type DirectConversationSummary,
+} from "@server/services/messages";
+import { listNotificationGroups, listNotifications } from "@server/services/notifications";
 
 export const prerender = false;
 
@@ -11,59 +19,379 @@ const lang = getLangFromAstro(Astro);
 const session = await getSessionFromAstro(Astro);
 
 if (!session) {
-  return Astro.redirect(`/login?redirect=${encodeURIComponent(Astro.url.pathname)}`, 303);
+  return Astro.redirect(`/login?redirect=${encodeURIComponent(`${Astro.url.pathname}${Astro.url.search}`)}`, 303);
 }
 
-const notifications = await listNotifications(session.userId, 80);
-const unreadCount = notifications.filter((item) => !item.readAt).length;
 const copy = lang === "en"
   ? {
-      title: "Notifications",
-      description: "Replies, likes, follows, reports, and moderation reminders.",
-      markRead: "Mark all read",
-      empty: "No notifications yet.",
+      pageTitle: "Inbox",
+      description: "Notifications and private messages live here.",
+      notifications: "Notifications",
+      messages: "Messages",
+      all: "All",
+      system: "System",
       unread: "unread",
+      markRead: "Mark all read",
+      emptyNotifications: "No notifications yet.",
+      emptyMessages: "No private messages yet.",
+      newMessage: "New message",
+      recipient: "Username",
+      messagePlaceholder: "Write a private message...",
+      send: "Send",
+      reply: "Reply",
+      openConversation: "Open a conversation from the left, or start a new private message.",
+      sendError: "Message failed. Check the username and content.",
+      me: "Me",
+      fromSystem: "System notification",
+      recentMessages: "Recent",
+      myMessages: "My messages",
+      replyToMe: "Replies",
+      mentions: "Mentions",
+      likes: "Likes",
+      settings: "Settings",
+      chatEmpty: "Pick a conversation or start a new message.",
+      recipientPlaceholder: "Search username",
+      composerHint: "Enter your message",
     }
   : {
-      title: "通知",
-      description: "回复、点赞、关注、举报和审核提醒都会集中在这里。",
-      markRead: "全部标记已读",
-      empty: "暂无通知。",
+      pageTitle: "消息中心",
+      description: "通知和私信都集中在这里。",
+      notifications: "通知",
+      messages: "私信",
+      all: "全部",
+      system: "系统",
       unread: "未读",
+      markRead: "全部标记已读",
+      emptyNotifications: "暂无通知。",
+      emptyMessages: "暂无私信。",
+      newMessage: "新私信",
+      recipient: "用户名",
+      messagePlaceholder: "写一条私信...",
+      send: "发送",
+      reply: "回复",
+      openConversation: "从左侧打开一个会话，或者发起一条新私信。",
+      sendError: "私信发送失败，请检查用户名和内容。",
+      me: "我",
+      fromSystem: "系统通知",
+      recentMessages: "最近消息",
+      myMessages: "我的消息",
+      replyToMe: "回复我的",
+      mentions: "@ 我的",
+      likes: "收到的赞",
+      settings: "消息设置",
+      chatEmpty: "选择一个会话，或者发起一条新私信。",
+      recipientPlaceholder: "搜索用户名",
+      composerHint: "请输入消息内容",
     };
+
+const activeTab = Astro.url.searchParams.get("tab") === "messages" ? "messages" : "notifications";
+const sourceParam = Astro.url.searchParams.get("source") || "all";
+const kindParam = Astro.url.searchParams.get("kind") || "all";
+const activeKind = ["all", "replies", "mentions", "likes", "system"].includes(kindParam) ? kindParam : "all";
+const sourceActorId = Number(sourceParam);
+const selectedSourceKey = sourceParam === "system"
+  ? "system"
+  : Number.isFinite(sourceActorId) && sourceActorId > 0
+    ? String(sourceActorId)
+    : "all";
+const notificationFilter = selectedSourceKey === "system"
+  ? { systemOnly: true }
+  : selectedSourceKey !== "all"
+    ? { actorId: Number(selectedSourceKey) }
+    : {};
+const currentRedirect = `${Astro.url.pathname}${Astro.url.search}`;
+const notificationGroups = activeTab === "notifications" ? await listNotificationGroups(session.userId, 40) : [];
+const notifications = activeTab === "notifications"
+  ? await listNotifications(session.userId, 100, notificationFilter)
+  : [];
+const unreadMessageCount = await countUnreadDirectMessages(session.userId);
+const filteredNotifications = activeTab === "notifications"
+  ? notifications.filter((item) => {
+      if (activeKind === "replies") {
+        return ["topic_reply", "post_reply", "bot_reply", "bot_post_reply", "topic_followed_activity"].includes(item.type);
+      }
+      if (activeKind === "mentions") {
+        return item.type === "mention";
+      }
+      if (activeKind === "likes") {
+        return item.type === "like";
+      }
+      return true;
+    })
+  : [];
+const unreadNotificationCount = filteredNotifications.filter((item) => !item.readAt).length;
+
+let conversations = [] as DirectConversationSummary[];
+let selectedConversationId = Number(Astro.url.searchParams.get("conversation") || 0);
+let selectedConversation: DirectConversationSummary | undefined;
+let messages = [] as DirectMessageItem[];
+const composeRecipient = String(Astro.url.searchParams.get("to") || "").trim().replace(/^@/, "");
+const composeMode = activeTab === "messages" && (Astro.url.searchParams.get("compose") === "1" || Boolean(composeRecipient));
+const sendError = activeTab === "messages" && Astro.url.searchParams.get("error") === "send";
+
+if (activeTab === "messages") {
+  const initialConversations = await listDirectConversations(session.userId, 80);
+
+  if (!selectedConversationId && !composeMode && initialConversations[0]) {
+    selectedConversationId = initialConversations[0].id;
+  }
+
+  if (selectedConversationId > 0) {
+    await markConversationRead(session.userId, selectedConversationId);
+  }
+
+  conversations = await listDirectConversations(session.userId, 80);
+  selectedConversation = conversations.find((item) => item.id === selectedConversationId);
+  messages = selectedConversation ? await listDirectMessages(session.userId, selectedConversation.id, 120) : [];
+}
+
+const activeNotificationTitle = selectedSourceKey === "all"
+  ? activeKind === "replies"
+    ? copy.replyToMe
+    : activeKind === "mentions"
+      ? copy.mentions
+      : activeKind === "likes"
+        ? copy.likes
+        : copy.all
+  : selectedSourceKey === "system"
+    ? copy.system
+    : notificationGroups.find((item) => item.key === selectedSourceKey)?.actorName || copy.notifications;
+
+function initials(value: string) {
+  return value.trim().slice(0, 1).toUpperCase() || "W";
+}
+
+function sourceHref(source: string) {
+  return source === "all" ? "/notifications" : `/notifications?source=${encodeURIComponent(source)}`;
+}
+
+function messageHref(conversationId: number) {
+  return `/notifications?tab=messages&conversation=${conversationId}`;
+}
+
+function notificationKindHref(kind: string) {
+  return kind === "all" ? "/notifications" : `/notifications?kind=${encodeURIComponent(kind)}`;
+}
 ---
 
-<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
-  <section class="admin-page narrow-page">
-    <div class="section-head">
-      <div>
-        <p class="eyebrow">{copy.title}</p>
-        <h1>{copy.title}</h1>
-        <p>{copy.description}</p>
-      </div>
-      <span class="count-pill">{unreadCount} {copy.unread}</span>
-    </div>
-
-    {notifications.length > 0 ? (
-      <>
-        <form class="admin-actions" method="post" action="/api/notifications/read">
-          <input type="hidden" name="redirect" value="/notifications" />
-          <button class="button secondary" type="submit">{copy.markRead}</button>
-        </form>
-        <div class="notification-list">
-          {notifications.map((item) => (
-            <a class:list={["notification-row", !item.readAt && "is-unread"]} href={item.href}>
-              <div>
-                <strong>{item.title}</strong>
-                {item.body && <p>{item.body}</p>}
-                <span>{item.actorName ? `${item.actorName} · ` : ""}{formatRelative(item.createdAt, lang)}</span>
-              </div>
-            </a>
-          ))}
+<BaseLayout title={`${copy.pageTitle} - whyisee.xyz`} description={copy.description}>
+  <section class="admin-page inbox-page">
+    <div class="inbox-shell" data-active-tab={activeTab}>
+      <aside class="inbox-nav" aria-label={copy.pageTitle}>
+        <div class="inbox-nav-brand">
+          <span class="inbox-nav-mark" aria-hidden="true"></span>
+          <strong>{copy.pageTitle}</strong>
         </div>
-      </>
-    ) : (
-      <p class="auth-message muted">{copy.empty}</p>
-    )}
+        <nav class="inbox-nav-list">
+          <a class:list={["inbox-nav-item", activeTab === "messages" && "is-active"]} href="/notifications?tab=messages">
+            <span class="inbox-nav-dot" aria-hidden="true"></span>
+            <span>{copy.myMessages}</span>
+            {unreadMessageCount > 0 && <b>{unreadMessageCount}</b>}
+          </a>
+          <a class:list={["inbox-nav-item", activeTab === "notifications" && activeKind === "all" && selectedSourceKey === "all" && "is-active"]} href={notificationKindHref("all")}>
+            <span class="inbox-nav-dot" aria-hidden="true"></span>
+            <span>{copy.notifications}</span>
+          </a>
+          <a class:list={["inbox-nav-item", activeTab === "notifications" && activeKind === "replies" && "is-active"]} href={notificationKindHref("replies")}>
+            <span class="inbox-nav-dot" aria-hidden="true"></span>
+            <span>{copy.replyToMe}</span>
+          </a>
+          <a class:list={["inbox-nav-item", activeTab === "notifications" && activeKind === "mentions" && "is-active"]} href={notificationKindHref("mentions")}>
+            <span class="inbox-nav-dot" aria-hidden="true"></span>
+            <span>{copy.mentions}</span>
+          </a>
+          <a class:list={["inbox-nav-item", activeTab === "notifications" && activeKind === "likes" && "is-active"]} href={notificationKindHref("likes")}>
+            <span class="inbox-nav-dot" aria-hidden="true"></span>
+            <span>{copy.likes}</span>
+          </a>
+          <a class:list={["inbox-nav-item", activeTab === "notifications" && selectedSourceKey === "system" && "is-active"]} href={sourceHref("system")}>
+            <span class="inbox-nav-dot" aria-hidden="true"></span>
+            <span>{copy.system}</span>
+          </a>
+        </nav>
+        <a class="inbox-nav-item is-muted" href="/settings/profile">
+          <span class="inbox-nav-dot" aria-hidden="true"></span>
+          <span>{copy.settings}</span>
+        </a>
+      </aside>
+
+      <section class="inbox-people" aria-label={activeTab === "messages" ? copy.recentMessages : copy.notifications}>
+        <div class="inbox-list-head">
+          <strong>{activeTab === "messages" ? copy.recentMessages : activeNotificationTitle}</strong>
+          {activeTab === "messages" && (
+            <a class:list={["inbox-new-message", composeMode && "is-active"]} href="/notifications?tab=messages&compose=1" title={copy.newMessage}>
+              <span aria-hidden="true">＋</span>
+              {copy.newMessage}
+            </a>
+          )}
+        </div>
+
+        {activeTab === "notifications" ? (
+          <div class="inbox-person-list">
+            <a class:list={["inbox-person", selectedSourceKey === "all" && activeKind === "all" && "is-active"]} href={sourceHref("all")}>
+              <span class="inbox-avatar is-system" aria-hidden="true">{lang === "en" ? "A" : "全"}</span>
+              <span class="inbox-person-main">
+                <strong>{copy.all}</strong>
+                <small>{copy.notifications}</small>
+              </span>
+            </a>
+            {notificationGroups.map((item) => (
+              <a class:list={["inbox-person", item.key === selectedSourceKey && "is-active"]} href={sourceHref(item.key)}>
+                <span class:list={["inbox-avatar", !item.actorAvatarUrl && "is-system"]} aria-hidden="true">
+                  {item.actorAvatarUrl ? <img src={item.actorAvatarUrl} alt="" /> : initials(item.actorName)}
+                </span>
+                <span class="inbox-person-main">
+                  <strong>{item.key === "system" ? copy.system : item.actorName}</strong>
+                  <small>{item.lastTitle}</small>
+                </span>
+                {item.unreadCount > 0 && <span class="inbox-unread">{item.unreadCount}</span>}
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div class="inbox-person-list">
+            {composeMode && (
+              <a class="inbox-person is-active" href="/notifications?tab=messages&compose=1">
+                <span class="inbox-avatar is-system" aria-hidden="true">＋</span>
+                <span class="inbox-person-main">
+                  <strong>{copy.newMessage}</strong>
+                  <small>{composeRecipient ? `@${composeRecipient}` : copy.recipientPlaceholder}</small>
+                </span>
+              </a>
+            )}
+            {conversations.map((item) => (
+              <a
+                class:list={["inbox-person", item.id === selectedConversationId && !composeMode && "is-active"]}
+                href={messageHref(item.id)}
+              >
+                <span class="inbox-avatar" aria-hidden="true">
+                  {item.participantAvatarUrl ? <img src={item.participantAvatarUrl} alt="" /> : initials(item.participantName)}
+                </span>
+                <span class="inbox-person-main">
+                  <strong>{item.participantName}</strong>
+                  <small>{item.lastMessageBody || item.participantUsername}</small>
+                </span>
+                {item.unreadCount > 0 && <span class="inbox-unread">{item.unreadCount}</span>}
+              </a>
+            ))}
+            {conversations.length === 0 && !composeMode && <p class="inbox-list-empty">{copy.emptyMessages}</p>}
+          </div>
+        )}
+      </section>
+
+      <section class="inbox-content">
+        {activeTab === "notifications" ? (
+          <>
+            <header class="inbox-content-head">
+              <div>
+                <p class="eyebrow">{copy.notifications}</p>
+                <h2>{activeNotificationTitle}</h2>
+              </div>
+              <div class="inbox-head-actions">
+                {unreadNotificationCount > 0 && <span class="count-pill">{unreadNotificationCount} {copy.unread}</span>}
+                {notifications.length > 0 && (
+                  <form method="post" action="/api/notifications/read">
+                    <input type="hidden" name="redirect" value={currentRedirect} />
+                    <button class="button secondary compact" type="submit">{copy.markRead}</button>
+                  </form>
+                )}
+              </div>
+            </header>
+
+            {filteredNotifications.length > 0 ? (
+              <div class="notification-list inbox-notification-list">
+                {filteredNotifications.map((item) => (
+                  <a class:list={["notification-row", "inbox-notification-row", !item.readAt && "is-unread"]} href={item.href}>
+                    <span class:list={["inbox-avatar", !item.actorAvatarUrl && "is-system"]} aria-hidden="true">
+                      {item.actorAvatarUrl
+                        ? <img src={item.actorAvatarUrl} alt="" />
+                        : initials(item.actorName || copy.system)}
+                    </span>
+                    <div>
+                      <strong>{item.title}</strong>
+                      {item.body && <p>{item.body}</p>}
+                      <span>
+                        {item.actorName ? `${item.actorName} · ` : `${copy.fromSystem} · `}
+                        {formatRelative(item.createdAt, lang)}
+                      </span>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p class="auth-message muted">{copy.emptyNotifications}</p>
+            )}
+          </>
+        ) : (
+          <>
+            <header class="inbox-content-head message-chat-head">
+              <div>
+                <p class="eyebrow">{copy.messages}</p>
+                <h2>{composeMode ? copy.newMessage : selectedConversation?.participantName || copy.messages}</h2>
+              </div>
+            </header>
+
+            {sendError && <p class="auth-message error">{copy.sendError}</p>}
+
+            {composeMode ? (
+              <form class="message-compose-card message-thread" method="post" action="/api/messages/send">
+                <input type="hidden" name="redirect" value="/notifications?tab=messages&compose=1" />
+                <div class="message-list message-list-empty">
+                  <p>{copy.chatEmpty}</p>
+                </div>
+                <div class="message-composer">
+                  <label class="message-recipient-field">
+                    <span>@</span>
+                    <input name="recipient" value={composeRecipient} placeholder={copy.recipientPlaceholder} autocomplete="off" required />
+                  </label>
+                  <textarea name="body" rows="3" placeholder={copy.messagePlaceholder} required></textarea>
+                  <div class="message-composer-foot">
+                    <span>{copy.composerHint}</span>
+                    <button class="button primary compact" type="submit">{copy.send}</button>
+                  </div>
+                </div>
+              </form>
+            ) : selectedConversation ? (
+              <div class="message-thread">
+                <div class="message-list">
+                  {messages.map((item) => (
+                    <article class:list={["message-bubble-row", item.isMine && "is-mine"]}>
+                      <span class="inbox-avatar" aria-hidden="true">
+                        {item.senderAvatarUrl ? <img src={item.senderAvatarUrl} alt="" /> : initials(item.senderName)}
+                      </span>
+                      <div class="message-bubble">
+                        <div class="message-meta">
+                          <strong>{item.isMine ? copy.me : item.senderName}</strong>
+                          <span>{formatRelative(item.createdAt, lang)}</span>
+                        </div>
+                        <p>{item.body}</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                <form class="message-reply-form" method="post" action="/api/messages/send">
+                  <input type="hidden" name="conversationId" value={selectedConversation.id} />
+                  <input type="hidden" name="redirect" value={messageHref(selectedConversation.id)} />
+                  <div class="message-composer">
+                    <textarea name="body" rows="3" placeholder={copy.messagePlaceholder} required></textarea>
+                    <div class="message-composer-foot">
+                      <span>{copy.composerHint}</span>
+                      <button class="button primary compact" type="submit">{copy.send}</button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            ) : conversations.length > 0 ? (
+              <p class="auth-message muted">{copy.openConversation}</p>
+            ) : (
+              <div class="message-empty-state">
+                <p class="auth-message muted">{copy.emptyMessages}</p>
+                <a class="button primary" href="/notifications?tab=messages&compose=1">{copy.newMessage}</a>
+              </div>
+            )}
+          </>
+        )}
+      </section>
+    </div>
   </section>
 </BaseLayout>

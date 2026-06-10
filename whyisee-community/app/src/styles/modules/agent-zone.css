@@ -22,7 +22,38 @@
   padding-bottom: 0;
 }
 
+.agent-zone-left-nav .nav-item {
+  min-height: 42px;
+  padding: 0 10px;
+}
+
+.agent-zone-left-nav .nav-item-main {
+  gap: 14px;
+}
+
+.agent-zone-left-nav .nav-item-label {
+  color: color-mix(in srgb, var(--muted) 92%, white);
+  font-size: 15px;
+  font-weight: 920;
+}
+
+.agent-zone-left-nav .nav-item small {
+  flex: 0 0 4ch;
+  color: var(--subtle);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 920;
+}
+
+.agent-zone-left-nav .nav-item:hover small,
+.agent-zone-left-nav .nav-item.is-active small {
+  color: color-mix(in srgb, var(--text) 72%, var(--subtle));
+}
+
 .agent-zone-nav-marker {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
   border-radius: 4px;
   background: var(--pill-color, var(--blue));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--pill-color, var(--blue)) 42%, transparent);
@@ -666,6 +697,339 @@
   font-size: 13px;
   font-weight: 950;
   line-height: 1.2;
+}
+
+.academy-skill-list {
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.026);
+}
+
+.academy-skill-head,
+.academy-skill-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.35fr) 86px 170px 170px minmax(160px, 0.75fr);
+  gap: 14px;
+  align-items: center;
+  min-width: 980px;
+}
+
+.academy-skill-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 42px;
+  border-bottom: 1px solid var(--line);
+  padding: 0 14px;
+  background: rgba(23, 27, 35, 0.98);
+  color: var(--subtle);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.academy-skill-row {
+  min-height: 104px;
+  border-bottom: 1px solid var(--line);
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.014);
+}
+
+.academy-skill-row:last-child {
+  border-bottom: 0;
+}
+
+.academy-skill-main {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.academy-skill-main h2 {
+  overflow: hidden;
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 950;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.academy-skill-main h2 a {
+  color: inherit;
+}
+
+.academy-skill-main h2 a:hover {
+  color: var(--blue);
+}
+
+.academy-skill-main > span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.42;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.academy-related-task-row,
+.academy-file-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.academy-related-task-row a,
+.academy-file-row a,
+.academy-file-row span {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 22px;
+  border: 1px solid rgba(138, 180, 248, 0.16);
+  border-radius: 999px;
+  padding: 0 7px;
+  background: rgba(138, 180, 248, 0.045);
+  color: #bdd3ff;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.academy-related-task-row a {
+  border-color: rgba(102, 208, 140, 0.18);
+  color: #9cf5ca;
+}
+
+.academy-file-row.compact {
+  max-height: 54px;
+  overflow: hidden;
+}
+
+.academy-skill-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.academy-skill-metrics div {
+  display: grid;
+  gap: 2px;
+}
+
+.academy-skill-metrics dt {
+  color: var(--subtle);
+  font-size: 10px;
+  font-weight: 840;
+}
+
+.academy-skill-metrics dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.academy-curriculum-list,
+.academy-practice-list {
+  display: grid;
+  gap: 12px;
+}
+
+.academy-curriculum-list article,
+.academy-practice-list a {
+  display: grid;
+  gap: 7px;
+  border-top: 1px solid var(--line);
+  padding-top: 11px;
+}
+
+.academy-curriculum-list article:first-child,
+.academy-practice-list a:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.academy-curriculum-list strong,
+.academy-practice-list strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 920;
+  line-height: 1.25;
+}
+
+.academy-curriculum-list span,
+.academy-practice-list span,
+.academy-practice-list small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.45;
+}
+
+.academy-practice-list em {
+  color: var(--gold);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.agent-skill-form {
+  display: grid;
+  gap: 12px;
+}
+
+.agent-skill-form.compact {
+  gap: 10px;
+}
+
+.agent-task-form-grid.compact {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.agent-skill-form label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.agent-skill-form label > span {
+  color: var(--subtle);
+  font-size: 11px;
+  font-weight: 920;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.agent-skill-form input:not([type="file"]),
+.agent-skill-form textarea,
+.agent-skill-form select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(11, 14, 20, 0.74);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  outline: none;
+}
+
+.agent-skill-form textarea {
+  min-height: 104px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.agent-skill-form select {
+  color-scheme: dark;
+}
+
+.agent-skill-form select option {
+  background: #11151d;
+  color: var(--text);
+}
+
+.agent-skill-form input[type="file"] {
+  width: 100%;
+  border: 1px dashed rgba(138, 180, 248, 0.28);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(138, 180, 248, 0.05);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.agent-skill-form :where(input, textarea, select):focus {
+  border-color: rgba(138, 180, 248, 0.62);
+  box-shadow: 0 0 0 3px rgba(138, 180, 248, 0.12);
+}
+
+.agent-task-form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.skill-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skill-review-actions .button {
+  flex: 1 1 92px;
+}
+
+.skill-detail-copy {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  padding: 13px;
+  background: rgba(255, 255, 255, 0.026);
+}
+
+.skill-detail-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 740;
+  line-height: 1.65;
+}
+
+.skill-file-list {
+  display: grid;
+  gap: 8px;
+}
+
+.skill-file-list a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: rgba(255, 255, 255, 0.024);
+}
+
+.skill-file-list strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-file-list span {
+  color: var(--subtle);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.skill-content-preview {
+  overflow: auto;
+  max-height: 520px;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(5, 7, 11, 0.66);
+  color: #d8e2f5;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 
 .agent-current-task {
@@ -1504,6 +1868,11 @@
 .task-priority-pill {
   border-color: rgba(243, 201, 105, 0.26);
   color: var(--gold);
+}
+
+.task-list-row.state-draft .task-state-pill {
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--subtle);
 }
 
 .task-list-row.state-open .task-state-pill {

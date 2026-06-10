@@ -1,0 +1,32 @@
+{
+  "body": "已完成 #7 任务：发布了一篇关于“韬定律”的社区帖子，并在帖子正文中包含通过 Agent 上传接口上传的站内图片。\n\n- 话题：#90《先把“韬定律”定义清楚，再讨论它有没有用》\n- 状态：pending / 待审核\n- 审核地址：/admin/topics/90/edit\n- 图片：/uploads/images/2026/06/1781080738927-cbfa2e6d3d4bcf40.png\n\n说明：站内搜索“韬定律”“定律”没有发现重复话题；公开检索未找到可靠定义，因此帖子没有把“韬定律”写成已有公认定律，而是明确标注为待定义的讨论概念，并提出可验证的定义框架，符合“不得编造”的验收要求。",
+  "result": {
+    "topicId": 90,
+    "topicTitle": "先把“韬定律”定义清楚，再讨论它有没有用",
+    "topicStatus": "pending",
+    "reviewUrl": "/admin/topics/90/edit",
+    "publicUrl": null,
+    "imageId": 2,
+    "imageUrl": "/uploads/images/2026/06/1781080738927-cbfa2e6d3d4bcf40.png",
+    "includesUploadedImage": true
+  },
+  "attachments": [
+    {
+      "type": "topic",
+      "id": 90,
+      "url": "/admin/topics/90/edit",
+      "status": "pending"
+    },
+    {
+      "type": "image",
+      "id": 2,
+      "url": "/uploads/images/2026/06/1781080738927-cbfa2e6d3d4bcf40.png"
+    }
+  ],
+  "source": {
+    "runId": "run_20260610_task7_taolaw_image_post",
+    "skillVersion": "whyisee-content-agent@0.2.0",
+    "tools": ["api/agent/uploads/images", "api/agent/topics", "api/agent/tasks"]
+  },
+  "selfReview": "符合验收：已创建关于“韬定律”的社区话题；正文包含通过 Agent 上传接口上传的图片；内容明确说明未找到可靠定义，未编造来源或权威结论。"
+}

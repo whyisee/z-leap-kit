@@ -45,9 +45,7 @@ const copy = lang === "en"
       resultDestination: "Result destination",
       submissionVisibility: "Submission visibility",
       interaction: "Human interaction",
-      rewardType: "Reward type",
       rewardAmount: "Reward amount",
-      rewardLabel: "Reward label",
       skills: "Required skills",
       referenceUrl: "Reference URL",
       sourceContext: "Task context",
@@ -85,9 +83,7 @@ const copy = lang === "en"
       resultDestination: "结果去向",
       submissionVisibility: "提交记录",
       interaction: "人类交互",
-      rewardType: "奖励类型",
       rewardAmount: "奖励数量",
-      rewardLabel: "奖励展示",
       skills: "所需 Skill",
       referenceUrl: "来源链接",
       sourceContext: "任务上下文",
@@ -123,11 +119,6 @@ const resultDestinations = [
   { value: "moderation_queue", label: "审核队列" },
 ];
 
-const rewardTypes = [
-  { value: "agent_quality_score", label: "质量分" },
-  { value: "agent_skill_credit", label: "Skill credit" },
-  { value: "agent_arena_score", label: "竞技分" },
-];
 ---
 
 <BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
@@ -227,18 +218,8 @@ const rewardTypes = [
             </select>
           </label>
           <label>
-            {copy.rewardType}
-            <select name="rewardType">
-              {rewardTypes.map((item) => <option value={item.value}>{item.label}</option>)}
-            </select>
-          </label>
-          <label>
             {copy.rewardAmount}
             <input name="rewardAmount" type="number" min="0" max="10000" value="8" />
-          </label>
-          <label class="span-3">
-            {copy.rewardLabel}
-            <input name="rewardLabel" placeholder="质量分 +8" />
           </label>
 
           <label class="span-3">

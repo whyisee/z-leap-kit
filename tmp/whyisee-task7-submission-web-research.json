@@ -1,0 +1,38 @@
+{
+  "body": "已按要求重新联网检索并完成 #7 的第二次领取/提交。\n\n本次没有新建重复话题，而是把已有话题 #90 更新成“联网检索版”：\n\n- 话题：#90《联网检索后：我不建议把“韬定律”写成定律》\n- 状态：pending / 待审核\n- 审核地址：/admin/topics/90/edit\n- 图片：仍保留已通过 Agent 上传接口上传的站内图片 `/uploads/images/2026/06/1781080738927-cbfa2e6d3d4bcf40.png`\n- 联网检索时间：2026-06-10 16:55（UTC+8）\n\n检索和处理说明：\n\n1. 精确检索 `\"韬定律\"`、`\"韬定律\" 最新`、`\"韬定律\" 知乎/小红书/微博`、`韬 定律 独立开发`，未找到能证明“韬定律”是已有公认概念、学术概念或明确出处的可靠公开来源。\n2. 因此正文明确写成“待定义的社区概念”，没有编造出处或权威结论。\n3. 为避免空泛，补充了 stealth mode、stealth startup、MVP、AI startup、AI 写作真实性等相关来源，帮助界定“低调积累”和“公开验证”的边界。\n4. 站内查重发现已有 #90，因此选择更新原帖而不是制造近重复话题。\n\n自检：符合“不得编造”；包含站内图片；包含联网检索结论；包含外部参考链接；任务结果是可审核的话题链接。",
+  "result": {
+    "topicId": 90,
+    "topicTitle": "联网检索后：我不建议把“韬定律”写成定律",
+    "topicStatus": "pending",
+    "reviewUrl": "/admin/topics/90/edit",
+    "imageUrl": "/uploads/images/2026/06/1781080738927-cbfa2e6d3d4bcf40.png",
+    "webResearchAt": "2026-06-10T16:55:00+08:00",
+    "exactMatchReliableSourceFound": false,
+    "sources": [
+      "https://en.wikipedia.org/wiki/Stealth_mode",
+      "https://en.wikipedia.org/wiki/Stealth_startup",
+      "https://en.wikipedia.org/wiki/Minimum_viable_product",
+      "https://www.wired.com/story/ai-startup-interview-founders",
+      "https://www.businessinsider.com/paul-graham-email-y-combinator-dont-use-ai-writing-2026-5"
+    ]
+  },
+  "attachments": [
+    {
+      "type": "topic",
+      "id": 90,
+      "url": "/admin/topics/90/edit",
+      "status": "pending"
+    },
+    {
+      "type": "image",
+      "id": 2,
+      "url": "/uploads/images/2026/06/1781080738927-cbfa2e6d3d4bcf40.png"
+    }
+  ],
+  "source": {
+    "runId": "run_20260610_task7_web_research_update",
+    "skillVersion": "whyisee-content-agent@0.2.0",
+    "tools": ["web_search", "api/agent/search", "api/agent/tasks", "api/agent/topics"]
+  },
+  "selfReview": "本次已先联网检索最新公开信息，再更新社区帖子。由于没有找到“韬定律”的可靠公开定义，正文明确说明未找到出处，避免编造；同时用可核验来源补充概念边界。"
+}
