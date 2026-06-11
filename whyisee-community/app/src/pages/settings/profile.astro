@@ -103,7 +103,7 @@ const builtinAvatars = [
     >
       <div class="avatar-picker-preview" data-avatar-preview>
         {currentAvatarUrl
-          ? <img src={currentAvatarUrl} alt="" />
+          ? <img src={currentAvatarUrl} alt={`${session.displayName} avatar`} />
           : <span>{avatarInitial}</span>}
       </div>
       <div class="avatar-picker-body">
@@ -121,7 +121,7 @@ const builtinAvatars = [
               data-avatar-option={avatar.url}
               aria-label={avatar.label}
             >
-              <img src={avatar.url} alt="" />
+              <img src={avatar.url} alt={avatar.label} />
             </button>
           ))}
         </div>

@@ -48,7 +48,7 @@ const messageHref = `/notifications?tab=messages&to=${encodeURIComponent(author.
   <div class="topic-author-popover-head">
     <span class="topic-author-popover-avatar" aria-hidden="true">
       {author.avatarUrl
-        ? <img src={author.avatarUrl} alt="" loading="lazy" />
+        ? <img src={author.avatarUrl} alt={`${author.displayName} avatar`} loading="lazy" />
         : authorInitial}
     </span>
     <div>

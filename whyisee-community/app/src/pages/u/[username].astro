@@ -6,6 +6,7 @@ import TopicListHeader from "@components/TopicListHeader.astro";
 import { getSessionFromAstro, isAdmin } from "@lib/auth";
 import { getLangFromAstro } from "@lib/i18n";
 import { topicPath } from "@lib/routes";
+import { buildProfilePageJsonLd } from "@lib/seo";
 import { listCategories, listTags } from "@server/services/categories";
 import { listFeaturedTopics } from "@server/services/topics";
 import { getUserByUsername, listUserTopics } from "@server/services/users";
@@ -112,16 +113,28 @@ const copy = lang === "en"
     };
 const deleted = Astro.url.searchParams.get("deleted") === "1";
 const avatarInitial = (user?.displayName || user?.username || "W").trim().slice(0, 1).toUpperCase();
+const siteBase = Astro.site?.toString() || process.env.SITE_URL || "https://whyisee.xyz";
+const profileUrl = user
+  ? new URL(lang === "en" ? `/u/${encodeURIComponent(user.username)}?lang=en` : `/u/${encodeURIComponent(user.username)}`, siteBase).toString()
+  : `${Astro.url.origin}${Astro.url.pathname}`;
+const profileImage = user?.avatarUrl ? new URL(user.avatarUrl, siteBase).toString() : new URL("/og-image.png", siteBase).toString();
+const seoLang = lang === "en" ? "en" : "zh-CN";
 ---
 
-<BaseLayout title={`${user?.displayName || copy.notFound} - whyisee.xyz`} description={user ? (user.bio || copy.profileDescription) : copy.notFoundDescription}>
+<BaseLayout
+  title={`${user?.displayName || copy.notFound} - whyisee.xyz`}
+  description={user ? (user.bio || copy.profileDescription) : copy.notFoundDescription}
+  ogType={user ? "profile" : "website"}
+  image="/og-image.png"
+  structuredData={user ? buildProfilePageJsonLd(user, profileUrl, profileImage, seoLang) : undefined}
+>
   {user ? (
     <ForumFrame categories={categories} tags={tags} featuredTopics={featuredTopics} lang={lang}>
       <section class="user-profile-head">
         <div class="user-profile-main">
           <div class="user-profile-avatar-stack">
             <span class="user-profile-avatar" aria-hidden="true">
-              {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : avatarInitial}
+              {user.avatarUrl ? <img src={user.avatarUrl} alt={`${user.displayName} avatar`} /> : avatarInitial}
             </span>
             {canEditProfile && <a class="user-profile-settings" href="/settings/profile">{copy.settings}</a>}
           </div>

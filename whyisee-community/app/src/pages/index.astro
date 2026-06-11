@@ -5,6 +5,7 @@ import TopicCard from "@components/TopicCard.astro";
 import TopicListHeader from "@components/TopicListHeader.astro";
 import { getSessionFromAstro } from "@lib/auth";
 import { getLangFromAstro, t } from "@lib/i18n";
+import { buildCollectionPageJsonLd } from "@lib/seo";
 import { listCategories, listTags } from "@server/services/categories";
 import { listFeaturedTopics, listTopics } from "@server/services/topics";
 
@@ -20,18 +21,33 @@ const copy = lang === "en"
   ? {
       title: "Recent notes",
       eyebrow: "Recent",
-      description: "Latest notes, discussions, projects, and resources from whyisee.",
+      description:
+        "whyisee.xyz is a practical community for indie builders, AI tools, productivity workflows, project notes, resources, and honest build retrospectives.",
       newTopic: "New topic",
     }
   : {
       title: "最近笔记",
       eyebrow: "最近",
-      description: "whyisee 最近发布的笔记、讨论、项目和资源。",
+      description:
+        "whyisee.xyz 是面向独立开发者和 AI 工具使用者的实践社区，沉淀效率工作流、项目复盘、工具评测、资源分享和真实讨论。",
       newTopic: "新建话题",
     };
+const siteBase = Astro.site?.toString() || process.env.SITE_URL || "https://whyisee.xyz";
+const pageUrl = new URL(lang === "en" ? "/?lang=en" : "/", siteBase).toString();
+const seoLang = lang === "en" ? "en" : "zh-CN";
 ---
 
-<BaseLayout title={`${copy.title} - whyisee.xyz`} description={copy.description}>
+<BaseLayout
+  title={`${copy.title} - whyisee.xyz`}
+  description={copy.description}
+  structuredData={buildCollectionPageJsonLd({
+    name: copy.title,
+    description: copy.description,
+    url: pageUrl,
+    lang: seoLang,
+    topics,
+  })}
+>
   <ForumFrame categories={categories} tags={tags} featuredTopics={featuredTopics} lang={lang}>
     <div class="section-head">
       <div>

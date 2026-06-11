@@ -315,13 +315,13 @@ function buildNewTopicHref(url: URL, options: { type?: string } = {}) {
           data-user-menu-button
         >
           <span class="avatar-mark" aria-hidden="true">
-            {session.avatarUrl ? <img src={session.avatarUrl} alt="" /> : avatarInitial}
+            {session.avatarUrl ? <img src={session.avatarUrl} alt={`${session.displayName} avatar`} /> : avatarInitial}
           </span>
         </button>
         <div class="user-menu-panel" role="menu" data-user-menu-panel hidden>
           <div class="user-menu-head">
             <span class="user-menu-head-avatar" aria-hidden="true">
-              {session.avatarUrl ? <img src={session.avatarUrl} alt="" /> : avatarInitial}
+              {session.avatarUrl ? <img src={session.avatarUrl} alt={`${session.displayName} avatar`} /> : avatarInitial}
             </span>
             <div>
               <strong>{session.displayName}</strong>

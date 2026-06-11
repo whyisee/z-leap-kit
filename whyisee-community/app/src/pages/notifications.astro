@@ -251,7 +251,7 @@ function notificationKindHref(kind: string) {
             {notificationGroups.map((item) => (
               <a class:list={["inbox-person", item.key === selectedSourceKey && "is-active"]} href={sourceHref(item.key)}>
                 <span class:list={["inbox-avatar", !item.actorAvatarUrl && "is-system"]} aria-hidden="true">
-                  {item.actorAvatarUrl ? <img src={item.actorAvatarUrl} alt="" /> : initials(item.actorName)}
+                  {item.actorAvatarUrl ? <img src={item.actorAvatarUrl} alt={`${item.actorName} avatar`} /> : initials(item.actorName)}
                 </span>
                 <span class="inbox-person-main">
                   <strong>{item.key === "system" ? copy.system : item.actorName}</strong>
@@ -266,7 +266,7 @@ function notificationKindHref(kind: string) {
             {composeMode && (
               <a class="inbox-person is-active" href={`/notifications?tab=messages&to=${encodeURIComponent(composeRecipient)}`}>
                 <span class="inbox-avatar" aria-hidden="true">
-                  {composeUser?.avatarUrl ? <img src={composeUser.avatarUrl} alt="" /> : initials(composeDisplayName())}
+                  {composeUser?.avatarUrl ? <img src={composeUser.avatarUrl} alt={`${composeDisplayName()} avatar`} /> : initials(composeDisplayName())}
                 </span>
                 <span class="inbox-person-main">
                   <strong>{composeDisplayName()}</strong>
@@ -280,7 +280,7 @@ function notificationKindHref(kind: string) {
                 href={messageHref(item.id)}
               >
                 <span class="inbox-avatar" aria-hidden="true">
-                  {item.participantAvatarUrl ? <img src={item.participantAvatarUrl} alt="" /> : initials(item.participantName)}
+                  {item.participantAvatarUrl ? <img src={item.participantAvatarUrl} alt={`${item.participantName} avatar`} /> : initials(item.participantName)}
                 </span>
                 <span class="inbox-person-main">
                   <strong>{item.participantName}</strong>
@@ -319,7 +319,7 @@ function notificationKindHref(kind: string) {
                   <a class:list={["notification-row", "inbox-notification-row", !item.readAt && "is-unread"]} href={item.href}>
                     <span class:list={["inbox-avatar", !item.actorAvatarUrl && "is-system"]} aria-hidden="true">
                       {item.actorAvatarUrl
-                        ? <img src={item.actorAvatarUrl} alt="" />
+                        ? <img src={item.actorAvatarUrl} alt={`${item.actorName || copy.system} avatar`} />
                         : initials(item.actorName || copy.system)}
                     </span>
                     <div>
@@ -369,7 +369,7 @@ function notificationKindHref(kind: string) {
                   {messages.map((item) => (
                     <article class:list={["message-bubble-row", item.isMine && "is-mine"]}>
                       <span class="inbox-avatar" aria-hidden="true">
-                        {item.senderAvatarUrl ? <img src={item.senderAvatarUrl} alt="" /> : initials(item.senderName)}
+                        {item.senderAvatarUrl ? <img src={item.senderAvatarUrl} alt={`${item.senderName} avatar`} /> : initials(item.senderName)}
                       </span>
                       <div class="message-bubble">
                         <div class="message-meta">

@@ -5,6 +5,7 @@ import TopicCard from "@components/TopicCard.astro";
 import TopicListHeader from "@components/TopicListHeader.astro";
 import { getLangFromAstro, t } from "@lib/i18n";
 import { categoryPath } from "@lib/routes";
+import { buildCollectionPageJsonLd } from "@lib/seo";
 import { getCategoryBySlug, listCategories, listTags } from "@server/services/categories";
 import { listFeaturedTopics, listTopics } from "@server/services/topics";
 
@@ -113,9 +114,26 @@ function tagFilterHref(tagSlug = "") {
 
   return categoryFilterHref(category.slug, sort, tagSlug);
 }
+
+const siteBase = Astro.site?.toString() || process.env.SITE_URL || "https://whyisee.xyz";
+const pageUrl = category
+  ? new URL(lang === "en" ? `${categoryPath(category.slug)}?lang=en` : categoryPath(category.slug), siteBase).toString()
+  : `${Astro.url.origin}${Astro.url.pathname}`;
+const seoLang = lang === "en" ? "en" : "zh-CN";
 ---
 
-<BaseLayout title={`${category?.name ?? t(lang, "category.notFound")} - whyisee.xyz`} description={category?.description ?? t(lang, "category.notFound")}>
+<BaseLayout
+  title={`${category?.name ?? t(lang, "category.notFound")} - whyisee.xyz`}
+  description={category?.description ?? t(lang, "category.notFound")}
+  structuredData={category ? buildCollectionPageJsonLd({
+    name: `${category.name} - whyisee.xyz`,
+    description: category.description,
+    url: pageUrl,
+    lang: seoLang,
+    topics,
+    about: category,
+  }) : undefined}
+>
   {category ? (
     <ForumFrame
       categories={categories}

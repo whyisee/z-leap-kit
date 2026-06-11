@@ -60,7 +60,7 @@ const avatarInitial = (session.displayName || session.username).trim().slice(0, 
   <section class="article-page settings-page">
     <header class="settings-head">
       <span class="settings-avatar" aria-hidden="true">
-        {session.avatarUrl ? <img src={session.avatarUrl} alt="" /> : avatarInitial}
+        {session.avatarUrl ? <img src={session.avatarUrl} alt={`${session.displayName} avatar`} /> : avatarInitial}
       </span>
       <div>
         <h1>{session.displayName}</h1>

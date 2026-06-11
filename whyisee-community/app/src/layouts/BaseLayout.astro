@@ -7,17 +7,94 @@ import "@styles/global.css";
 interface Props {
   title?: string;
   description?: string;
+  canonicalUrl?: string | null;
+  image?: string;
+  noCanonical?: boolean;
+  ogType?: string;
+  robots?: string;
+  structuredData?: Record<string, unknown> | Array<Record<string, unknown>>;
 }
 
 const {
   title: providedTitle,
   description: providedDescription,
+  canonicalUrl: providedCanonicalUrl,
+  image: providedImage,
+  noCanonical = false,
+  ogType = "website",
+  robots,
+  structuredData,
 } = Astro.props;
 
 const lang = getLangFromAstro(Astro);
 const title = providedTitle || t(lang, "site.title");
 const description = providedDescription || t(lang, "site.description");
-const canonical = new URL(Astro.url.pathname, Astro.site || "https://whyisee.xyz").toString();
+const siteBase = new URL(Astro.site?.toString() || process.env.SITE_URL || "https://whyisee.xyz");
+const canonical = noCanonical
+  ? undefined
+  : toAbsoluteUrl(providedCanonicalUrl ?? localizedPath(Astro.url.pathname, lang === "en" ? "en" : "zh-CN"));
+const pageUrl = canonical || toAbsoluteUrl(`${Astro.url.pathname}${Astro.url.search}`);
+const defaultImage = toAbsoluteUrl("/og-image.png");
+const image = toAbsoluteUrl(providedImage || "/og-image.png");
+const alternateZh = toAbsoluteUrl(localizedPath(Astro.url.pathname, "zh-CN"));
+const alternateEn = toAbsoluteUrl(localizedPath(Astro.url.pathname, "en"));
+const jsonLd = buildJsonLd();
+
+function toAbsoluteUrl(value: string) {
+  return new URL(value, siteBase).toString();
+}
+
+function localizedPath(pathname: string, targetLang: "zh-CN" | "en") {
+  const url = new URL(pathname || "/", siteBase);
+
+  if (targetLang === "en") {
+    url.searchParams.set("lang", "en");
+  }
+
+  return `${url.pathname}${url.search}`;
+}
+
+function safeJsonLd(value: unknown) {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+function buildJsonLd() {
+  const items = [
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "whyisee.xyz",
+      url: toAbsoluteUrl("/"),
+      inLanguage: lang === "en" ? "en" : "zh-CN",
+      potentialAction: {
+        "@type": "SearchAction",
+        target: `${toAbsoluteUrl("/search")}?q={search_term_string}`,
+        "query-input": "required name=search_term_string",
+      },
+    },
+    canonical && {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "whyisee.xyz",
+          item: toAbsoluteUrl("/"),
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: title.replace(/\s+-\s+whyisee\.xyz$/i, ""),
+          item: canonical,
+        },
+      ],
+    },
+    ...(Array.isArray(structuredData) ? structuredData : structuredData ? [structuredData] : []),
+  ].filter(Boolean);
+
+  return items.length ? safeJsonLd(items) : "";
+}
 ---
 
 <!doctype html>
@@ -27,16 +104,33 @@ const canonical = new URL(Astro.url.pathname, Astro.site || "https://whyisee.xyz
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    {robots && <meta name="robots" content={robots} />}
     <meta name="theme-color" content="#10151d" />
     <link rel="icon" type="image/png" href="/icon.png" />
     <link rel="apple-touch-icon" href="/icon.png" />
-    <link rel="canonical" href={canonical} />
+    <link rel="preload" href="/icon.png" as="image" type="image/png" />
+    {canonical && <link rel="canonical" href={canonical} />}
+    {canonical && <link rel="alternate" hreflang="zh-CN" href={alternateZh} />}
+    {canonical && <link rel="alternate" hreflang="en" href={alternateEn} />}
+    {canonical && <link rel="alternate" hreflang="x-default" href={alternateZh} />}
     <link rel="alternate" type="text/markdown" title="whyisee AI Agent Skill" href="/api/agent/skill.md" />
     <meta name="ai-agent-skill" content="/agent-skill" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content={canonical} />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:url" content={pageUrl} />
+    <meta property="og:site_name" content="whyisee.xyz" />
+    <meta property="og:locale" content={lang === "en" ? "en_US" : "zh_CN"} />
+    <meta property="og:image" content={image} />
+    <meta property="og:image:secure_url" content={image} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={title} />
+    <meta name="twitter:card" content={image === defaultImage ? "summary_large_image" : "summary_large_image"} />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={image} />
+    {jsonLd && <script is:inline type="application/ld+json" set:html={jsonLd}></script>}
     <style is:inline>
       html,
       body {

@@ -209,12 +209,14 @@ main {
   gap: 14px;
 }
 
-.footer-links a {
+.footer-links a,
+.site-footer > a {
   color: var(--muted);
   font-weight: 760;
 }
 
-.footer-links a:hover {
+.footer-links a:hover,
+.site-footer > a:hover {
   color: var(--blue);
 }
 
