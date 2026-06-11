@@ -4,11 +4,11 @@ import BaseLayout from "@layouts/BaseLayout.astro";
 import { getSessionFromAstro, isAdmin } from "@lib/auth";
 import { getAgentAcademyData } from "@server/services/tasks";
 import { publicSkillName } from "@server/services/skillPack";
-import { normalizeSkillSlug, readAgentSkillRecord, skillStatusLabel } from "@server/services/agentSkillLibrary";
+import { normalizeSkillRouteParam, readAgentSkillRecord, skillStatusLabel } from "@server/services/agentSkillLibrary";
 
 export const prerender = false;
 
-const slug = normalizeSkillSlug(Astro.params.slug || "");
+const slug = normalizeSkillRouteParam(Astro.params.slug || "");
 const session = await getSessionFromAstro(Astro);
 const canManageSkills = isAdmin(session);
 
@@ -37,7 +37,6 @@ const entryFile = files.find((file) => file.path === skillRecord?.entrypoint) ||
 const preview = entryFile?.content ? entryFile.content.slice(0, 4800) : "";
 const saved = Astro.url.searchParams.get("saved") === "1";
 const error = Astro.url.searchParams.get("error") === "1";
-const canUpdateThisSkill = canManageSkills && slug !== publicSkillName;
 const stats = [
   { label: "状态", value: statusLabel },
   { label: "任务", value: String(academySkill?.taskCount || 0) },
@@ -138,6 +137,14 @@ const stats = [
               <strong>{slug}</strong>
             </div>
             <div>
+              <span>目录</span>
+              <strong>{skillRecord?.packageKey && skillRecord?.ownerUsername ? `${skillRecord.packageKey}@${skillRecord.ownerUsername}` : "-"}</strong>
+            </div>
+            <div>
+              <span>版本</span>
+              <strong>{skillRecord?.version || "-"}</strong>
+            </div>
+            <div>
               <span>入口</span>
               <strong>{skillRecord?.entrypoint || "-"}</strong>
             </div>
@@ -184,58 +191,6 @@ const stats = [
             <div class="agent-zone-empty compact">暂无关联任务。</div>
           )}
         </section>
-
-        {canUpdateThisSkill && (
-          <section id="skill-update">
-            <p class="eyebrow">Update</p>
-            <h2>更新 Skill</h2>
-            <form class="agent-skill-form compact" method="post" action={`/api/agent-zone/skills/${encodeURIComponent(slug)}`} enctype="multipart/form-data">
-              <input type="hidden" name="redirect" value={`/agent-zone/academy/skills/${slug}`} />
-              <input type="hidden" name="errorRedirect" value={`/agent-zone/academy/skills/${slug}#skill-update`} />
-              <label>
-                <span>名称</span>
-                <input name="name" type="text" value={skillName} required />
-              </label>
-              <label>
-                <span>标识</span>
-                <input name="slug" type="text" value={slug} readonly />
-              </label>
-              <label>
-                <span>版本</span>
-                <input name="version" type="text" value={skillRecord?.version || ""} />
-              </label>
-              <label>
-                <span>状态</span>
-                <select name="status">
-                  <option value="pending_review" selected={skillRecord?.status !== "draft" && skillRecord?.status !== "deprecated"}>提交审核</option>
-                  <option value="draft" selected={skillRecord?.status === "draft"}>草稿</option>
-                  <option value="deprecated" selected={skillRecord?.status === "deprecated"}>已废弃</option>
-                </select>
-              </label>
-              <label>
-                <span>入口文件</span>
-                <input name="entrypoint" type="text" value={skillRecord?.entrypoint || "SKILL.md"} />
-              </label>
-              <label>
-                <span>简介</span>
-                <input name="summary" type="text" value={skillSummary} />
-              </label>
-              <label>
-                <span>说明</span>
-                <textarea name="description" rows="4">{skillDescription}</textarea>
-              </label>
-              <label>
-                <span>上传新版</span>
-                <input name="skillFile" type="file" accept=".md,.json,text/markdown,application/json" />
-              </label>
-              <label>
-                <span>新版内容</span>
-                <textarea name="content" rows="8" placeholder="留空则保留现有文件；粘贴 SKILL.md 或 skill.json 会替换文件"></textarea>
-              </label>
-              <button class="button primary" type="submit">保存更新</button>
-            </form>
-          </section>
-        )}
 
         {canManageSkills && skillRecord && slug !== publicSkillName && (
           <section>

@@ -8,7 +8,7 @@
   "attachments": [],
   "source": {
     "runId": "run_20260608_001",
-    "skillVersion": "whyisee-content-agent@0.2.0",
+    "skillVersion": "whyisee-content-agent@0.3.0",
     "model": "external-agent-model",
     "tools": ["search", "reader"],
     "inputUrls": ["https://example.com/source"]

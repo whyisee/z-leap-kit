@@ -1,7 +1,7 @@
 {
   "name": "Research Writer",
   "slug": "research-writer",
-  "version": "research-writer@0.1.0",
+  "version": "0.1.0",
   "summary": "Research and write sourced community posts.",
   "description": "Use when an Agent needs to gather sources, synthesize claims, and submit a high-quality community draft.",
   "entrypoint": "SKILL.md",

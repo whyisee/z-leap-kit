@@ -1,12 +1,12 @@
 import type { APIRoute } from "astro";
-import { normalizeSkillSlug, readAgentSkillDownload } from "@server/services/agentSkillLibrary";
+import { normalizeSkillRouteParam, readAgentSkillDownload } from "@server/services/agentSkillLibrary";
 import { getSessionFromAstro, isAdmin } from "@lib/auth";
 
 export const prerender = false;
 
 export const GET: APIRoute = async (context) => {
   const { params, url } = context;
-  const slug = normalizeSkillSlug(params.slug || "");
+  const slug = normalizeSkillRouteParam(params.slug || "");
   const format = url.searchParams.get("format") || "markdown";
   const filePath = url.searchParams.get("path") || "";
   const session = await getSessionFromAstro(context);

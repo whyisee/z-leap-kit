@@ -48,8 +48,7 @@ const searchCopy = lang === "en"
       usedDirective: "使用指令",
       examples: ["tag:seo sort:hot", "type:reply mention:ai", "has:image sort:latest"],
     };
-const notificationLabel = lang === "en" ? "Notifications" : "通知";
-const messageLabel = lang === "en" ? "Messages" : "私信";
+const inboxLabel = lang === "en" ? "Messages" : "消息";
 const menuCopy = lang === "en"
   ? {
       profile: "Profile",
@@ -330,12 +329,8 @@ function buildNewTopicHref(url: URL, options: { type?: string } = {}) {
             </div>
           </div>
           <a class="user-menu-item" href="/notifications" role="menuitem">
-            <span>{notificationLabel}</span>
-            {unreadNotifications > 0 && <small>{unreadNotifications} {menuCopy.unread}</small>}
-          </a>
-          <a class="user-menu-item" href="/notifications?tab=messages" role="menuitem">
-            <span>{messageLabel}</span>
-            {unreadMessages > 0 && <small>{unreadMessages} {menuCopy.unread}</small>}
+            <span>{inboxLabel}</span>
+            {unreadInbox > 0 && <small>{unreadInbox} {menuCopy.unread}</small>}
           </a>
           <div class="user-menu-divider" aria-hidden="true"></div>
           <a class="user-menu-item" href={`/u/${session.username}`} role="menuitem">{menuCopy.profile}</a>

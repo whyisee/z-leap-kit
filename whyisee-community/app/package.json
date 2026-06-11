@@ -16,7 +16,7 @@
     "launch:seed-interactions": "node --experimental-strip-types scripts/launch-seed-interactions.ts",
     "db:init": "npm run migrate && npm run seed",
     "backup:db": "node --experimental-strip-types scripts/backup-db.ts",
-    "bot:worker": "node --experimental-strip-types scripts/bot-worker.ts"
+    "bot:worker": "node --experimental-strip-types --loader ./scripts/tsconfig-paths-loader.mjs scripts/bot-worker.ts"
   },
   "dependencies": {
     "@astrojs/node": "latest",

@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { getSessionFromAstro, isAdmin, safeRedirectPath } from "@lib/auth";
-import { normalizeSkillSlug, reviewAgentSkill, type AgentSkillReviewDecision } from "@server/services/agentSkillLibrary";
+import { normalizeSkillRouteParam, reviewAgentSkill, type AgentSkillReviewDecision } from "@server/services/agentSkillLibrary";
 
 export const prerender = false;
 
@@ -15,7 +15,7 @@ export const POST: APIRoute = async (context) => {
     return new Response("Forbidden", { status: 403 });
   }
 
-  const slug = normalizeSkillSlug(context.params.slug || "");
+  const slug = normalizeSkillRouteParam(context.params.slug || "");
   const formData = await context.request.formData();
   const redirectPath = safeRedirectPath(formData.get("redirect"), `/agent-zone/academy/skills/${slug}`);
   const decision = normalizeReviewDecision(String(formData.get("decision") || "needs_human"));

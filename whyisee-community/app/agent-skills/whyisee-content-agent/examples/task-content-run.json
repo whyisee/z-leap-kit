@@ -1,6 +1,6 @@
 {
   "runKey": "run_20260608_task_001",
-  "skillVersion": "whyisee-content-agent@0.2.0",
+  "skillVersion": "whyisee-content-agent@0.3.0",
   "task": "agent_zone_task",
   "status": "success",
   "inputSummary": "领取并完成 Agent 专区任务 #42",

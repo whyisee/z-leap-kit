@@ -12,6 +12,7 @@ import {
   type DirectConversationSummary,
 } from "@server/services/messages";
 import { listNotificationGroups, listNotifications } from "@server/services/notifications";
+import { getUserByUsername, type PublicUser } from "@server/services/users";
 
 export const prerender = false;
 
@@ -34,12 +35,11 @@ const copy = lang === "en"
       markRead: "Mark all read",
       emptyNotifications: "No notifications yet.",
       emptyMessages: "No private messages yet.",
-      newMessage: "New message",
       recipient: "Username",
       messagePlaceholder: "Write a private message...",
       send: "Send",
       reply: "Reply",
-      openConversation: "Open a conversation from the left, or start a new private message.",
+      openConversation: "Open a conversation from the left.",
       sendError: "Message failed. Check the username and content.",
       me: "Me",
       fromSystem: "System notification",
@@ -49,7 +49,8 @@ const copy = lang === "en"
       mentions: "Mentions",
       likes: "Likes",
       settings: "Settings",
-      chatEmpty: "Pick a conversation or start a new message.",
+      chatEmpty: "Write your message below.",
+      emptyMessagesPanel: "Find someone to chat with ( ゜- ゜)つロ",
       recipientPlaceholder: "Search username",
       composerHint: "Enter your message",
     }
@@ -64,12 +65,11 @@ const copy = lang === "en"
       markRead: "全部标记已读",
       emptyNotifications: "暂无通知。",
       emptyMessages: "暂无私信。",
-      newMessage: "新私信",
       recipient: "用户名",
       messagePlaceholder: "写一条私信...",
       send: "发送",
       reply: "回复",
-      openConversation: "从左侧打开一个会话，或者发起一条新私信。",
+      openConversation: "从左侧打开一个会话。",
       sendError: "私信发送失败，请检查用户名和内容。",
       me: "我",
       fromSystem: "系统通知",
@@ -79,7 +79,8 @@ const copy = lang === "en"
       mentions: "@ 我的",
       likes: "收到的赞",
       settings: "消息设置",
-      chatEmpty: "选择一个会话，或者发起一条新私信。",
+      chatEmpty: "在下方输入内容开始聊天。",
+      emptyMessagesPanel: "快找小伙伴聊天吧 ( ゜- ゜)つロ",
       recipientPlaceholder: "搜索用户名",
       composerHint: "请输入消息内容",
     };
@@ -126,11 +127,21 @@ let selectedConversationId = Number(Astro.url.searchParams.get("conversation") |
 let selectedConversation: DirectConversationSummary | undefined;
 let messages = [] as DirectMessageItem[];
 const composeRecipient = String(Astro.url.searchParams.get("to") || "").trim().replace(/^@/, "");
-const composeMode = activeTab === "messages" && (Astro.url.searchParams.get("compose") === "1" || Boolean(composeRecipient));
+let composeMode = activeTab === "messages" && Boolean(composeRecipient);
+let composeUser: PublicUser | undefined;
 const sendError = activeTab === "messages" && Astro.url.searchParams.get("error") === "send";
 
 if (activeTab === "messages") {
   const initialConversations = await listDirectConversations(session.userId, 80);
+  composeUser = composeMode ? await getUserByUsername(composeRecipient) : undefined;
+  const existingComposeConversation = composeMode
+    ? initialConversations.find((item) => item.participantUsername.toLowerCase() === composeRecipient.toLowerCase())
+    : undefined;
+
+  if (!selectedConversationId && existingComposeConversation) {
+    selectedConversationId = existingComposeConversation.id;
+    composeMode = false;
+  }
 
   if (!selectedConversationId && !composeMode && initialConversations[0]) {
     selectedConversationId = initialConversations[0].id;
@@ -159,6 +170,14 @@ const activeNotificationTitle = selectedSourceKey === "all"
 
 function initials(value: string) {
   return value.trim().slice(0, 1).toUpperCase() || "W";
+}
+
+function composeDisplayName() {
+  return composeUser?.displayName || composeRecipient || copy.messages;
+}
+
+function composeUsername() {
+  return composeUser?.username || composeRecipient;
 }
 
 function sourceHref(source: string) {
@@ -218,12 +237,6 @@ function notificationKindHref(kind: string) {
       <section class="inbox-people" aria-label={activeTab === "messages" ? copy.recentMessages : copy.notifications}>
         <div class="inbox-list-head">
           <strong>{activeTab === "messages" ? copy.recentMessages : activeNotificationTitle}</strong>
-          {activeTab === "messages" && (
-            <a class:list={["inbox-new-message", composeMode && "is-active"]} href="/notifications?tab=messages&compose=1" title={copy.newMessage}>
-              <span aria-hidden="true">＋</span>
-              {copy.newMessage}
-            </a>
-          )}
         </div>
 
         {activeTab === "notifications" ? (
@@ -251,11 +264,13 @@ function notificationKindHref(kind: string) {
         ) : (
           <div class="inbox-person-list">
             {composeMode && (
-              <a class="inbox-person is-active" href="/notifications?tab=messages&compose=1">
-                <span class="inbox-avatar is-system" aria-hidden="true">＋</span>
+              <a class="inbox-person is-active" href={`/notifications?tab=messages&to=${encodeURIComponent(composeRecipient)}`}>
+                <span class="inbox-avatar" aria-hidden="true">
+                  {composeUser?.avatarUrl ? <img src={composeUser.avatarUrl} alt="" /> : initials(composeDisplayName())}
+                </span>
                 <span class="inbox-person-main">
-                  <strong>{copy.newMessage}</strong>
-                  <small>{composeRecipient ? `@${composeRecipient}` : copy.recipientPlaceholder}</small>
+                  <strong>{composeDisplayName()}</strong>
+                  <small>{composeUsername() || copy.recipientPlaceholder}</small>
                 </span>
               </a>
             )}
@@ -327,7 +342,7 @@ function notificationKindHref(kind: string) {
             <header class="inbox-content-head message-chat-head">
               <div>
                 <p class="eyebrow">{copy.messages}</p>
-                <h2>{composeMode ? copy.newMessage : selectedConversation?.participantName || copy.messages}</h2>
+                <h2>{composeMode ? composeDisplayName() : selectedConversation?.participantName || copy.messages}</h2>
               </div>
             </header>
 
@@ -335,15 +350,12 @@ function notificationKindHref(kind: string) {
 
             {composeMode ? (
               <form class="message-compose-card message-thread" method="post" action="/api/messages/send">
-                <input type="hidden" name="redirect" value="/notifications?tab=messages&compose=1" />
+                <input type="hidden" name="redirect" value={`/notifications?tab=messages&to=${encodeURIComponent(composeRecipient)}`} />
+                <input type="hidden" name="recipient" value={composeRecipient} />
                 <div class="message-list message-list-empty">
                   <p>{copy.chatEmpty}</p>
                 </div>
                 <div class="message-composer">
-                  <label class="message-recipient-field">
-                    <span>@</span>
-                    <input name="recipient" value={composeRecipient} placeholder={copy.recipientPlaceholder} autocomplete="off" required />
-                  </label>
                   <textarea name="body" rows="3" placeholder={copy.messagePlaceholder} required></textarea>
                   <div class="message-composer-foot">
                     <span>{copy.composerHint}</span>
@@ -385,8 +397,7 @@ function notificationKindHref(kind: string) {
               <p class="auth-message muted">{copy.openConversation}</p>
             ) : (
               <div class="message-empty-state">
-                <p class="auth-message muted">{copy.emptyMessages}</p>
-                <a class="button primary" href="/notifications?tab=messages&compose=1">{copy.newMessage}</a>
+                <p class="auth-message muted">{copy.emptyMessagesPanel}</p>
               </div>
             )}
           </>

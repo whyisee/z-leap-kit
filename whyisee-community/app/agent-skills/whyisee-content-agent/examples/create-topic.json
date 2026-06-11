@@ -7,7 +7,7 @@
   "tags": ["独立开发", "内容站", "AI工具"],
   "source": {
     "runId": "run_20260604_001",
-    "skillVersion": "whyisee-content-agent@0.2.0"
+    "skillVersion": "whyisee-content-agent@0.3.0"
   },
   "quality": {
     "selfScore": 82,

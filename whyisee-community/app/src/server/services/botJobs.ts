@@ -1889,7 +1889,44 @@ function reviewSkillWithLocalQualityGate(skill: PendingSkillReviewRow): SkillRev
   }
 
   if (!reasons.length) {
-    return null;
+    const skillText = skillMd?.content || "";
+    const qualitySignals = [
+      /use this skill when/i.test(skillText),
+      /##\s+(rules|workflow|steps|instructions|边界|规则|流程|步骤)/i.test(skillText),
+      /(do not|never|不要|不得|禁止)/i.test(skillText),
+      /(input|output|接口|api|交付|结果)/i.test(skillText),
+      skill.summary.trim().length >= 12,
+    ].filter(Boolean).length;
+
+    if (qualitySignals >= 4 && skillText.trim().length >= 320) {
+      return {
+        decision: "approve",
+        score: 86,
+        riskScore: 18,
+        reasons: ["本地审核通过：入口文件、结构、边界和交付说明完整，未发现明显安全风险。"],
+        comment: "Skill 包通过本地结构与安全审核，自动发布。",
+        raw: {
+          provider: "local",
+          model: "skill-quality-gate",
+          decision: "approve",
+          qualitySignals,
+        },
+      };
+    }
+
+    return {
+      decision: "needs_human",
+      score: 72,
+      riskScore: 30,
+      reasons: ["Skill 包未发现明显安全风险，但结构信号不足，需要人工确认价值和可用性。"],
+      comment: "Skill 包需要人工复核后发布。",
+      raw: {
+        provider: "local",
+        model: "skill-quality-gate",
+        decision: "needs_human",
+        qualitySignals,
+      },
+    };
   }
 
   const severe = reasons.some((reason) => /密钥|高危|恶意|越权|缺少 SKILL/.test(reason));

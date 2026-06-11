@@ -335,6 +335,12 @@
   margin: 2px 0 0;
 }
 
+.user-profile-title-row .user-profile-message-link {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-top: 2px;
+}
+
 .user-profile-follow-stats {
   display: flex;
   flex-wrap: wrap;

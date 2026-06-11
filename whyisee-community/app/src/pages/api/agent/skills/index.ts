@@ -6,6 +6,8 @@ import {
   listUploadedAgentSkills,
   listDownloadableAgentSkills,
   normalizeSkillSlug,
+  parseAgentSkillUpload,
+  parseAgentSkillUploadFile,
   parseAgentSkillUploadObject,
   upsertUploadedAgentSkill,
   type AgentSkillRecord,
@@ -34,23 +36,22 @@ export const GET: APIRoute = async (context) =>
 export const POST: APIRoute = async (context) =>
   withAgent(context.request, async (agent) => {
     requireAgentScope(agent, "skill:submit");
-    const body = await readJsonBody(context.request);
-    const parsed = parseAgentSkillUploadObject(body, String(body.entrypoint || "SKILL.md"));
-    const name = readString(body.name) || parsed.name || "";
+    const body = await readSkillRequest(context.request);
+    const name = readString(body.fields.name) || body.parsed.name || "";
 
     if (!name) {
       throw new AgentApiError(400, "skill_name_required", "Skill name is required.");
     }
 
     const slug = await upsertUploadedAgentSkill({
-      slug: readString(body.slug) || normalizeSkillSlug(name),
+      slug: readString(body.fields.slug) || normalizeSkillSlug(name),
       name,
-      summary: readString(body.summary),
-      description: readString(body.description),
-      version: readString(body.version) || parsed.version || "",
+      summary: readString(body.fields.summary),
+      description: readString(body.fields.description),
+      version: readString(body.fields.version) || body.parsed.version || "",
       status: "pending_review",
-      entrypoint: parsed.entrypoint || readString(body.entrypoint) || "SKILL.md",
-      files: parsed.files,
+      entrypoint: body.parsed.entrypoint || readString(body.fields.entrypoint) || "SKILL.md",
+      files: body.parsed.files,
       createdById: agent.userId,
       submittedByAgentId: agent.agentProfileId,
     });
@@ -70,6 +71,8 @@ export const POST: APIRoute = async (context) =>
 function serializeSkillSummary(skill: AgentSkillRecord) {
   return {
     slug: skill.slug,
+    packageKey: skill.packageKey,
+    ownerUsername: skill.ownerUsername,
     name: skill.name,
     summary: skill.summary,
     version: skill.version,
@@ -87,9 +90,37 @@ function serializeSkillSummary(skill: AgentSkillRecord) {
   };
 }
 
-async function readJsonBody(request: Request) {
+async function readSkillRequest(request: Request) {
+  const contentType = request.headers.get("content-type") || "";
+
+  if (contentType.includes("multipart/form-data")) {
+    const formData = await request.formData();
+    const entrypoint = readString(formData.get("entrypoint")) || "SKILL.md";
+    const uploaded = readFile(formData.get("skillFile")) || readFile(formData.get("file")) || readFile(formData.get("zip"));
+    const pastedContent = readString(formData.get("content"));
+    const parsed = uploaded
+      ? await parseAgentSkillUploadFile(uploaded, entrypoint)
+      : parseAgentSkillUpload(pastedContent, entrypoint);
+
+    return {
+      fields: {
+        name: formData.get("name"),
+        slug: formData.get("slug"),
+        summary: formData.get("summary"),
+        description: formData.get("description"),
+        version: formData.get("version"),
+        entrypoint: formData.get("entrypoint"),
+      },
+      parsed,
+    };
+  }
+
   try {
-    return (await request.json()) as Record<string, unknown>;
+    const body = (await request.json()) as Record<string, unknown>;
+    return {
+      fields: body,
+      parsed: parseAgentSkillUploadObject(body, String(body.entrypoint || "SKILL.md")),
+    };
   } catch {
     throw new AgentApiError(400, "invalid_json", "Request body must be JSON.");
   }
@@ -97,4 +128,9 @@ async function readJsonBody(request: Request) {
 
 function readString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readFile(value: FormDataEntryValue | null) {
+  if (!value || typeof value === "string") return null;
+  return value.size > 0 ? value : null;
 }

@@ -505,22 +505,6 @@ main > .admin-page.inbox-page > .inbox-shell {
   background: rgba(255, 255, 255, 0.035);
 }
 
-.message-recipient-field {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 9px;
-  min-height: 38px;
-  border: 1px solid rgba(255, 255, 255, 0.095);
-  border-radius: 10px;
-  padding: 0 12px;
-  background: rgba(0, 0, 0, 0.16);
-  color: var(--blue);
-  font-size: 14px;
-  font-weight: 950;
-}
-
-.message-recipient-field input,
 .message-composer textarea {
   width: 100%;
   border: 0;
@@ -549,9 +533,20 @@ main > .admin-page.inbox-page > .inbox-shell {
 
 .message-empty-state {
   display: grid;
-  justify-items: start;
-  gap: 12px;
+  align-self: stretch;
+  place-items: center;
+  min-height: 0;
   padding: 22px;
+  text-align: center;
+}
+
+.message-empty-state .auth-message {
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 900;
 }
 
 .search-page-form,

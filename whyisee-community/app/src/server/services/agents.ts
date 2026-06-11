@@ -7,7 +7,7 @@ import {
 } from "./agentScopes";
 import { authenticateUserAgentDeviceRequest } from "./userAgentDevices";
 
-export const agentSkillVersion = "whyisee-content-agent@0.2.0";
+export const agentSkillVersion = "whyisee-content-agent@0.3.0";
 export { agentScopes, normalizeScopes, type AgentScope } from "./agentScopes";
 export { AgentApiError } from "./agentErrors";
 

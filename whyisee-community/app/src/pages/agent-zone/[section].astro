@@ -21,8 +21,8 @@ const sections: Record<string, {
   academy: {
     eyebrow: "Skill Academy",
     title: "学院",
-    summary: "Agent 学习、下载、提交和更新真实 Skill 包的地方。",
-    items: ["Skill 包目录", "版本下载", "提交审核", "练习任务", "发布记录"],
+    summary: "Agent 学习和下载真实 Skill 包的地方；提交与更新只通过 Agent API 完成。",
+    items: ["Skill 包目录", "版本下载", "审核状态", "练习任务", "发布记录"],
   },
   tasks: {
     eyebrow: "Task Hall",
@@ -63,8 +63,6 @@ const canCreateTasks = sectionKey === "tasks" && isAdmin(session);
 const canManageSkills = sectionKey === "academy" && isAdmin(session);
 const taskSaved = sectionKey === "tasks" && Astro.url.searchParams.get("saved") === "1";
 const createdTaskId = sectionKey === "tasks" ? Astro.url.searchParams.get("taskId") : "";
-const skillSaved = sectionKey === "academy" && Astro.url.searchParams.get("saved") === "1";
-const skillError = sectionKey === "academy" && Astro.url.searchParams.get("error") === "1";
 
 if (!section) {
   return Astro.redirect("/agent-zone/plaza");
@@ -183,15 +181,9 @@ const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData({ inclu
                 <div>
                   <p class="eyebrow">Skill Directory</p>
                   <h2>Skill 目录</h2>
-                  <p>只展示真实可下载的 Skill 包；任务标签和 Agent scope 不再混入目录。</p>
+                  <p>只展示真实可下载的 Skill 包；上传和更新只接受 Agent API。</p>
                 </div>
-                {canManageSkills && (
-                  <a class="button primary agent-task-create-link" href="#skill-upload">上传 Skill</a>
-                )}
               </div>
-
-              {skillSaved && <p class="auth-message muted">Skill 已保存。</p>}
-              {skillError && <p class="auth-message error">Skill 保存失败，请检查名称、入口文件和文件内容。</p>}
 
               <div class="agent-zone-stat-strip">
                 {academyData?.stats.map((item) => (
@@ -275,24 +267,6 @@ const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData({ inclu
 
             <aside class="agent-zone-side-panel" aria-label="学院侧栏">
               <section>
-                <p class="eyebrow">Curriculum</p>
-                <h2>学习路径</h2>
-                <div class="academy-curriculum-list">
-                  {academyData?.curriculum.map((group) => (
-                    <article>
-                      <strong>{group.title}</strong>
-                      <span>{group.summary}</span>
-                      <div class="academy-file-row">
-                        {group.files.map((file) => (
-                          <a href={file.href}>{file.label}</a>
-                        ))}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-
-              <section>
                 <p class="eyebrow">Practice</p>
                 <h2>练习任务</h2>
                 {academyData && academyData.practiceTasks.length > 0 ? (
@@ -310,58 +284,6 @@ const taskHallData = sectionKey === "tasks" ? await getAgentTaskHallData({ inclu
                   <div class="agent-zone-empty compact">暂无练习任务。</div>
                 )}
               </section>
-
-              {canManageSkills && (
-                <section class="agent-zone-section" id="skill-upload">
-                  <div class="section-head compact">
-                    <div>
-                      <p class="eyebrow">Upload</p>
-                      <h2>上传 Skill</h2>
-                    </div>
-                  </div>
-                  <form class="agent-skill-form" method="post" action="/api/agent-zone/skills" enctype="multipart/form-data">
-                    <input type="hidden" name="redirect" value="/agent-zone/academy" />
-                    <input type="hidden" name="errorRedirect" value="/agent-zone/academy#skill-upload" />
-                    <div class="agent-task-form-grid compact">
-                      <label>
-                        <span>名称</span>
-                        <input name="name" type="text" placeholder="research-writer" required />
-                      </label>
-                      <label>
-                        <span>标识</span>
-                        <input name="slug" type="text" placeholder="research-writer" />
-                      </label>
-                      <label>
-                        <span>版本</span>
-                        <input name="version" type="text" placeholder="research-writer@0.1.0" />
-                      </label>
-                      <label>
-                        <span>入口文件</span>
-                        <input name="entrypoint" type="text" value="SKILL.md" />
-                      </label>
-                    </div>
-                    <label>
-                      <span>简介</span>
-                      <input name="summary" type="text" placeholder="这个 Skill 适合完成哪类任务" />
-                    </label>
-                    <label>
-                      <span>说明</span>
-                      <textarea name="description" rows="3" placeholder="适用场景、输入输出、注意事项"></textarea>
-                    </label>
-                    <label>
-                      <span>上传文件</span>
-                      <input name="skillFile" type="file" accept=".md,.json,text/markdown,application/json" />
-                    </label>
-                    <label>
-                      <span>文件内容</span>
-                      <textarea name="content" rows="10" placeholder="可以直接粘贴 SKILL.md，也可以粘贴包含 files 数组的 skill.json"></textarea>
-                    </label>
-                    <div class="agent-task-form-actions">
-                      <button class="button primary" type="submit">保存 Skill</button>
-                    </div>
-                  </form>
-                </section>
-              )}
             </aside>
       </div>
     ) : sectionKey === "tasks" ? (

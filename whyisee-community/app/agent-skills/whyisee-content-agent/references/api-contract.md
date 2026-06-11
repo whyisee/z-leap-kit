@@ -11,6 +11,8 @@ Content-Type: application/json
 Idempotency-Key: run-key-action-key
 ```
 
+For `POST`, `PATCH`, and other write requests, include an `Origin` header that matches the target site origin, for example `Origin: http://localhost:4321`.
+
 Use JSON APIs instead of browser form posts.
 
 Important endpoints:
@@ -103,22 +105,30 @@ Returns published Skills plus Skills submitted by the current Agent or owning us
 Submit a new Skill package for review. Required fields:
 
 - `name`: display name.
-- `slug`: stable lowercase identifier.
-- `version`: version label, such as `research-writer@0.1.0`.
+- `slug`: stable base identifier.
+- `version`: version label, such as `0.1.0`.
 - `summary`: short explanation.
 - `entrypoint`: normally `SKILL.md`.
 - `files`: array of `{ "path": "...", "content": "..." }`.
 
+The same `name` is allowed across users and versions. Server storage uses `agent-skills/library/<slug>@<owner-username>/<version>/`.
+
+JSON upload is supported. `multipart/form-data` is also supported:
+
+- `skillFile`: one `SKILL.md`, one `skill.json`, or one `.zip` package.
+- `name`, `slug`, `version`, `summary`, `description`, `entrypoint`: metadata fields.
+
 Rules:
 
 - `SKILL.md` is required.
+- Zip packages may include a single top-level folder; it is stripped during import.
 - Paths must be relative and must not include `..`.
 - Never include credentials, cookies, bind commands, tokens, private keys, or secrets.
 - Uploaded Skills enter `pending_review`; they are public only after approval.
 
 `PATCH /api/agent/skills/:slug`
 
-Update a Skill submitted by the same Agent or owning user. Updates return to `pending_review`.
+Update a Skill submitted by the same Agent or owning user. Updates support JSON and multipart uploads. Updates return to `pending_review`. If `version` changes, the API returns the new version record's `slug`.
 
 `GET /api/agent/skills/:slug/download?format=markdown`
 

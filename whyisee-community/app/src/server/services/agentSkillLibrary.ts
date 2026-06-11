@@ -1,5 +1,6 @@
 import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
+import { inflateRawSync } from "node:zlib";
 import type { PoolClient } from "pg";
 import { query, queryOne, withTransaction } from "@server/db/client";
 import {
@@ -22,6 +23,8 @@ export interface AgentSkillFile {
 export interface AgentSkillRecord {
   id: number | null;
   slug: string;
+  packageKey: string;
+  ownerUsername: string;
   name: string;
   summary: string;
   description: string;
@@ -68,6 +71,8 @@ export interface AgentSkillUpsertInput {
 interface AgentSkillRow {
   id: number;
   slug: string;
+  package_key: string;
+  owner_username: string;
   name: string;
   summary: string;
   description: string;
@@ -108,6 +113,7 @@ export interface AgentSkillReviewInput {
 
 const maxSkillFileBytes = 700_000;
 const maxSkillFileCount = 40;
+const defaultSkillVersion = "0.1.0";
 
 export async function listUploadedAgentSkills(options: AgentSkillListOptions = {}): Promise<AgentSkillRecord[]> {
   const limit = Math.max(1, Math.min(Number(options.limit || 200), 500));
@@ -168,7 +174,7 @@ export async function readAgentSkillRecord(
   slug: string,
   options: { includeUnpublished?: boolean; ownerUserId?: number; submittedByAgentId?: number } = {},
 ): Promise<AgentSkillRecord | null> {
-  const normalizedSlug = normalizeSkillSlug(slug);
+  const normalizedSlug = normalizeSkillRecordKey(slug);
 
   if (normalizedSlug === publicSkillName) {
     return readCoreAgentSkillRecord();
@@ -203,15 +209,22 @@ export async function readAgentSkillRecord(
 
 export async function upsertUploadedAgentSkill(input: AgentSkillUpsertInput) {
   const now = new Date().toISOString();
-  const slug = normalizeSkillSlug(input.slug || input.name);
+  const packageKey = normalizeSkillSlug(input.slug || input.name);
+  const ownerUsername = await resolveSkillOwnerUsername(input.createdById);
+  const version = normalizeSkillVersion(input.version || "");
+  const slug = buildSkillRecordSlug(packageKey, ownerUsername, version);
   const existing = await readAgentSkillRecord(slug, { includeUnpublished: true });
 
-  if (!slug || slug === publicSkillName) {
+  if (!packageKey || packageKey === publicSkillName) {
     throw new Error("Skill slug is invalid.");
   }
 
   if (!input.name.trim()) {
     throw new Error("Skill name is required.");
+  }
+
+  if (!version) {
+    throw new Error("Skill version is required.");
   }
 
   const existingFiles = existing?.sourceType === "uploaded" ? existing.files : [];
@@ -225,7 +238,7 @@ export async function upsertUploadedAgentSkill(input: AgentSkillUpsertInput) {
     throw new Error("Skill entrypoint must exist in files.");
   }
 
-  const storagePath = skillStoragePath(slug);
+  const storagePath = skillStoragePath(packageKey, ownerUsername, version);
   await writeSkillFilesToStorage(storagePath, files);
 
   const requestedStatus = normalizeSkillStatus(input.status || "pending_review");
@@ -235,16 +248,18 @@ export async function upsertUploadedAgentSkill(input: AgentSkillUpsertInput) {
     await client.query(
       `
       INSERT INTO agent_skills (
-        slug, name, summary, description, version, status, source_type, entrypoint,
+        slug, package_key, owner_username, name, summary, description, version, status, source_type, entrypoint,
         storage_path, files_json, created_by_id, submitted_by_agent_id,
         review_score, review_comment, review_reasons_json, reviewed_by_type, reviewed_by_id,
         reviewed_at, published_at, created_at, updated_at
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6, 'uploaded', $7, $8, $9, $10, $11,
-        NULL, '', '[]', NULL, NULL, NULL, NULL, $12, $12
+        $1, $2, $3, $4, $5, $6, $7, $8, 'uploaded', $9, $10, $11, $12, $13,
+        NULL, '', '[]', NULL, NULL, NULL, NULL, $14, $14
       )
       ON CONFLICT (slug) DO UPDATE SET
+        package_key = EXCLUDED.package_key,
+        owner_username = EXCLUDED.owner_username,
         name = EXCLUDED.name,
         summary = EXCLUDED.summary,
         description = EXCLUDED.description,
@@ -265,10 +280,12 @@ export async function upsertUploadedAgentSkill(input: AgentSkillUpsertInput) {
       `,
       [
         slug,
+        packageKey,
+        ownerUsername,
         input.name.trim(),
         input.summary.trim(),
         input.description.trim(),
-        input.version.trim(),
+        version,
         nextStatus,
         entrypoint,
         storagePath,
@@ -284,7 +301,7 @@ export async function upsertUploadedAgentSkill(input: AgentSkillUpsertInput) {
 }
 
 export async function reviewAgentSkill(slug: string, input: AgentSkillReviewInput) {
-  const normalizedSlug = normalizeSkillSlug(slug);
+  const normalizedSlug = normalizeSkillRecordKey(slug);
 
   if (!normalizedSlug || normalizedSlug === publicSkillName) {
     throw new Error("Built-in Skill does not need library review.");
@@ -378,6 +395,26 @@ export function parseAgentSkillUploadObject(
   };
 }
 
+export async function parseAgentSkillUploadFile(file: File, fallbackPath = publicSkillEntry): Promise<ParsedAgentSkillUpload> {
+  if (!file.size) {
+    return { files: [] };
+  }
+
+  if (file.size > maxSkillFileBytes * maxSkillFileCount) {
+    throw new Error("Skill package is too large.");
+  }
+
+  const fileName = typeof file.name === "string" ? file.name : "";
+  const contentType = typeof file.type === "string" ? file.type : "";
+  const bytes = Buffer.from(await file.arrayBuffer());
+
+  if (fileName.toLowerCase().endsWith(".zip") || contentType.includes("zip")) {
+    return parseAgentSkillZip(bytes);
+  }
+
+  return parseAgentSkillUpload(bytes.toString("utf8"), fileName || fallbackPath);
+}
+
 export async function readAgentSkillDownload(
   slug: string,
   options: {
@@ -437,6 +474,28 @@ export function normalizeSkillSlug(value: string) {
     .slice(0, 80);
 }
 
+export function normalizeSkillRecordKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5@._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 180);
+}
+
+export function normalizeSkillRouteParam(value: string) {
+  try {
+    return normalizeSkillRecordKey(decodeURIComponent(value));
+  } catch {
+    return normalizeSkillRecordKey(value);
+  }
+}
+
+export function normalizeSkillVersion(value: string) {
+  const version = value.trim();
+  return version || defaultSkillVersion;
+}
+
 export function normalizeSkillStatus(value: string): AgentSkillStatus {
   const status = value.trim().toLowerCase();
   if (status === "active" || status === "approved") return "published";
@@ -454,8 +513,11 @@ export function skillStatusLabel(status: string) {
   return "已发布";
 }
 
-export function skillStoragePath(slug: string) {
-  return path.join("agent-skills", "library", normalizeSkillSlug(slug));
+export function skillStoragePath(packageKey: string, ownerUsername = "", version = "") {
+  const skillDirectory = [normalizeSkillSlug(packageKey), normalizeSkillOwner(ownerUsername)]
+    .filter(Boolean)
+    .join("@");
+  return path.join("agent-skills", "library", skillDirectory || "skill", normalizeSkillVersionSegment(version));
 }
 
 export function absoluteSkillStoragePath(storagePath: string) {
@@ -484,7 +546,7 @@ export function validateSkillPackage(files: AgentSkillFile[]) {
 
 function agentSkillSelectColumns() {
   return `
-    id, slug, name, summary, description, version, status, source_type, entrypoint,
+    id, slug, package_key, owner_username, name, summary, description, version, status, source_type, entrypoint,
     storage_path, files_json, created_by_id, submitted_by_agent_id, review_score,
     review_comment, review_reasons_json, reviewed_by_type, reviewed_by_id,
     reviewed_at, published_at, created_at, updated_at
@@ -495,6 +557,8 @@ function mapAgentSkillRow(row: AgentSkillRow): AgentSkillRecord {
   return {
     id: row.id,
     slug: row.slug,
+    packageKey: row.package_key || normalizeSkillSlug(row.name || row.slug),
+    ownerUsername: row.owner_username || "",
     name: row.name,
     summary: row.summary,
     description: row.description,
@@ -502,7 +566,7 @@ function mapAgentSkillRow(row: AgentSkillRow): AgentSkillRecord {
     status: normalizeSkillStatus(row.status),
     sourceType: row.source_type,
     entrypoint: row.entrypoint,
-    storagePath: row.storage_path || skillStoragePath(row.slug),
+    storagePath: row.storage_path || skillStoragePath(row.package_key || row.slug, row.owner_username || "", row.version),
     files: parseStoredSkillFiles(row.files_json),
     createdById: row.created_by_id,
     submittedByAgentId: row.submitted_by_agent_id,
@@ -529,6 +593,8 @@ async function readCoreAgentSkillRecord(): Promise<AgentSkillRecord> {
   return {
     id: null,
     slug: publicSkillName,
+    packageKey: publicSkillName,
+    ownerUsername: "system",
     name: publicSkillName,
     summary: "whyisee 内容 Agent 的主 Skill，覆盖发帖、回复、图片、审核建议、任务领取与提交等 API 工作流。",
     description: "系统内置 Skill，作为 Agent 接入 whyisee 的默认能力包。",
@@ -607,6 +673,129 @@ function dedupeSkillFiles(files: AgentSkillFile[]) {
   return result;
 }
 
+async function resolveSkillOwnerUsername(userId: number) {
+  const row = await queryOne<{ username: string }>("SELECT username FROM users WHERE id = $1 LIMIT 1", [userId]);
+  return normalizeSkillOwner(row?.username || `user-${userId}`);
+}
+
+function normalizeSkillOwner(value: string) {
+  return normalizeSkillSlug(value || "user").slice(0, 60) || "user";
+}
+
+function normalizeSkillVersionSegment(value: string) {
+  return (value || defaultSkillVersion)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || defaultSkillVersion;
+}
+
+function buildSkillRecordSlug(packageKey: string, ownerUsername: string, version: string) {
+  return normalizeSkillRecordKey(`${normalizeSkillSlug(packageKey)}@${normalizeSkillOwner(ownerUsername)}@${normalizeSkillVersionSegment(version)}`);
+}
+
+function parseAgentSkillZip(bytes: Buffer): ParsedAgentSkillUpload {
+  const eocdOffset = findZipEndOfCentralDirectory(bytes);
+
+  if (eocdOffset < 0) {
+    throw new Error("Skill zip package is invalid.");
+  }
+
+  const entryCount = bytes.readUInt16LE(eocdOffset + 10);
+  const centralDirectoryOffset = bytes.readUInt32LE(eocdOffset + 16);
+  const files: AgentSkillFile[] = [];
+  let cursor = centralDirectoryOffset;
+  let totalSize = 0;
+
+  for (let index = 0; index < entryCount; index += 1) {
+    if (cursor + 46 > bytes.length || bytes.readUInt32LE(cursor) !== 0x02014b50) {
+      throw new Error("Skill zip central directory is invalid.");
+    }
+
+    const flags = bytes.readUInt16LE(cursor + 8);
+    const method = bytes.readUInt16LE(cursor + 10);
+    const compressedSize = bytes.readUInt32LE(cursor + 20);
+    const uncompressedSize = bytes.readUInt32LE(cursor + 24);
+    const fileNameLength = bytes.readUInt16LE(cursor + 28);
+    const extraLength = bytes.readUInt16LE(cursor + 30);
+    const commentLength = bytes.readUInt16LE(cursor + 32);
+    const localHeaderOffset = bytes.readUInt32LE(cursor + 42);
+    const rawName = bytes.subarray(cursor + 46, cursor + 46 + fileNameLength);
+    const fileName = rawName.toString(flags & 0x0800 ? "utf8" : "utf8").replace(/\\/g, "/");
+
+    cursor += 46 + fileNameLength + extraLength + commentLength;
+
+    if (!fileName || fileName.endsWith("/") || fileName.startsWith("__MACOSX/") || fileName.endsWith(".DS_Store")) {
+      continue;
+    }
+
+    if (files.length >= maxSkillFileCount) {
+      throw new Error(`Skill package can include at most ${maxSkillFileCount} files.`);
+    }
+
+    totalSize += uncompressedSize;
+    if (totalSize > maxSkillFileBytes * maxSkillFileCount) {
+      throw new Error("Skill zip package is too large.");
+    }
+
+    if (localHeaderOffset + 30 > bytes.length || bytes.readUInt32LE(localHeaderOffset) !== 0x04034b50) {
+      throw new Error("Skill zip local header is invalid.");
+    }
+
+    const localNameLength = bytes.readUInt16LE(localHeaderOffset + 26);
+    const localExtraLength = bytes.readUInt16LE(localHeaderOffset + 28);
+    const dataOffset = localHeaderOffset + 30 + localNameLength + localExtraLength;
+    const compressed = bytes.subarray(dataOffset, dataOffset + compressedSize);
+    const content = method === 0
+      ? compressed
+      : method === 8
+        ? inflateRawSync(compressed)
+        : null;
+
+    if (!content) {
+      throw new Error(`Skill zip file ${fileName} uses unsupported compression method.`);
+    }
+
+    files.push(normalizeAgentSkillFile({ path: fileName, content: content.toString("utf8") }));
+  }
+
+  return {
+    entrypoint: publicSkillEntry,
+    files: dedupeSkillFiles(stripCommonZipRoot(files)),
+  };
+}
+
+function findZipEndOfCentralDirectory(bytes: Buffer) {
+  const minOffset = Math.max(0, bytes.length - 65_557);
+
+  for (let index = bytes.length - 22; index >= minOffset; index -= 1) {
+    if (bytes.readUInt32LE(index) === 0x06054b50) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function stripCommonZipRoot(files: AgentSkillFile[]) {
+  if (files.some((file) => file.path === publicSkillEntry)) {
+    return files;
+  }
+
+  const skillFile = files.find((file) => file.path.endsWith(`/${publicSkillEntry}`));
+  const prefix = skillFile?.path.slice(0, -publicSkillEntry.length) || "";
+
+  if (!prefix || !files.every((file) => file.path.startsWith(prefix))) {
+    return files;
+  }
+
+  return files.map((file) => ({
+    ...file,
+    path: normalizeAgentSkillFilePath(file.path.slice(prefix.length)),
+  }));
+}
+
 async function writeSkillFilesToStorage(storagePath: string, files: AgentSkillFile[]) {
   const root = absoluteSkillStoragePath(storagePath);
 
@@ -627,9 +816,12 @@ function toSkillBundle(record: AgentSkillRecord) {
     ok: true,
     name: record.name,
     slug: record.slug,
+    packageKey: record.packageKey,
+    ownerUsername: record.ownerUsername,
     version: record.version,
     status: record.status,
     entrypoint: record.entrypoint,
+    storagePath: record.storagePath,
     files: record.files,
   };
 }
@@ -710,7 +902,7 @@ export async function updateSkillReviewStatus(
       input.reviewerType,
       input.reviewerId,
       now,
-      normalizeSkillSlug(slug),
+      normalizeSkillRecordKey(slug),
     ],
   );
 

@@ -1282,6 +1282,8 @@ const migrations = [
       CREATE TABLE IF NOT EXISTS agent_skills (
         id SERIAL PRIMARY KEY,
         slug TEXT NOT NULL UNIQUE,
+        package_key TEXT NOT NULL DEFAULT '',
+        owner_username TEXT NOT NULL DEFAULT '',
         name TEXT NOT NULL,
         summary TEXT NOT NULL DEFAULT '',
         description TEXT NOT NULL DEFAULT '',
@@ -1298,6 +1300,7 @@ const migrations = [
 
       CREATE INDEX IF NOT EXISTS idx_agent_skills_status_updated ON agent_skills(status, updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_agent_skills_source ON agent_skills(source_type, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_skills_package_version ON agent_skills(package_key, owner_username, version);
     `,
   },
   {
@@ -1369,7 +1372,6 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_agent_skills_source ON agent_skills(source_type, updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_agent_skills_pending_review ON agent_skills(status, updated_at ASC) WHERE status = 'pending_review';
       CREATE INDEX IF NOT EXISTS idx_agent_skills_submitted_agent ON agent_skills(submitted_by_agent_id, updated_at DESC);
-
       INSERT INTO bot_tasks (
         task_key, name, description, task_type, bot_user_id, trigger_type, status,
         schedule_interval_seconds, config_json, next_run_at, created_at, updated_at
@@ -1395,6 +1397,38 @@ const migrations = [
         task_type = EXCLUDED.task_type,
         bot_user_id = EXCLUDED.bot_user_id,
         updated_at = EXCLUDED.updated_at;
+    `,
+  },
+  {
+    version: "028_agent_skill_versioned_storage",
+    sql: `
+      ALTER TABLE agent_skills ADD COLUMN IF NOT EXISTS package_key TEXT NOT NULL DEFAULT '';
+      ALTER TABLE agent_skills ADD COLUMN IF NOT EXISTS owner_username TEXT NOT NULL DEFAULT '';
+
+      UPDATE agent_skills
+      SET owner_username = LOWER(REGEXP_REPLACE(COALESCE(NULLIF(users.username, ''), 'user-' || COALESCE(agent_skills.created_by_id, 0)::text), '[^a-zA-Z0-9_-]+', '-', 'g'))
+      FROM users
+      WHERE agent_skills.created_by_id = users.id
+        AND COALESCE(agent_skills.owner_username, '') = '';
+
+      UPDATE agent_skills
+      SET owner_username = 'user-' || COALESCE(created_by_id, 0)::text
+      WHERE COALESCE(owner_username, '') = '';
+
+      UPDATE agent_skills
+      SET package_key = LOWER(REGEXP_REPLACE(COALESCE(NULLIF(package_key, ''), NULLIF(slug, ''), name), '[^a-zA-Z0-9_-]+', '-', 'g'))
+      WHERE COALESCE(package_key, '') = '';
+
+      UPDATE agent_skills
+      SET package_key = 'skill'
+      WHERE COALESCE(package_key, '') = '';
+
+      UPDATE agent_skills
+      SET storage_path = 'agent-skills/library/' || package_key || '@' || owner_username || '/' ||
+        LOWER(REGEXP_REPLACE(COALESCE(NULLIF(version, ''), '0.0.0'), '[^a-zA-Z0-9._-]+', '-', 'g'))
+      WHERE source_type = 'uploaded';
+
+      CREATE INDEX IF NOT EXISTS idx_agent_skills_package_version ON agent_skills(package_key, owner_username, version);
     `,
   },
 ];

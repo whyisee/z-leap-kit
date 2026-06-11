@@ -678,6 +678,8 @@ CREATE TABLE IF NOT EXISTS content_run_items (
 CREATE TABLE IF NOT EXISTS agent_skills (
   id SERIAL PRIMARY KEY,
   slug TEXT NOT NULL UNIQUE,
+  package_key TEXT NOT NULL DEFAULT '',
+  owner_username TEXT NOT NULL DEFAULT '',
   name TEXT NOT NULL,
   summary TEXT NOT NULL DEFAULT '',
   description TEXT NOT NULL DEFAULT '',
@@ -878,6 +880,7 @@ CREATE INDEX IF NOT EXISTS idx_agent_skills_status_updated ON agent_skills(statu
 CREATE INDEX IF NOT EXISTS idx_agent_skills_source ON agent_skills(source_type, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_skills_pending_review ON agent_skills(status, updated_at ASC) WHERE status = 'pending_review';
 CREATE INDEX IF NOT EXISTS idx_agent_skills_submitted_agent ON agent_skills(submitted_by_agent_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_skills_package_version ON agent_skills(package_key, owner_username, version);
 CREATE INDEX IF NOT EXISTS idx_agent_idempotency_agent_key ON agent_idempotency_keys(agent_profile_id, idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_tasks_visibility_status ON tasks(visibility, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_executor_status ON tasks(executor_type, status, created_at DESC);

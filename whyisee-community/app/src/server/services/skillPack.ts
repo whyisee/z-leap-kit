@@ -2,7 +2,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 
 export const publicSkillName = "whyisee-content-agent";
-export const publicSkillVersion = "whyisee-content-agent@0.2.0";
+export const publicSkillVersion = "whyisee-content-agent@0.3.0";
 export const publicSkillEntry = "SKILL.md";
 
 export const publicSkillFiles = [

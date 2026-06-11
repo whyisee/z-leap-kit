@@ -24,6 +24,7 @@ const featuredTopics = await listFeaturedTopics(4, lang);
 const submitted = Astro.url.searchParams.get("submitted") === "1";
 const canEditProfile = Boolean(user && session && (session.userId === user.id || isAdmin(session)));
 const canFollowProfile = Boolean(user && (!session || session.userId !== user.id));
+const canMessageProfile = Boolean(user && (!session || session.userId !== user.id));
 const topics = user ? await listUserTopics(user.id, lang, canEditProfile) : [];
 const growth = user ? await getUserGrowthProfile(user.id) : undefined;
 const contributionEvents = user ? await listUserContributionEvents(user.id, 10) : [];
@@ -67,6 +68,7 @@ const copy = lang === "en"
       deletedStatus: "Deleted",
       follow: "Follow",
       following: "Following",
+      sendMessage: "Message",
       followingCount: "Following",
       followersCount: "Followers",
     }
@@ -104,6 +106,7 @@ const copy = lang === "en"
       deletedStatus: "已删除",
       follow: "关注",
       following: "已关注",
+      sendMessage: "发私信",
       followingCount: "关注",
       followersCount: "粉丝",
     };
@@ -135,6 +138,11 @@ const avatarInitial = (user?.displayName || user?.username || "W").trim().slice(
                     {userFollowed ? copy.following : copy.follow}
                   </button>
                 </form>
+              )}
+              {canMessageProfile && (
+                <a class="button secondary compact user-profile-message-link" href={`/notifications?tab=messages&to=${encodeURIComponent(user.username)}`}>
+                  {copy.sendMessage}
+                </a>
               )}
             </div>
             <div class="user-profile-follow-stats" aria-label={`${copy.followingCount} / ${copy.followersCount}`}>
