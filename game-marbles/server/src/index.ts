@@ -1,6 +1,7 @@
 import http from "node:http";
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { cosmeticConfigs, cosmeticPools } from "../../src/config/cosmetics";
 import { defaultSave, normalizeSave } from "../../src/state/save";
 import type { PvpRankMode, SaveData, ShopReward } from "../../src/core/types";
 import { applyPvpRankResult } from "../../src/systems/pvp/rank";
@@ -11,6 +12,7 @@ import {
   handleLeaderboardList,
   handleLeaderboardMe,
   upsertPvpLeaderboardEntry,
+  upsertSnapshotLeaderboardEntries,
 } from "./leaderboards";
 import { handlePvpAiChat, handlePvpAiPressure, handlePvpAiSnapshot, handlePvpAiStart } from "./pvp-ai";
 import {
@@ -28,6 +30,11 @@ type AuthContext = {
   tokenHash: string;
 };
 
+type AdminAuthContext = {
+  adminId: string;
+  tokenHash: string;
+};
+
 type ApiError = {
   code: string;
   message: string;
@@ -40,6 +47,13 @@ type UserProfile = {
   nickname: string;
   avatar: string;
   isGuest: boolean;
+};
+
+type AdminProfile = {
+  adminId: string;
+  username: string;
+  nickname: string;
+  role: string;
 };
 
 const CONFIG_VERSION = "local-2026-06-27";
@@ -120,8 +134,8 @@ function sanitizeUsername(value: unknown) {
 
 function sanitizePassword(value: unknown) {
   const password = String(value || "");
-  if (password.length < 6 || password.length > 32) {
-    throw createApiError("INVALID_PASSWORD", "密码需为 6-32 位。", 400);
+  if (password.length < 6 || password.length > 64) {
+    throw createApiError("INVALID_PASSWORD", "密码需为 6-64 位。", 400);
   }
   return password;
 }
@@ -185,6 +199,10 @@ function normalizeRedeemRewards(value: unknown): ShopReward[] {
 
     if (reward.type === "ticket" && typeof reward.ticketId === "string" && reward.ticketId in TICKET_LABELS) {
       rewards.push({ type: "ticket", ticketId: reward.ticketId as keyof typeof TICKET_LABELS, amount: rewardAmount(reward.amount, 1_000) });
+    }
+
+    if (reward.type === "allMarbleCosmetics") {
+      rewards.push({ type: "allMarbleCosmetics" });
     }
   }
 
@@ -263,6 +281,17 @@ function grantRedeemRewards(save: SaveData, rewards: ShopReward[]) {
       save.tickets[reward.ticketId] = (save.tickets[reward.ticketId] || 0) + reward.amount;
       labels.push(`${TICKET_LABELS[reward.ticketId]} ${reward.amount}`);
     }
+
+    if (reward.type === "allMarbleCosmetics") {
+      save.cosmetics.owned ||= {};
+      const itemIds = cosmeticPools.marble.itemIds.filter((id) => cosmeticConfigs[id]?.type === "marble");
+      let newlyUnlocked = 0;
+      for (const id of itemIds) {
+        if ((save.cosmetics.owned[id] || 0) <= 0) newlyUnlocked += 1;
+        save.cosmetics.owned[id] = Math.max(1, save.cosmetics.owned[id] || 0);
+      }
+      labels.push(`弹珠幻化全套 ${itemIds.length} 件${newlyUnlocked > 0 ? `（新增 ${newlyUnlocked}）` : ""}`);
+    }
   }
 
   return labels;
@@ -289,6 +318,15 @@ function rowToProfile(row: any): UserProfile {
     nickname: row.nickname || defaultNickname(row.id),
     avatar: row.avatar || "avatar_green",
     isGuest: !row.username,
+  };
+}
+
+function rowToAdminProfile(row: any): AdminProfile {
+  return {
+    adminId: row.id,
+    username: row.username || "",
+    nickname: row.nickname || "管理员",
+    role: row.role || "operator",
   };
 }
 
@@ -353,6 +391,26 @@ async function requireAuth(req: IncomingMessage): Promise<AuthContext> {
   return { userId: result.rows[0].user_id, tokenHash: hash };
 }
 
+async function requireAdminAuth(req: IncomingMessage): Promise<AdminAuthContext> {
+  const header = req.headers.authorization || "";
+  const match = /^Bearer\s+(.+)$/i.exec(Array.isArray(header) ? header[0] : header);
+  if (!match) throw createApiError("ADMIN_UNAUTHORIZED", "Missing admin bearer token.", 401);
+
+  const hash = tokenHash(match[1]);
+  const result = await pool.query(
+    `
+      update ${q("gm_admin_sessions")}
+      set last_seen_at = now()
+      where token_hash = $1 and expires_at > now()
+      returning admin_id
+    `,
+    [hash],
+  );
+
+  if (!result.rowCount) throw createApiError("ADMIN_UNAUTHORIZED", "Invalid or expired admin token.", 401);
+  return { adminId: result.rows[0].admin_id, tokenHash: hash };
+}
+
 function normalizeIncomingSave(value: unknown): SaveData {
   return normalizeSave({
     ...defaultSave(),
@@ -405,6 +463,25 @@ async function createAuthSession(userId: string, deviceId: string) {
   return token;
 }
 
+async function createAdminSession(adminId: string) {
+  const token = createToken();
+  await pool.query(
+    `
+      insert into ${q("gm_admin_sessions")} (token_hash, admin_id, expires_at)
+      values ($1, $2, now() + interval '12 hours')
+      on conflict (token_hash) do update set last_seen_at = now()
+    `,
+    [tokenHash(token), adminId],
+  );
+  return token;
+}
+
+async function getAdminProfile(adminId: string) {
+  const result = await pool.query(`select id, username, nickname, role from ${q("gm_admin_users")} where id = $1 and status = 'active'`, [adminId]);
+  if (!result.rowCount) throw createApiError("ADMIN_NOT_FOUND", "Admin user does not exist.", 404);
+  return rowToAdminProfile(result.rows[0]);
+}
+
 async function savePlayerState(userId: string, state: SaveData) {
   const normalized = normalizeIncomingSave(state);
   const result = await pool.query(
@@ -419,6 +496,7 @@ async function savePlayerState(userId: string, state: SaveData) {
     `,
     [userId, JSON.stringify(normalized)],
   );
+  await upsertSnapshotLeaderboardEntries(pool, userId, normalized);
 
   return {
     revision: Number(result.rows[0].revision),
@@ -508,6 +586,33 @@ async function handleAuthLogin(body: any) {
     accessToken: token,
     playerRevision: player.revision,
     playerState: player.snapshot,
+  };
+}
+
+async function handleAdminLogin(body: any) {
+  const username = sanitizeUsername(body.username);
+  const password = sanitizePassword(body.password);
+  const result = await pool.query(
+    `
+      select id, username, nickname, role, password_hash, password_salt
+      from ${q("gm_admin_users")}
+      where lower(username) = $1 and status = 'active'
+    `,
+    [username],
+  );
+
+  if (!result.rowCount) throw createApiError("INVALID_ADMIN_CREDENTIALS", "管理员账号或密码错误。", 401);
+  const row = result.rows[0];
+  if (!verifyPassword(password, row.password_salt, row.password_hash)) {
+    throw createApiError("INVALID_ADMIN_CREDENTIALS", "管理员账号或密码错误。", 401);
+  }
+
+  await pool.query(`update ${q("gm_admin_users")} set last_login_at = now() where id = $1`, [row.id]);
+  const token = await createAdminSession(row.id);
+  return {
+    admin: rowToAdminProfile(row),
+    accessToken: token,
+    serverTime: Date.now(),
   };
 }
 
@@ -659,6 +764,8 @@ async function handleRedeemCode(auth: AuthContext, body: any) {
       `,
       [auth.userId, JSON.stringify(normalizeIncomingSave(save))],
     );
+
+    await upsertSnapshotLeaderboardEntries(client, auth.userId, normalizeIncomingSave(save));
 
     await client.query(
       `
@@ -892,6 +999,7 @@ async function handlePvpRankFinish(auth: AuthContext, body: any) {
     if (!rankResult.abnormal) {
       await upsertPvpLeaderboardEntry(client, auth.userId, mode, rankResult.profile);
     }
+    await upsertSnapshotLeaderboardEntries(client, auth.userId, normalizeIncomingSave(save));
 
     return {
       ok: true,
@@ -935,6 +1043,22 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   if (req.method === "POST" && path === "/api/auth/login") {
     const body = await readJson(req);
     sendJson(req, res, 200, await handleAuthLogin(body));
+    return;
+  }
+
+  if (req.method === "POST" && path === "/api/admin/login") {
+    const body = await readJson(req);
+    sendJson(req, res, 200, await handleAdminLogin(body));
+    return;
+  }
+
+  if (path.startsWith("/api/admin/")) {
+    const adminAuth = await requireAdminAuth(req);
+    if (req.method === "GET" && path === "/api/admin/session") {
+      sendJson(req, res, 200, { admin: await getAdminProfile(adminAuth.adminId), serverTime: Date.now() });
+      return;
+    }
+    sendJson(req, res, 404, { code: "NOT_FOUND", message: `No admin route for ${req.method} ${path}` });
     return;
   }
 

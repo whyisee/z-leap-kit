@@ -19,6 +19,29 @@ import {
 
 const rarityRank: Record<CosmeticRarity, number> = { rare: 1, epic: 2, legendary: 3 };
 
+const baseMarbleVisuals: Record<MarbleId, { accentColor: string; trailStyle: string; hitStyle: string; defeatStyle: string }> = {
+  basic: { accentColor: "#ffffff", trailStyle: "stardust", hitStyle: "galaxy", defeatStyle: "galaxy" },
+  split: { accentColor: "#b8ffd7", trailStyle: "leaf", hitStyle: "petal", defeatStyle: "petal" },
+  blast: { accentColor: "#ffe58f", trailStyle: "firework", hitStyle: "flare", defeatStyle: "flare" },
+  burn: { accentColor: "#ffcf6b", trailStyle: "flame", hitStyle: "flare", defeatStyle: "flare" },
+  lightning: { accentColor: "#eadcff", trailStyle: "electric", hitStyle: "electric", defeatStyle: "electric" },
+  slow: { accentColor: "#d5fbff", trailStyle: "frost", hitStyle: "frost", defeatStyle: "frost" },
+};
+
+function sortedCosmeticsByRarity(this: any, items: CosmeticConfig[], options: { ownedLast?: boolean } = {}) {
+  return [...items].sort((a, b) => {
+    const rarityDelta = (rarityRank[b.rarity] || 0) - (rarityRank[a.rarity] || 0);
+    if (rarityDelta !== 0) return rarityDelta;
+    if (options.ownedLast) {
+      const ownedDelta = Number(Boolean(this.save.cosmetics.owned[a.id])) - Number(Boolean(this.save.cosmetics.owned[b.id]));
+      if (ownedDelta !== 0) return ownedDelta;
+    }
+    const targetDelta = String(a.targetId || "").localeCompare(String(b.targetId || ""), "zh-Hans");
+    if (targetDelta !== 0) return targetDelta;
+    return a.name.localeCompare(b.name, "zh-Hans");
+  });
+}
+
 function cosmeticPageHtml(this: any) {
   const poolId = this.currentCosmeticPoolId();
   const pool = cosmeticPools[poolId];
@@ -145,7 +168,7 @@ function cosmeticPityPanelHtml(this: any, pool: any) {
 function cosmeticDrawMachineHtml(this: any, pool: any) {
   const singleCost = this.cosmeticDrawCost(pool.id, 1);
   const tenCost = this.cosmeticDrawCost(pool.id, 10);
-  const featured = cosmeticsForPool(pool.id).filter((item) => item.rarity !== "rare").slice(0, 5);
+  const featured = this.sortedCosmeticsByRarity(cosmeticsForPool(pool.id).filter((item) => item.rarity !== "rare")).slice(0, 5);
   const headline = pool.id === "character" ? "角色投影同步" : "弹珠粒子调谐";
 
   return `
@@ -264,7 +287,7 @@ function cosmeticResultItemHtml(this: any, result: CosmeticDrawResult) {
 }
 
 function cosmeticInventoryHtml(this: any, poolId: CosmeticPoolId) {
-  const items = cosmeticsForPool(poolId);
+  const items = this.sortedCosmeticsByRarity(cosmeticsForPool(poolId));
   const owned = items.filter((item) => this.save.cosmetics.owned[item.id]).length;
   return `
     <section class="cosmetic-catalog-preview">
@@ -309,11 +332,7 @@ function cosmeticInventoryCardHtml(this: any, item: CosmeticConfig) {
 }
 
 function cosmeticShopHtml(this: any, poolId: CosmeticPoolId) {
-  const items = cosmeticsForPool(poolId).sort((a, b) => {
-    const ownedDelta = Number(Boolean(this.save.cosmetics.owned[a.id])) - Number(Boolean(this.save.cosmetics.owned[b.id]));
-    if (ownedDelta !== 0) return ownedDelta;
-    return rarityRank[b.rarity] - rarityRank[a.rarity];
-  });
+  const items = this.sortedCosmeticsByRarity(cosmeticsForPool(poolId), { ownedLast: true });
   const owned = items.filter((item) => this.save.cosmetics.owned[item.id]).length;
   const missing = items.length - owned;
   const affordable = items.filter((item) => !this.save.cosmetics.owned[item.id] && this.save.cosmetics.prismDust >= this.cosmeticExchangeCost(item.rarity)).length;
@@ -487,16 +506,14 @@ function marbleCosmeticLoadoutHtml(this: any) {
         ${Object.values(marbleConfigs)
           .map((marble) => {
             const equipped = this.equippedMarbleCosmetic(marble.id);
-            const skins = cosmeticsForPool("marble").filter((item) => item.targetId === marble.id && this.save.cosmetics.owned[item.id]);
+            const skins = this.sortedCosmeticsByRarity(cosmeticsForPool("marble").filter((item) => item.targetId === marble.id && this.save.cosmetics.owned[item.id]));
             return `
-              <article class="marble-cosmetic-card" style="--marble-color: ${(equipped || marble).color}; --cosmetic-accent: ${equipped?.accentColor || marble.color}">
+              <article class="marble-cosmetic-card ${equipped?.rarity || "base"}" style="--marble-color: ${(equipped || marble).color}; --cosmetic-accent: ${equipped?.accentColor || marble.color}">
                 <div class="marble-cosmetic-head">
                   ${
                     equipped
-                      ? this.cosmeticIconHtml(equipped)
-                      : `<span class="cosmetic-icon marble" style="--cosmetic-color: ${marble.color}; --cosmetic-accent: ${marble.color}">
-                          <img src="${cosmeticAssetSources.items.marble.rare}" alt="" draggable="false" />
-                        </span>`
+                      ? this.marblePreviewIconHtml(this.marbleCosmeticPreview(equipped), "cosmetic-icon marble")
+                      : this.marblePreviewIconHtml(this.marbleVisualConfig(marble.id), "cosmetic-icon marble")
                   }
                   <div>
                     <strong>${marble.name}</strong>
@@ -511,10 +528,12 @@ function marbleCosmeticLoadoutHtml(this: any) {
                             (item) => `
                               <button
                                 type="button"
-                                class="${equipped?.id === item.id ? "active" : ""}"
+                                class="${item.rarity} ${equipped?.id === item.id ? "active" : ""}"
                                 data-cosmetic-equip="${item.id}"
                                 style="--cosmetic-color: ${item.color}"
-                              >${this.escapeText(item.visualLabel)}</button>
+                              >
+                                ${this.marblePreviewIconHtml(this.marbleCosmeticPreview(item), "marble-cosmetic-option-icon")}
+                              </button>
                             `,
                           )
                           .join("")
@@ -532,9 +551,53 @@ function marbleCosmeticLoadoutHtml(this: any) {
 }
 
 function cosmeticIconHtml(this: any, item: CosmeticConfig) {
+  if (item.type === "marble") return this.marblePreviewIconHtml(this.marbleCosmeticPreview(item), "cosmetic-icon marble");
   return `
     <span class="cosmetic-icon ${item.type}" style="--cosmetic-color: ${item.color}; --cosmetic-accent: ${item.accentColor}">
       <img src="${this.cosmeticItemAsset(item)}" alt="" draggable="false" />
+    </span>
+  `;
+}
+
+function marbleCosmeticPreview(this: any, item: CosmeticConfig) {
+  return {
+    cosmetic: item,
+    color: item.color,
+    accentColor: item.accentColor || item.color,
+    trail: this.hexToRgba(item.marbleTrailAccentColor || item.accentColor || item.color, 0.34),
+    shape: item.marbleShape || "orb",
+    trailStyle: item.marbleTrailStyle || "soft",
+    trailColor: item.marbleTrailColor || item.color,
+    trailAccentColor: item.marbleTrailAccentColor || item.accentColor || item.color,
+    trailHighlightColor: item.marbleTrailHighlightColor || item.marbleTrailAccentColor || item.accentColor || item.color,
+    trailLength: item.marbleTrailLength || 1,
+    trailWidth: item.marbleTrailWidth || 1,
+    trailAnimation: item.marbleTrailAnimation || "steady",
+    trailDensity: item.marbleTrailDensity || 1,
+    hitStyle: item.marbleHitEffect || marbleImpactStyleFromVisual(item.marbleTrailStyle || "soft", item.marbleShape || "orb"),
+    defeatStyle: item.marbleDefeatEffect || marbleImpactStyleFromVisual(item.marbleTrailStyle || "soft", item.marbleShape || "orb"),
+    label: item.visualLabel || "",
+    rarity: item.rarity || null,
+  };
+}
+
+function marblePreviewIconHtml(this: any, visual: any, className = "") {
+  const color = visual?.color || "#54c7ff";
+  const accent = visual?.accentColor || color;
+  const trail = visual?.trail || this.hexToRgba(accent, 0.34);
+  const shape = visual?.shape || "orb";
+  const trailStyle = visual?.trailStyle || "soft";
+  const impactStyle = visual?.hitStyle || visual?.defeatStyle || "spark";
+  const rarity = visual?.rarity || "base";
+  return `
+    <span
+      class="marble-preview-icon ${className} marble-shape-${shape} marble-trail-${trailStyle} marble-impact-${impactStyle} marble-rarity-${rarity}"
+      style="--marble-color: ${color}; --marble-accent: ${accent}; --marble-trail: ${trail}; --cosmetic-color: ${color}; --cosmetic-accent: ${accent}"
+      aria-hidden="true"
+    >
+      <i></i>
+      <b></b>
+      <em></em>
     </span>
   `;
 }
@@ -764,18 +827,64 @@ function equippedMarbleCosmetic(this: any, marbleId: MarbleId) {
 function marbleVisualConfig(this: any, marbleId: MarbleId) {
   const base = marbleConfigs[marbleId];
   const cosmetic = this.equippedMarbleCosmetic(marbleId);
-  if (!cosmetic) return { color: base.color, trail: base.trail };
+  const baseVisual = baseMarbleVisuals[marbleId];
+  const defaultVisual = {
+    cosmetic: null,
+    color: base.color,
+    accentColor: baseVisual.accentColor,
+    trail: base.trail,
+    shape: "orb",
+    trailStyle: baseVisual.trailStyle,
+    trailColor: base.color,
+    trailAccentColor: baseVisual.accentColor,
+    trailHighlightColor: baseVisual.accentColor,
+    trailLength: 1,
+    trailWidth: 1,
+    trailAnimation: "steady",
+    trailDensity: 1,
+    hitStyle: baseVisual.hitStyle,
+    defeatStyle: baseVisual.defeatStyle,
+    label: "",
+    rarity: null,
+  };
+  if (!cosmetic) return defaultVisual;
 
   const intensity = this.save.preferences.cosmeticEffectIntensity || "medium";
-  const alpha = intensity === "low" ? 0.12 : intensity === "high" ? 0.28 : 0.2;
+  const alpha = intensity === "low" ? 0.18 : intensity === "high" ? 0.5 : 0.34;
   return {
+    cosmetic,
     color: cosmetic.color,
-    trail: this.hexToRgba(cosmetic.accentColor || cosmetic.color, alpha),
+    accentColor: cosmetic.accentColor || cosmetic.color,
+    trail: this.hexToRgba(cosmetic.marbleTrailAccentColor || cosmetic.accentColor || cosmetic.color, alpha),
+    shape: cosmetic.marbleShape || "orb",
+    trailStyle: cosmetic.marbleTrailStyle || "soft",
+    trailColor: cosmetic.marbleTrailColor || cosmetic.color,
+    trailAccentColor: cosmetic.marbleTrailAccentColor || cosmetic.accentColor || cosmetic.color,
+    trailHighlightColor: cosmetic.marbleTrailHighlightColor || cosmetic.marbleTrailAccentColor || cosmetic.accentColor || cosmetic.color,
+    trailLength: cosmetic.marbleTrailLength || 1,
+    trailWidth: cosmetic.marbleTrailWidth || 1,
+    trailAnimation: cosmetic.marbleTrailAnimation || "steady",
+    trailDensity: cosmetic.marbleTrailDensity || 1,
+    hitStyle: cosmetic.marbleHitEffect || marbleImpactStyleFromVisual(cosmetic.marbleTrailStyle || "soft", cosmetic.marbleShape || "orb"),
+    defeatStyle: cosmetic.marbleDefeatEffect || marbleImpactStyleFromVisual(cosmetic.marbleTrailStyle || "soft", cosmetic.marbleShape || "orb"),
+    label: cosmetic.visualLabel || "",
+    rarity: cosmetic.rarity || null,
   };
 }
 
 function marbleVisualColor(this: any, marbleId: MarbleId) {
   return this.marbleVisualConfig(marbleId).color;
+}
+
+function marbleImpactStyleFromVisual(trailStyle: string, shape: string) {
+  if (trailStyle === "electric" || shape === "bolt") return "electric";
+  if (trailStyle === "flame" || trailStyle === "firework" || shape === "bomb" || shape === "flame" || shape === "comet") return "flare";
+  if (trailStyle === "frost" || shape === "snowflake") return "frost";
+  if (trailStyle === "petal" || trailStyle === "leaf" || shape === "leaf" || shape === "flower") return "petal";
+  if (trailStyle === "ribbon") return "ribbon";
+  if (trailStyle === "galaxy" || trailStyle === "aurora" || trailStyle === "stardust" || shape === "ring") return "galaxy";
+  if (shape === "crystal") return "crystal";
+  return "spark";
 }
 
 function hexToRgba(this: any, color: string, alpha = 0.2) {
@@ -807,7 +916,10 @@ export const gameCosmeticUiMethods = {
   cosmeticRevealOverlayHtml,
   cosmeticRevealSteps,
   marbleCosmeticLoadoutHtml,
+  sortedCosmeticsByRarity,
   cosmeticIconHtml,
+  marbleCosmeticPreview,
+  marblePreviewIconHtml,
   cosmeticPoolArt,
   cosmeticPoolIcon,
   cosmeticItemAsset,

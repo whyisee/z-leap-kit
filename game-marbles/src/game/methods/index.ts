@@ -9,6 +9,7 @@ import { gameBattleCombatMethods } from "./battle-combat";
 import { gameBattleUpgradeMethods } from "./battle-upgrades";
 import { gameBattleResultLootMethods } from "./battle-results-loot";
 import { gameBattleRenderMethods } from "./battle-render";
+import { gameBattleTestMethods } from "./battle-test";
 import { gamePvpLocalMethods } from "./pvp-local";
 
 export const gameMethods = {
@@ -23,5 +24,6 @@ export const gameMethods = {
   ...gameBattleUpgradeMethods,
   ...gameBattleResultLootMethods,
   ...gameBattleRenderMethods,
+  ...gameBattleTestMethods,
   ...gamePvpLocalMethods,
 } as Record<string, (this: any, ...args: any[]) => any>;

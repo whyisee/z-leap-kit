@@ -217,6 +217,18 @@ export const homeAssetSources = {
   cosmeticChamber: new URL("../../assets/home/entry-cosmetic-chamber.png", import.meta.url).href,
 };
 
+export const leaderboardIconSources: Record<string, string> = {
+  duel: new URL("../../assets/leaderboards/icon-arena.png", import.meta.url).href,
+  base: new URL("../../assets/leaderboards/icon-base.png", import.meta.url).href,
+  character: new URL("../../assets/leaderboards/icon-character.png", import.meta.url).href,
+  cosmetic: new URL("../../assets/leaderboards/icon-cosmetic.png", import.meta.url).href,
+  campaign: new URL("../../assets/leaderboards/icon-campaign.png", import.meta.url).href,
+  wealth: new URL("../../assets/leaderboards/icon-wealth.png", import.meta.url).href,
+  achievement: new URL("../../assets/leaderboards/icon-achievement.png", import.meta.url).href,
+  endless: new URL("../../assets/leaderboards/icon-endless.png", import.meta.url).href,
+  battle_royale: new URL("../../assets/leaderboards/icon-battle-royale.png", import.meta.url).href,
+};
+
 export const cosmeticAssetSources = {
   pools: {
     character: new URL("../../assets/cosmetics/pool-character.webp", import.meta.url).href,

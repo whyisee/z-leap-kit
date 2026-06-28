@@ -32,6 +32,7 @@ import {
   characterSortLabels,
   characterSortModes,
   characters,
+  cosmeticConfigs,
   clamp,
   collectibleConfigs,
   collectibleForRarity,
@@ -80,6 +81,7 @@ import {
   isEndlessMode,
   isRunComplete,
   isUpgradeCardAvailable,
+  leaderboardIconSources,
   legacyAccountAvatarMap,
   lerp,
   loadSave,
@@ -185,12 +187,14 @@ import {
 } from "./shared";
 
 function renderMenu(this: any, view: MenuView = "home") {
+    const returningFromBattle = this.phase !== "menu";
     this.restorePvpAutomation?.();
     if (view !== "pvp") this.cancelPvpMatchmaking?.(false);
     this.menuView = view;
-    if (view !== "home") this.battleTerminalOpen = false;
+    if (view !== "home" || returningFromBattle) this.battleTerminalOpen = false;
     if (view !== "inventory") this.warehouseDetail = null;
     if (view !== "collection") this.collectionDetailKey = null;
+    if (view !== "marbles") this.marbleDetailId = null;
     this.phase = "menu";
     this.session = null;
     this.surface.classList.remove("pvp-mode");
@@ -200,6 +204,7 @@ function renderMenu(this: any, view: MenuView = "home") {
     this.bottomHud.classList.add("hidden");
     this.tacticPanel.classList.add("hidden");
     this.lootBag.classList.add("hidden");
+    this.quickExtractionButton?.classList.add("hidden");
     this.lootScreen.classList.add("hidden");
     this.menuScreen.classList.remove("hidden");
     this.menuScreen.innerHTML = `
@@ -744,14 +749,12 @@ function menuPageHtml(this: any, view: MenuView) {
           ${this.menuPageTitleHtml("弹珠库", `碎片 ${totalShards}`)}
           ${this.noticeHtml()}
           <div class="hero-section-title">
-            <span>弹珠强化</span>
-            <em>碎片来自战斗掉落</em>
+            <span>弹珠列表</span>
+            <em>点击查看详情与强化</em>
           </div>
-          <div class="marble-library">
-            ${Object.values(marbleConfigs).map((marble) => this.marbleUpgradeCardHtml(marble)).join("")}
-          </div>
-          ${this.marbleCosmeticLoadoutHtml()}
+          ${this.marbleLibraryHtml()}
         </div>
+        ${this.marbleModalHtml()}
       `;
     }
 
@@ -849,14 +852,16 @@ function menuPageHtml(this: any, view: MenuView) {
 
 function rankingPageHtml(this: any) {
     const state = this.leaderboardState || {};
+    const activeBoard = state.catalog?.boards?.find((item: any) => item.id === this.leaderboardTab);
+    const actionsDisabled = state.loading || (activeBoard && !activeBoard.enabled);
     return `
       <div class="panel main-panel menu-page leaderboard-page">
         ${this.menuPageTitleHtml("排行榜", this.leaderboardSeasonMeta(state))}
         ${this.leaderboardTabsHtml(state)}
         ${this.leaderboardMineHtml(state)}
         <div class="leaderboard-actions">
-          <button class="secondary-button" type="button" data-action="refreshLeaderboard" ${state.loading ? "disabled" : ""}>刷新</button>
-          <button class="secondary-button" type="button" data-action="locateLeaderboardMe" ${state.loading ? "disabled" : ""}>定位到我</button>
+          <button class="secondary-button" type="button" data-action="refreshLeaderboard" ${actionsDisabled ? "disabled" : ""}>刷新</button>
+          <button class="secondary-button" type="button" data-action="locateLeaderboardMe" ${actionsDisabled ? "disabled" : ""}>定位到我</button>
         </div>
         ${this.leaderboardBodyHtml(state)}
       </div>
@@ -866,9 +871,15 @@ function rankingPageHtml(this: any) {
 function leaderboardTabsHtml(this: any, state: any) {
     const boards =
       state.catalog?.boards || [
-        { id: "pvp_duel_season", title: "竞技榜", enabled: true },
-        { id: "endless_wave_season", title: "无尽榜", enabled: false },
-        { id: "pvp_battle_royale_season", title: "吃鸡榜", enabled: false },
+        { id: "pvp_duel_season", title: "竞技榜", enabled: true, mode: "duel", period: "season" },
+        { id: "base_power_all_time", title: "基地榜", enabled: true, mode: "base", period: "all_time" },
+        { id: "character_power_all_time", title: "角色榜", enabled: true, mode: "character", period: "all_time" },
+        { id: "cosmetic_score_all_time", title: "幻化榜", enabled: true, mode: "cosmetic", period: "all_time" },
+        { id: "campaign_progress_all_time", title: "主线榜", enabled: true, mode: "campaign", period: "all_time" },
+        { id: "wealth_coins_all_time", title: "财富榜", enabled: true, mode: "wealth", period: "all_time" },
+        { id: "achievement_count_all_time", title: "成就榜", enabled: true, mode: "achievement", period: "all_time" },
+        { id: "endless_wave_season", title: "无尽榜", enabled: false, mode: "endless", period: "season" },
+        { id: "pvp_battle_royale_season", title: "吃鸡榜", enabled: false, mode: "battle_royale", period: "season" },
       ];
     return `
       <div class="leaderboard-tabs" role="tablist" aria-label="排行榜类型">
@@ -876,14 +887,17 @@ function leaderboardTabsHtml(this: any, state: any) {
           .map(
             (board: any) => `
               <button
-                class="${this.leaderboardTab === board.id ? "active" : ""}"
+                class="${this.leaderboardTab === board.id ? "active" : ""} ${board.enabled ? "" : "locked"} board-${this.escapeText(board.mode || "default")}"
                 type="button"
                 data-leaderboard-tab="${board.id}"
                 role="tab"
                 aria-selected="${this.leaderboardTab === board.id ? "true" : "false"}"
               >
-                <span>${this.escapeText(board.title)}</span>
-                <em>${board.enabled ? "赛季" : "未开放"}</em>
+                <i aria-hidden="true">${this.leaderboardBoardIconHtml(board)}</i>
+                <span>
+                  <strong>${this.escapeText(board.title)}</strong>
+                  <em>${board.enabled ? this.leaderboardBoardPeriodText(board) : "未开放"}</em>
+                </span>
               </button>
             `,
           )
@@ -894,11 +908,12 @@ function leaderboardTabsHtml(this: any, state: any) {
 
 function leaderboardMineHtml(this: any, state: any) {
     const me = state.me;
+    const boardId = this.leaderboardTab;
     const duelRank = this.save.pvpRanks.duel;
-    const placementLeft = Math.max(0, Math.floor(duelRank.placementMatchesLeft || 0));
+    const placementLeft = boardId === "pvp_duel_season" ? Math.max(0, Math.floor(duelRank.placementMatchesLeft || 0)) : 0;
     const rankText = me ? `#${me.rank}` : placementLeft > 0 ? "定级中" : "未入榜";
-    const scoreText = me?.displayScore || pvpRankDisplayLabel(duelRank);
-    const recordText = me ? this.leaderboardRecordText(me) : pvpRankRecordText(duelRank);
+    const scoreText = me?.displayScore || this.localLeaderboardDisplayScore(boardId);
+    const recordText = me ? this.leaderboardRecordText(me) : this.localLeaderboardRecordText(boardId);
     const deltaText = me
       ? me.rank <= 1
         ? "当前榜首"
@@ -914,14 +929,14 @@ function leaderboardMineHtml(this: any, state: any) {
           <em>${deltaText}</em>
         </div>
         <div>
-          <span>当前段位</span>
+          <span>${this.leaderboardScoreLabel(boardId)}</span>
           <strong>${scoreText}</strong>
           <em>${recordText}</em>
         </div>
         <div>
-          <span>本地最高</span>
-          <strong>第 ${Math.max(this.save.bestWave, this.save.bestEndlessWave || 0)} 波</strong>
-          <em>无尽 ${this.save.bestEndlessWave || 0}</em>
+          <span>本地摘要</span>
+          <strong>${this.localLeaderboardSummaryValue(boardId)}</strong>
+          <em>${this.localLeaderboardSummaryHint(boardId)}</em>
         </div>
       </section>
     `;
@@ -943,16 +958,18 @@ function leaderboardBodyHtml(this: any, state: any) {
     }
     if (!state.entries?.length) {
       const placementLeft = Math.max(0, Math.floor(this.save.pvpRanks.duel.placementMatchesLeft || 0));
-      const text = placementLeft > 0 ? "完成 5 场定级赛后进入赛季榜" : "本赛季暂无上榜玩家";
-      return `<div class="leaderboard-empty"><strong>${text}</strong><span>参与 1v1 匹配后会自动更新排名</span></div>`;
+      const isPvpBoard = this.leaderboardTab === "pvp_duel_season";
+      const text = isPvpBoard && placementLeft > 0 ? "完成 5 场定级赛后进入赛季榜" : "暂无上榜玩家";
+      const hint = isPvpBoard ? "参与 1v1 匹配后会自动更新排名" : "保存账号进度后会自动同步排名";
+      return `<div class="leaderboard-empty"><strong>${text}</strong><span>${hint}</span></div>`;
     }
     return `
       <section class="leaderboard-list" aria-label="赛季排行榜">
         <div class="leaderboard-list-head">
           <span>排名</span>
           <span>玩家</span>
-          <span>段位</span>
-          <span>战绩</span>
+          <span>${this.leaderboardScoreLabel(this.leaderboardTab)}</span>
+          <span>${this.leaderboardRecordLabel(this.leaderboardTab)}</span>
         </div>
         ${state.entries.map((entry: any) => this.leaderboardEntryHtml(entry)).join("")}
       </section>
@@ -983,29 +1000,321 @@ function leaderboardEntryHtml(this: any, entry: any) {
         </div>
         <div class="leaderboard-record">
           <strong>${this.leaderboardRecordText(entry)}</strong>
-          <em>最高 ${this.leaderboardMetric(entry, "bestWinStreak")} 连胜</em>
+          <em>${this.leaderboardRecordSubText(entry)}</em>
         </div>
       </article>
     `;
   }
 
 function localRankingFallbackHtml(this: any) {
-    const winRate = this.save.runs > 0 ? Math.round((this.save.wins / this.save.runs) * 100) : 0;
+    const stats = this.localLeaderboardFallbackStats(this.leaderboardTab);
     return `
       <div class="stat-strip ranking-stat-grid">
-        <div class="stat-box"><span>出战</span><strong>${this.save.runs}</strong></div>
-        <div class="stat-box"><span>通关</span><strong>${this.save.wins}</strong></div>
-        <div class="stat-box"><span>无尽</span><strong>${this.save.bestEndlessWave || 0}</strong></div>
-        <div class="stat-box"><span>胜率</span><strong>${winRate}%</strong></div>
+        ${stats.map((item: any) => `<div class="stat-box"><span>${item.label}</span><strong>${item.value}</strong></div>`).join("")}
       </div>
     `;
   }
 
 function leaderboardRecordText(this: any, entry: any) {
+    const boardId = this.leaderboardTab;
+    if (boardId === "base_power_all_time") {
+      return `协议 ${this.leaderboardMetric(entry, "activeProtocols")} · 宝石Lv.${this.leaderboardMetric(entry, "gemLevelSum")}`;
+    }
+    if (boardId === "character_power_all_time") {
+      return `角色 ${this.leaderboardMetric(entry, "ownedCharacters")} · 最强 ${this.leaderboardMetric(entry, "topPower")}`;
+    }
+    if (boardId === "cosmetic_score_all_time") {
+      return `传说 ${this.leaderboardMetric(entry, "legendary")} · 史诗 ${this.leaderboardMetric(entry, "epic")}`;
+    }
+    if (boardId === "campaign_progress_all_time") {
+      return `通关 ${this.leaderboardMetric(entry, "clearedStages")} · 星 ${this.leaderboardMetric(entry, "totalStars")}`;
+    }
+    if (boardId === "wealth_coins_all_time") {
+      return `持有 ${this.leaderboardMetric(entry, "currentCoins")} · 投入 ${this.leaderboardMetric(entry, "investedCoins")}`;
+    }
+    if (boardId === "achievement_count_all_time") {
+      return `达成 ${this.leaderboardMetric(entry, "achieved")} / ${this.leaderboardMetric(entry, "total")}`;
+    }
     const wins = this.leaderboardMetric(entry, "wins");
     const losses = this.leaderboardMetric(entry, "losses");
     const winRate = this.leaderboardMetric(entry, "winRate");
     return `${wins}胜 ${losses}负 · ${winRate}%`;
+  }
+
+function leaderboardRecordSubText(this: any, entry: any) {
+    const boardId = this.leaderboardTab;
+    if (boardId === "base_power_all_time") return `装备 ${this.leaderboardMetric(entry, "equippedGems")} 颗宝石`;
+    if (boardId === "character_power_all_time") return `${this.escapeText(String(entry?.metrics?.topCharacter || "最强角色"))}`;
+    if (boardId === "cosmetic_score_all_time") return `已拥有 ${this.leaderboardMetric(entry, "ownedCosmetics")} 件`;
+    if (boardId === "campaign_progress_all_time") return `最高第 ${this.leaderboardMetric(entry, "highestStage")} 关`;
+    if (boardId === "wealth_coins_all_time") return "累计金币财富";
+    if (boardId === "achievement_count_all_time") return `总进度 ${this.leaderboardMetric(entry, "progressScore")}%`;
+    return `最高 ${this.leaderboardMetric(entry, "bestWinStreak")} 连胜`;
+  }
+
+function leaderboardScoreLabel(this: any, boardId: string) {
+    if (boardId === "pvp_duel_season") return "段位";
+    if (boardId === "base_power_all_time") return "基地评分";
+    if (boardId === "character_power_all_time") return "角色战力";
+    if (boardId === "cosmetic_score_all_time") return "幻化分";
+    if (boardId === "campaign_progress_all_time") return "主线进度";
+    if (boardId === "wealth_coins_all_time") return "金币财富";
+    if (boardId === "achievement_count_all_time") return "成就数";
+    return "分数";
+  }
+
+function leaderboardRecordLabel(this: any, boardId: string) {
+    if (boardId === "base_power_all_time") return "协议/宝石";
+    if (boardId === "character_power_all_time") return "阵容";
+    if (boardId === "cosmetic_score_all_time") return "稀有度";
+    if (boardId === "campaign_progress_all_time") return "通关";
+    if (boardId === "wealth_coins_all_time") return "财富构成";
+    if (boardId === "achievement_count_all_time") return "完成度";
+    return "战绩";
+  }
+
+function leaderboardBoardPeriodText(this: any, board: any) {
+    return board?.period === "all_time" ? "总榜" : "赛季";
+  }
+
+function leaderboardBoardIconHtml(this: any, board: any) {
+    const mode = String(board?.mode || "duel");
+    const src = leaderboardIconSources[mode] || leaderboardIconSources.duel;
+    return `<img src="${src}" alt="" draggable="false" />`;
+  }
+
+function localLeaderboardDisplayScore(this: any, boardId: string) {
+    if (boardId === "base_power_all_time") return `评分 ${this.localBaseLeaderboardScore().score}`;
+    if (boardId === "character_power_all_time") return `战力 ${this.localCharacterLeaderboardScore().score}`;
+    if (boardId === "cosmetic_score_all_time") return `幻化 ${this.localCosmeticLeaderboardScore().score}`;
+    if (boardId === "campaign_progress_all_time") return this.localCampaignLeaderboardScore().displayScore;
+    if (boardId === "wealth_coins_all_time") return `金币 ${this.localWealthLeaderboardScore().score}`;
+    if (boardId === "achievement_count_all_time") {
+      const score = this.localAchievementLeaderboardScore();
+      return `${score.score}/${score.total} 成就`;
+    }
+    return pvpRankDisplayLabel(this.save.pvpRanks.duel);
+  }
+
+function localLeaderboardRecordText(this: any, boardId: string) {
+    if (boardId === "base_power_all_time") {
+      const score = this.localBaseLeaderboardScore();
+      return `协议 ${score.activeProtocols} · 宝石Lv.${score.gemLevelSum}`;
+    }
+    if (boardId === "character_power_all_time") {
+      const score = this.localCharacterLeaderboardScore();
+      return `角色 ${score.ownedCharacters} · 最强 ${score.topPower}`;
+    }
+    if (boardId === "cosmetic_score_all_time") {
+      const score = this.localCosmeticLeaderboardScore();
+      return `传说 ${score.legendary} · 史诗 ${score.epic}`;
+    }
+    if (boardId === "campaign_progress_all_time") {
+      const score = this.localCampaignLeaderboardScore();
+      return `通关 ${score.clearedStages} · 星 ${score.totalStars}`;
+    }
+    if (boardId === "wealth_coins_all_time") {
+      const score = this.localWealthLeaderboardScore();
+      return `持有 ${score.currentCoins} · 投入 ${score.investedCoins}`;
+    }
+    if (boardId === "achievement_count_all_time") {
+      const score = this.localAchievementLeaderboardScore();
+      return `达成 ${score.score} / ${score.total}`;
+    }
+    return pvpRankRecordText(this.save.pvpRanks.duel);
+  }
+
+function localLeaderboardSummaryValue(this: any, boardId: string) {
+    if (boardId === "base_power_all_time") return `${this.localBaseLeaderboardScore().gemLevelSum} 宝石等级`;
+    if (boardId === "character_power_all_time") return `${this.localCharacterLeaderboardScore().topCharacter || "角色"} ${this.localCharacterLeaderboardScore().topPower}`;
+    if (boardId === "cosmetic_score_all_time") return `${this.localCosmeticLeaderboardScore().ownedCosmetics} 件`;
+    if (boardId === "campaign_progress_all_time") return this.localCampaignLeaderboardScore().displayScore;
+    if (boardId === "wealth_coins_all_time") return `${this.localWealthLeaderboardScore().currentCoins} 持有`;
+    if (boardId === "achievement_count_all_time") return `${this.localAchievementLeaderboardScore().score} 达成`;
+    return `第 ${Math.max(this.save.bestWave, this.save.bestEndlessWave || 0)} 波`;
+  }
+
+function localLeaderboardSummaryHint(this: any, boardId: string) {
+    if (boardId === "base_power_all_time") return "基地强化 + 宝石";
+    if (boardId === "character_power_all_time") return "总角色战力";
+    if (boardId === "cosmetic_score_all_time") return "幻化总得分";
+    if (boardId === "campaign_progress_all_time") return "主线推进";
+    if (boardId === "wealth_coins_all_time") return "金币财富";
+    if (boardId === "achievement_count_all_time") return "解锁成就";
+    return `无尽 ${this.save.bestEndlessWave || 0}`;
+  }
+
+function localLeaderboardFallbackStats(this: any, boardId: string) {
+    if (boardId === "base_power_all_time") {
+      const score = this.localBaseLeaderboardScore();
+      return [
+        { label: "评分", value: score.score },
+        { label: "协议", value: score.activeProtocols },
+        { label: "协议等级", value: score.protocolLevelSum },
+        { label: "宝石等级", value: score.gemLevelSum },
+      ];
+    }
+    if (boardId === "character_power_all_time") {
+      const score = this.localCharacterLeaderboardScore();
+      return [
+        { label: "总战力", value: score.score },
+        { label: "角色", value: score.ownedCharacters },
+        { label: "最强", value: score.topPower },
+        { label: "等级", value: score.totalLevel },
+      ];
+    }
+    if (boardId === "cosmetic_score_all_time") {
+      const score = this.localCosmeticLeaderboardScore();
+      return [
+        { label: "幻化分", value: score.score },
+        { label: "拥有", value: score.ownedCosmetics },
+        { label: "传说", value: score.legendary },
+        { label: "史诗", value: score.epic },
+      ];
+    }
+    if (boardId === "campaign_progress_all_time") {
+      const score = this.localCampaignLeaderboardScore();
+      return [
+        { label: "进度", value: score.displayScore },
+        { label: "通关", value: score.clearedStages },
+        { label: "星数", value: score.totalStars },
+        { label: "最高关", value: score.highestStage },
+      ];
+    }
+    if (boardId === "wealth_coins_all_time") {
+      const score = this.localWealthLeaderboardScore();
+      return [
+        { label: "财富", value: score.score },
+        { label: "持有", value: score.currentCoins },
+        { label: "投入", value: score.investedCoins },
+        { label: "出战", value: this.save.runs },
+      ];
+    }
+    if (boardId === "achievement_count_all_time") {
+      const score = this.localAchievementLeaderboardScore();
+      return [
+        { label: "达成", value: score.score },
+        { label: "总数", value: score.total },
+        { label: "待领", value: this.collectionPendingRewardCount?.() || 0 },
+        { label: "进度", value: `${score.progressScore}%` },
+      ];
+    }
+    const winRate = this.save.runs > 0 ? Math.round((this.save.wins / this.save.runs) * 100) : 0;
+    return [
+      { label: "出战", value: this.save.runs },
+      { label: "通关", value: this.save.wins },
+      { label: "无尽", value: this.save.bestEndlessWave || 0 },
+      { label: "胜率", value: `${winRate}%` },
+    ];
+  }
+
+function localBaseLeaderboardScore(this: any) {
+    let protocolScore = 0;
+    let protocolLevelSum = 0;
+    let activeProtocols = 0;
+    for (const item of metaUpgrades) {
+      const level = Math.max(0, Math.floor(upgradeLevel(this.save.upgrades, item.id) || 0));
+      protocolLevelSum += level;
+      if (level > 0) activeProtocols += 1;
+      protocolScore += level * 120 + level * level * 8;
+    }
+    let gemLevelSum = 0;
+    let equippedGems = 0;
+    for (const key of normalizeBaseGems(this.save.baseGems)) {
+      const gem = key ? parseGemKey(key) : null;
+      if (!gem) continue;
+      equippedGems += 1;
+      gemLevelSum += gem.level;
+    }
+    const score = Math.floor(protocolScore + gemLevelSum * 95 + equippedGems * 60);
+    return { score, protocolLevelSum, activeProtocols, gemLevelSum, equippedGems };
+  }
+
+function localCharacterLeaderboardScore(this: any) {
+    let score = 0;
+    let topPower = 0;
+    let topCharacter = "";
+    let ownedCharacters = 0;
+    let totalLevel = 0;
+    for (const character of characters) {
+      const progress = this.characterProgress(character.id);
+      if (!progress.owned) continue;
+      const stats = this.characterUiStats(character);
+      score += stats.power;
+      ownedCharacters += 1;
+      totalLevel += progress.level || 1;
+      if (stats.power > topPower) {
+        topPower = stats.power;
+        topCharacter = character.name;
+      }
+    }
+    return { score, topPower, topCharacter, ownedCharacters, totalLevel };
+  }
+
+function localCosmeticLeaderboardScore(this: any) {
+    const weights = { rare: 10, epic: 35, legendary: 120 };
+    let score = 0;
+    let ownedCosmetics = 0;
+    let rare = 0;
+    let epic = 0;
+    let legendary = 0;
+    for (const [id, countValue] of Object.entries(this.save.cosmetics.owned || {})) {
+      const item = cosmeticConfigs[id];
+      if (!item) continue;
+      const count = Math.max(1, Math.floor(Number(countValue) || 1));
+      score += weights[item.rarity] * count;
+      ownedCosmetics += 1;
+      if (item.rarity === "legendary") legendary += 1;
+      else if (item.rarity === "epic") epic += 1;
+      else rare += 1;
+    }
+    return { score, ownedCosmetics, rare, epic, legendary };
+  }
+
+function localCampaignLeaderboardScore(this: any) {
+    const cleared = Object.entries(this.save.progress.clearedStages || {}).filter(([, record]: any) => record?.cleared);
+    const highestStage = cleared.reduce((max: number, [stageId]: any) => {
+      const stage = getStageById(stageId);
+      return stage ? Math.max(max, stage.index) : max;
+    }, 0);
+    const progressStage = Math.max(highestStage, Math.max(0, (this.save.progress.unlockedStage || 1) - 1));
+    const totalStars = Object.values(this.save.progress.clearedStages || {}).reduce((sum: number, record: any) => sum + Math.max(0, Math.floor(record?.stars || 0)), 0);
+    const stage = progressStage > 0 ? getStageByIndex(progressStage) : getStageByIndex(1);
+    return {
+      score: Math.max(0, progressStage * 1000 + totalStars),
+      displayScore: progressStage > 0 ? `主线 ${stage.chapter}-${stage.stage}` : "主线未通关",
+      clearedStages: cleared.length,
+      highestStage: progressStage,
+      totalStars,
+    };
+  }
+
+function localWealthLeaderboardScore(this: any) {
+    const currentCoins = Math.max(0, Math.floor(Number(this.save.coins || 0)));
+    let investedCoins = 0;
+    for (const item of metaUpgrades) {
+      const level = Math.max(0, Math.floor(upgradeLevel(this.save.upgrades, item.id) || 0));
+      for (let current = 0; current < level; current += 1) investedCoins += metaCost(item, current);
+    }
+    for (const character of characters) {
+      const progress = this.characterProgress(character.id);
+      if (!progress.owned) continue;
+      for (let level = 1; level < (progress.level || 1); level += 1) investedCoins += characterLevelCost(level);
+      for (let skillLevel = 1; skillLevel < (progress.skillLevel || 1); skillLevel += 1) investedCoins += characterSkillCost(skillLevel);
+      for (const route of character.routes) {
+        const routeLevel = Math.max(0, Math.floor(progress.routes?.[route.id] || 0));
+        for (let level = 0; level < routeLevel; level += 1) investedCoins += characterRouteCost(route, level);
+      }
+    }
+    return { score: currentCoins + investedCoins, currentCoins, investedCoins };
+  }
+
+function localAchievementLeaderboardScore(this: any) {
+    const achievements = this.collectionAchievementEntries?.() || [];
+    const total = achievements.length || 0;
+    const achieved = achievements.filter((entry: any) => entry.state === "known").length;
+    const progressScore = total > 0 ? Math.round((achieved / total) * 100) : 0;
+    return { score: achieved, total, progressScore };
   }
 
 function leaderboardMetric(this: any, entry: any, key: string) {
@@ -1024,6 +1333,8 @@ function leaderboardUpdatedText(this: any, updatedAt: number) {
   }
 
 function leaderboardSeasonMeta(this: any, state: any) {
+    const board = state.catalog?.boards?.find((item: any) => item.id === this.leaderboardTab);
+    if (board?.period === "all_time") return "总榜";
     const season = state.catalog?.season;
     const serverTime = Math.floor(state.catalog?.serverTime || state.response?.serverTime || Date.now());
     if (!season?.endsAt) return "赛季榜";
@@ -1311,6 +1622,10 @@ function challengeModalHtml(this: any) {
               <strong>无尽挑战</strong>
               <span>第 20 波后继续推进，每 5 波可撤离，用于测试卡片构筑</span>
             </button>
+            <button type="button" data-action="startTest" ${canStart ? "" : "disabled"}>
+              <strong>测试模式</strong>
+              <span>无限波次，无掉落收益；战斗中可随时撤离、切换角色、弹珠和战术升级</span>
+            </button>
             <button type="button" data-menu="home">
               <strong>首领挑战</strong>
               <span>强化首领、限定时间、专属奖励</span>
@@ -1424,6 +1739,9 @@ function hideScreens(this: any) {
     this.resultScreen.classList.add("hidden");
     this.pauseScreen.classList.add("hidden");
     this.lootScreen.classList.add("hidden");
+    this.quickExtractionButton?.classList.add("hidden");
+    this.testToolsToggle?.classList.add("hidden");
+    this.testPanel?.classList.add("hidden");
   }
 
 export const gameUiShellMethods = {
@@ -1456,6 +1774,22 @@ export const gameUiShellMethods = {
   leaderboardEntryHtml,
   localRankingFallbackHtml,
   leaderboardRecordText,
+  leaderboardRecordSubText,
+  leaderboardScoreLabel,
+  leaderboardRecordLabel,
+  leaderboardBoardPeriodText,
+  leaderboardBoardIconHtml,
+  localLeaderboardDisplayScore,
+  localLeaderboardRecordText,
+  localLeaderboardSummaryValue,
+  localLeaderboardSummaryHint,
+  localLeaderboardFallbackStats,
+  localBaseLeaderboardScore,
+  localCharacterLeaderboardScore,
+  localCosmeticLeaderboardScore,
+  localCampaignLeaderboardScore,
+  localWealthLeaderboardScore,
+  localAchievementLeaderboardScore,
   leaderboardMetric,
   leaderboardUpdatedText,
   leaderboardSeasonMeta,

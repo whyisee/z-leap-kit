@@ -8,7 +8,7 @@
 - 给 PVE 长线玩法一个可追逐目标，例如无尽最高波、最快通关、活动挑战榜。
 - 给后续赛季奖励、称号、头像框、竞技商店解锁提供可信数据来源。
 
-第一版优先做“竞技 1v1 赛季榜”。当前项目已经有 PVP 段位、赛季、匹配、结算和竞技币，因此排行榜应先复用这套数据，而不是重新设计一套成长等级。
+第一版优先做“竞技 1v1 赛季榜”和长期养成总榜。当前项目已经有 PVP 段位、赛季、匹配、结算、基地强化、角色养成、幻化、主线进度、金币和成就，因此排行榜应先复用这些可信账号数据，而不是重新设计一套成长等级。
 
 ## 2. 第一版范围
 
@@ -16,8 +16,10 @@
 
 - 首页“排行”入口改为排行榜中心。
 - 增加竞技榜页签：`1v1 赛季榜`。
+- 增加养成总榜页签：`基地榜`、`角色榜`、`幻化榜`、`主线榜`、`财富榜`、`成就榜`。
 - 展示赛季剩余时间、我的排名、我的段位、前 100 名列表。
 - PVP 结算后由服务端更新排行榜条目。
+- 玩家存档保存后由服务端刷新养成总榜条目。
 - 榜单支持分页和“定位到我”。
 - 离线或服务器不可用时，保留本地统计兜底展示。
 
@@ -104,6 +106,99 @@ sortScore =
 
 该榜单不建议只按击杀排序，否则会鼓励玩家放弃搜打撤目标。推荐“撤离价值 + 名次 + 击败”的复合分。
 
+### 3.4 基地榜
+
+| 字段 | 说明 |
+| --- | --- |
+| boardId | `base_power_all_time` |
+| 周期 | 总榜，`seasonId = all_time` |
+| 数据来源 | `/api/player/state` 保存后的 `upgrades` 与 `baseGems` |
+| 排名依据 | 基地协议强化等级、已激活协议数、已装备宝石等级 |
+| 展示分数 | `评分 x` |
+
+排序规则：
+
+```txt
+protocolScore = sum(protocolLevel * 120 + protocolLevel^2 * 8)
+gemScore = equippedGemLevelSum * 95 + equippedGemCount * 60
+score = protocolScore + gemScore
+sortScore = score * 1000 + gemLevelSum * 10 + protocolLevelSum
+```
+
+### 3.5 角色榜
+
+| 字段 | 说明 |
+| --- | --- |
+| boardId | `character_power_all_time` |
+| 周期 | 总榜，`seasonId = all_time` |
+| 数据来源 | `/api/player/state` 保存后的角色等级、技能、路线、弹珠等级和角色弹珠配置 |
+| 排名依据 | 玩家已拥有角色的总战斗力，最强角色战力作为同分优先级 |
+| 展示分数 | `战力 x` |
+
+角色战斗力使用前端角色面板的等价公式：角色等级、路线、被动、技能等级、弹珠基础伤害和弹珠等级共同影响最终战力。
+
+### 3.6 幻化榜
+
+| 字段 | 说明 |
+| --- | --- |
+| boardId | `cosmetic_score_all_time` |
+| 周期 | 总榜，`seasonId = all_time` |
+| 数据来源 | `/api/player/state` 保存后的 `cosmetics.owned` |
+| 排名依据 | 玩家已拥有幻化的稀有度加权总分 |
+| 展示分数 | `幻化 x` |
+
+计分权重：
+
+```txt
+rare = 10
+epic = 35
+legendary = 120
+score = sum(rarityWeight * ownedCount)
+```
+
+### 3.7 主线榜
+
+| 字段 | 说明 |
+| --- | --- |
+| boardId | `campaign_progress_all_time` |
+| 周期 | 总榜，`seasonId = all_time` |
+| 数据来源 | `/api/player/state` 保存后的 `progress.clearedStages` 与 `progress.unlockedStage` |
+| 排名依据 | 最高主线进度、累计星数、最高进度关卡最好时间 |
+| 展示分数 | `主线 x-y` |
+
+排序规则：
+
+```txt
+sortScore =
+  highestStageIndex * 1_000_000
+  + totalStars * 1_000
+  + bestTimeBonus
+```
+
+### 3.8 财富榜
+
+| 字段 | 说明 |
+| --- | --- |
+| boardId | `wealth_coins_all_time` |
+| 周期 | 总榜，`seasonId = all_time` |
+| 数据来源 | `/api/player/state` 保存后的当前金币与可回溯金币投入 |
+| 排名依据 | 当前金币 + 基地强化投入 + 角色等级/技能/路线投入 |
+| 展示分数 | `金币 x` |
+
+当前存档没有独立的“历史累计金币”字段，因此第一版用“当前金币 + 已投入金币”还原累计金币财富。后续如果存档增加 `lifetimeCoins`，财富榜可以直接改用该字段，并保留投入金币作为展示构成。
+
+### 3.9 成就榜
+
+| 字段 | 说明 |
+| --- | --- |
+| boardId | `achievement_count_all_time` |
+| 周期 | 总榜，`seasonId = all_time` |
+| 数据来源 | `/api/player/state` 保存后的战斗、通关、养成、收集和协议状态 |
+| 排名依据 | 已达成成就数量，成就总进度作为同分排序 |
+| 展示分数 | `x/y 成就` |
+
+成就榜使用收藏室已有成就集合的服务端等价判断，避免前端可视状态和排行榜状态分裂。
+
 ## 4. 页面设计
 
 ### 4.1 排行榜中心
@@ -112,12 +207,12 @@ sortScore =
 
 布局：
 
-- 顶部：标题、赛季剩余时间、刷新状态。
-- 榜单页签：`竞技榜`、`无尽榜`、`吃鸡榜`。
+- 顶部：标题、赛季剩余时间或总榜标记、刷新状态。
+- 榜单页签：`竞技榜`、`基地榜`、`角色榜`、`幻化榜`、`主线榜`、`财富榜`、`成就榜`、`无尽榜`、`吃鸡榜`。
 - 主区域：榜单列表。
 - 底部或顶部固定：我的排名卡片。
 
-第一版只启用 `竞技榜`，其他页签展示“即将开放”。
+第一版启用 `竞技榜` 与 6 个养成总榜；`无尽榜`、`吃鸡榜` 继续展示“即将开放”。
 
 ### 4.2 竞技榜列表项
 
@@ -297,6 +392,8 @@ GET /api/leaderboards/:boardId/me?seasonId=xxx&radius=5
 服务端内部在以下流程调用：
 
 - `/api/pvp/rank/finish`
+- `/api/player/state`
+- `/api/redeem-code`
 - `/api/battle/finish`
 - 后续大逃杀结算接口
 

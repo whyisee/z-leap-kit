@@ -191,6 +191,7 @@ function update(this: any, dt: number, realDt: number) {
     session.elapsed += dt;
     session.modifiers.magnetic = Math.max(0, session.modifiers.magnetic - dt);
 
+    this.updateExtractionWindow(realDt);
     this.updateWave(dt);
     this.updateCharacters(dt);
     this.updateEnemies(dt);
@@ -209,14 +210,26 @@ function update(this: any, dt: number, realDt: number) {
 
     session.waveBannerTimer = Math.max(0, session.waveBannerTimer - realDt);
 
-    if (session.xp >= session.xpNeed && this.phase === "playing") {
+    if (session.xp >= session.xpNeed && this.phase === "playing" && session.extractionWindowWave === null) {
       this.openUpgrade();
+    }
+  }
+
+function updateExtractionWindow(this: any, realDt: number) {
+    const session = this.session;
+    if (!session || session.extractionWindowWave === null || this.phase !== "playing") return;
+    if (session.mode === "test") return;
+
+    session.extractionWindowTimer = Math.max(0, session.extractionWindowTimer - realDt);
+    if (session.extractionWindowTimer <= 0) {
+      this.continueRun();
     }
   }
 
 function updateWave(this: any, dt: number) {
     const session = this.requireSession();
     if (!session.waveConfig) return;
+    if (session.extractionWindowWave !== null && session.mode !== "test") return;
 
     if (session.spawnQueue.length > 0) {
       session.spawnTimer -= dt;
@@ -418,38 +431,12 @@ function openExtractionWindow(this: any, wave: number) {
     const session = this.requireSession();
     session.extractionWindowsSeen.push(wave);
     this.ensureAutoInsuredDrops();
-    this.phase = "extraction";
-    session.phase = "extraction";
     this.closeLootScreen();
-
-    const preview = continuePreviewForSession(session, wave);
-    const value = dropTotalValue(session.drops);
-    const insured = this.insuredDropCount();
-    const slots = this.insuredSlots();
-
-    this.extractionScreen.classList.remove("hidden");
-    this.extractionScreen.classList.add("extraction-layout");
-    this.extractionScreen.innerHTML = `
-      <div class="panel main-panel extraction-panel">
-        <p class="eyebrow">${extractionDepthNameForSession(session, wave)}</p>
-        <h2>撤离窗口开启</h2>
-        <p class="subcopy">安全撤离会带回当前战利品；继续深入会提高后续收益，也会抬高敌人压力。</p>
-        <div class="extraction-stats">
-          <div class="stat-box"><span>当前货值</span><strong>${value}</strong></div>
-          <div class="stat-box"><span>保险格</span><strong>${insured}/${slots}</strong></div>
-          <div class="stat-box"><span>当前热度</span><strong>${session.heat}</strong></div>
-          <div class="stat-box"><span>继续奖励</span><strong>+${Math.round(preview.bonus * 100)}%</strong></div>
-        </div>
-        <div class="extraction-warning">
-          <strong>继续深入</strong>
-          <span>后续金币与掉落概率提升，热度 +${preview.heat}。</span>
-        </div>
-        <div class="two-actions">
-          <button class="primary-button" type="button" data-extraction-action="extract" style="margin-top: 0;">撤离带回</button>
-          <button class="secondary-button" type="button" data-extraction-action="continue">继续深入</button>
-        </div>
-      </div>
-    `;
+    session.extractionWindowWave = wave;
+    session.extractionWindowDuration = 5;
+    session.extractionWindowTimer = session.extractionWindowDuration;
+    this.updateHud();
+    this.addFloatingText(FIELD.x + 72, FIELD_BOTTOM - 88, "撤离窗口 5 秒", "#f6c95f");
 
     if (this.autoBattleEnabled) {
       this.autoResolveExtractionWindow(wave);
@@ -460,10 +447,9 @@ function autoResolveExtractionWindow(this: any, wave: number) {
     const shouldExtract = this.shouldAutoExtract(wave);
     window.setTimeout(() => {
       const session = this.session;
-      if (!session || this.phase !== "extraction" || session.wave !== wave) return;
+      if (!session || this.phase !== "playing" || session.extractionWindowWave !== wave) return;
       if (!this.autoBattleEnabled) return;
       if (shouldExtract) this.extractNow();
-      else this.continueRun();
     }, 420);
   }
 
@@ -476,30 +462,41 @@ function shouldAutoExtract(this: any, wave: number) {
 
 function extractNow(this: any) {
     const session = this.session;
-    if (!session || this.phase !== "extraction") return;
-    session.extractedAtWave = session.wave;
-    this.endGame("win", `第 ${session.wave} 波后安全撤离`, "extracted");
+    if (!session) return;
+    const wave = session.mode === "test" ? session.wave : session.extractionWindowWave ?? session.wave;
+    if (this.phase !== "extraction" && !(this.phase === "playing" && (session.extractionWindowWave !== null || session.mode === "test"))) return;
+    session.extractionWindowWave = null;
+    session.extractionWindowTimer = 0;
+    session.extractedAtWave = wave;
+    this.quickExtractionButton?.classList.add("hidden");
+    this.endGame("win", session.mode === "test" ? `测试到第 ${session.wave} 波后撤离` : `第 ${wave} 波后安全撤离`, "extracted");
   }
 
 function continueRun(this: any) {
     const session = this.session;
-    if (!session || this.phase !== "extraction") return;
+    if (!session) return;
+    if (this.phase !== "extraction" && !(this.phase === "playing" && session.extractionWindowWave !== null)) return;
 
-    const wave = session.wave;
+    const wave = session.extractionWindowWave ?? session.wave;
     const preview = continuePreviewForSession(session, wave);
     session.continueCount += 1;
     session.continueBonus += preview.bonus;
     session.heat = clamp(session.heat + preview.heat, 0, maxHeatForMode(session.mode));
     session.maxHeat = Math.max(session.maxHeat, session.heat);
+    session.extractionWindowWave = null;
+    session.extractionWindowTimer = 0;
     this.phase = "playing";
     session.phase = "playing";
     this.extractionScreen.classList.add("hidden");
+    this.closeLootScreen();
+    this.quickExtractionButton?.classList.add("hidden");
     this.addFloatingText(WIDTH / 2, FIELD.y + 48, `继续深入 · 热度 ${session.heat}`, "#f6c95f");
     this.startWave(wave + 1);
   }
 
 export const gameBattleFlowMethods = {
   update,
+  updateExtractionWindow,
   updateWave,
   startWave,
   takeSpawnRow,

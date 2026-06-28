@@ -6,8 +6,6 @@ RUNTIME_DIR="$ROOT_DIR/tmp/backend"
 PID_FILE="$RUNTIME_DIR/api.pid"
 LOG_FILE="$RUNTIME_DIR/api.log"
 TSX_BIN="$ROOT_DIR/node_modules/.bin/tsx"
-TSX_PREFLIGHT="$ROOT_DIR/node_modules/tsx/dist/preflight.cjs"
-TSX_LOADER="file://$ROOT_DIR/node_modules/tsx/dist/loader.mjs"
 
 load_env() {
   set -a
@@ -46,10 +44,6 @@ require_deps() {
     echo "Missing dependencies. Run: npm install"
     exit 1
   fi
-  if [[ ! -f "$TSX_PREFLIGHT" || ! -f "${TSX_LOADER#file://}" ]]; then
-    echo "Missing tsx runtime files. Run: npm install"
-    exit 1
-  fi
 }
 
 check_database() {
@@ -67,8 +61,19 @@ wait_for_health() {
   local delay=0.35
 
   for ((i = 1; i <= attempts; i += 1)); do
+    if [[ -f "$PID_FILE" ]] && ! running_pid >/dev/null; then
+      echo "Backend process exited before becoming healthy. Recent log:"
+      tail -n 80 "$LOG_FILE" 2>/dev/null || true
+      exit 1
+    fi
     if curl -fsS "$API_HEALTH_URL" >/dev/null 2>&1; then
       echo "Backend is ready: $API_HEALTH_URL"
+      sleep 0.5
+      if ! running_pid >/dev/null; then
+        echo "Backend process exited after health check. Recent log:"
+        tail -n 80 "$LOG_FILE" 2>/dev/null || true
+        exit 1
+      fi
       return 0
     fi
     sleep "$delay"
@@ -101,13 +106,21 @@ start_backend() {
   : > "$LOG_FILE"
   echo "Starting backend..."
   echo "Log: $LOG_FILE"
-  local previous_dir
-  previous_dir="$(pwd)"
-  cd "$ROOT_DIR"
-  nohup node --require "$TSX_PREFLIGHT" --import "$TSX_LOADER" server/src/index.ts >>"$LOG_FILE" 2>&1 < /dev/null &
+  BACKEND_ROOT="$ROOT_DIR" BACKEND_BIN="$TSX_BIN" BACKEND_LOG="$LOG_FILE" BACKEND_PID_FILE="$PID_FILE" node <<'NODE'
+const { spawn } = require("node:child_process");
+const fs = require("node:fs");
 
-  echo "$!" > "$PID_FILE"
-  cd "$previous_dir"
+const logFd = fs.openSync(process.env.BACKEND_LOG, "a");
+const child = spawn(process.env.BACKEND_BIN, ["server/src/index.ts"], {
+  cwd: process.env.BACKEND_ROOT,
+  detached: true,
+  env: process.env,
+  stdio: ["ignore", logFd, logFd],
+});
+
+child.unref();
+fs.writeFileSync(process.env.BACKEND_PID_FILE, String(child.pid));
+NODE
   wait_for_health
 }
 

@@ -213,7 +213,8 @@ function endGame(this: any, result: "win" | "lose", reason: string, extractionRe
     const stage = getStageById(session.stageId);
     const isEndless = isEndlessMode(session.mode);
     const isPvp = session.mode === "pvp";
-    const clearedStage = !isEndless && !isPvp && extractionResult === "cleared";
+    const isTest = session.mode === "test";
+    const clearedStage = !isEndless && !isPvp && !isTest && extractionResult === "cleared";
     const stageStars = clearedStage ? calculateStageStars(session, stage) : 0;
     this.ensureAutoInsuredDrops();
     session.result = result;
@@ -221,34 +222,36 @@ function endGame(this: any, result: "win" | "lose", reason: string, extractionRe
     session.extractionResult = extractionResult;
     this.sound.play(result === "win" ? "win" : "lose");
     this.sound.setMusicMode("menu");
-    const finalCoins = isPvp ? 0 : battleCoinReward(session, stage, result, extractionResult);
-    const shards = isPvp ? 0 : battleShardReward(session, extractionResult);
+    const finalCoins = isPvp || isTest ? 0 : battleCoinReward(session, stage, result, extractionResult);
+    const shards = isPvp || isTest ? 0 : battleShardReward(session, extractionResult);
     const pvpCoinReward = isPvp ? pvpCoinRewardForSession(session, result) : 0;
     const pvpRankContext = isPvp ? pvpRankContextForSession.call(this, session) : null;
     const pvpRankResult = isPvp ? applyPvpRankResult(this.save.pvpRanks.duel, result, pvpRankContext) : null;
-    const { kept, lost } = isPvp ? { kept: [], lost: session.drops } : splitDropsForExtraction(session.drops, extractionResult, session.insuredDropKeys);
+    const { kept, lost } = isPvp || isTest ? { kept: [], lost: [] } : splitDropsForExtraction(session.drops, extractionResult, session.insuredDropKeys);
     session.lostDrops = lost;
     const keptSummary = compactDropSummaryRows(dropSummaryRows(kept, session.insuredDropKeys));
     const lostSummary = compactDropSummaryRows(dropSummaryRows(lost, session.insuredDropKeys));
 
-    this.save.coins += finalCoins;
-    this.save.pvpCoins = Math.max(0, Math.floor(this.save.pvpCoins || 0)) + pvpCoinReward;
-    if (pvpRankResult) this.save.pvpRanks.duel = pvpRankResult.profile;
-    this.save.shards += shards;
-    if (!isPvp) {
-      applyBattleProgressToSave(this.save, session, extractionResult, stage, stageStars, clearedStage);
-      applyDropsToInventory(this.inventory(), kept);
+    if (!isTest) {
+      this.save.coins += finalCoins;
+      this.save.pvpCoins = Math.max(0, Math.floor(this.save.pvpCoins || 0)) + pvpCoinReward;
+      if (pvpRankResult) this.save.pvpRanks.duel = pvpRankResult.profile;
+      this.save.shards += shards;
+      if (!isPvp) {
+        applyBattleProgressToSave(this.save, session, extractionResult, stage, stageStars, clearedStage);
+        applyDropsToInventory(this.inventory(), kept);
+      }
     }
-    const unlockedCharacters = isPvp ? [] : this.unlockReadyCharacters();
+    const unlockedCharacters = isPvp || isTest ? [] : this.unlockReadyCharacters();
     if (isPvp) {
       saveGame(this.save);
       void syncPvpRankSettlement.call(this, session, result, pvpRankContext, pvpRankResult);
-    } else {
+    } else if (!isTest) {
       this.persistSave("battle-finish");
     }
     const battleId = this.activeBattleId;
     this.activeBattleId = null;
-    if (!isPvp) {
+    if (!isPvp && !isTest) {
       void this.backend.finishBattle({
         battleId,
         result,
@@ -302,8 +305,8 @@ function endGame(this: any, result: "win" | "lose", reason: string, extractionRe
           <h2>${extractionResultTitleForMode(session.mode, extractionResult)}</h2>
           <p class="subcopy">${reason}</p>
           <div class="result-grid">
-            <div class="stat-box"><span>${isPvp ? "模式" : isEndless ? "模式" : "关卡"}</span><strong>${isPvp ? "PVP" : isEndless ? "无尽" : `${stage.chapter}-${stage.stage}`}</strong></div>
-            <div class="stat-box"><span>${isPvp ? "结果" : isEndless ? "最高" : "星级"}</span><strong>${isPvp ? (result === "win" ? "胜利" : "失败") : isEndless ? this.save.bestEndlessWave : stageStars > 0 ? "★".repeat(stageStars) : "-"}</strong></div>
+            <div class="stat-box"><span>${isPvp || isTest ? "模式" : isEndless ? "模式" : "关卡"}</span><strong>${isPvp ? "PVP" : isTest ? "测试" : isEndless ? "无尽" : `${stage.chapter}-${stage.stage}`}</strong></div>
+            <div class="stat-box"><span>${isPvp || isTest ? "结果" : isEndless ? "最高" : "星级"}</span><strong>${isPvp || isTest ? (result === "win" ? "胜利" : "失败") : isEndless ? this.save.bestEndlessWave : stageStars > 0 ? "★".repeat(stageStars) : "-"}</strong></div>
             <div class="stat-box"><span>波次</span><strong>${formatSessionWaveText(session)}</strong></div>
             <div class="stat-box"><span>用时</span><strong>${formatTime(session.elapsed)}</strong></div>
             <div class="stat-box"><span>击杀</span><strong>${session.kills}</strong></div>
@@ -317,8 +320,8 @@ function endGame(this: any, result: "win" | "lose", reason: string, extractionRe
           </div>
           ${isPvp ? pvpRankResultHtml(pvpRankResult) : ""}
           ${this.characterUnlockResultHtml(unlockedCharacters)}
-          ${isPvp ? "" : this.dropSummaryHtml(keptSummary, "带回战利品", "没有带回额外掉落")}
-          ${!isPvp && lost.length > 0 ? this.dropSummaryHtml(lostSummary, "损失战利品", "没有损失掉落") : ""}
+          ${isPvp || isTest ? "" : this.dropSummaryHtml(keptSummary, "带回战利品", "没有带回额外掉落")}
+          ${!isPvp && !isTest && lost.length > 0 ? this.dropSummaryHtml(lostSummary, "损失战利品", "没有损失掉落") : ""}
         </div>
         ${this.resultActionsHtml(extractionResult, stage)}
       </div>
@@ -461,6 +464,7 @@ function pvpRankResultHtml(result: any) {
 function resultActionsHtml(this: any, result: ExtractionResult, stage: StageConfig) {
     const isEndless = this.session ? isEndlessMode(this.session.mode) : false;
     const isPvp = this.session?.mode === "pvp";
+    const isTest = this.session?.mode === "test";
     if (isPvp) {
       return `
         <div class="pvp-rematch-control">
@@ -478,8 +482,8 @@ function resultActionsHtml(this: any, result: ExtractionResult, stage: StageConf
     if (result === "failed") {
       return `
         <div class="result-actions failure">
-          <button class="primary-button" type="button" data-action="retry">${isEndless ? "再战无尽" : "重试"}</button>
-          <button class="secondary-button" type="button" data-action="upgrade">去升级</button>
+          <button class="primary-button" type="button" data-action="retry">${isTest ? "再测一局" : isEndless ? "再战无尽" : "重试"}</button>
+          <button class="secondary-button" type="button" data-action="${isTest ? "menu" : "upgrade"}">${isTest ? "回基地" : "去升级"}</button>
         </div>
       `;
     }
@@ -497,14 +501,14 @@ function resultActionsHtml(this: any, result: ExtractionResult, stage: StageConf
 
     return `
       <div class="result-actions extracted">
-        <button class="primary-button" type="button" data-action="retry">${isEndless ? "再来一局" : "继续挑战"}</button>
+        <button class="primary-button" type="button" data-action="retry">${isTest ? "再测一局" : isEndless ? "再来一局" : "继续挑战"}</button>
         <button class="secondary-button" type="button" data-action="menu">回基地</button>
       </div>
     `;
   }
 
 function scheduleAutoResultAction(this: any, result: ExtractionResult, stage: StageConfig) {
-    if (this.session?.mode === "pvp") return;
+    if (this.session?.mode === "pvp" || this.session?.mode === "test") return;
     if (!this.autoBattleEnabled || this.autoRunMode === "manual") return;
 
     window.setTimeout(() => {
@@ -660,7 +664,7 @@ function updateHud(this: any) {
     const session = this.session;
     if (!session || this.phase === "menu") return;
 
-    this.baseText.textContent = `${Math.max(0, Math.ceil(session.baseHp))} / ${session.maxBaseHp}`;
+    this.baseText.textContent = session.mode === "test" ? "∞ / ∞" : `${Math.max(0, Math.ceil(session.baseHp))} / ${session.maxBaseHp}`;
     this.waveText.textContent = formatSessionWaveText(session);
     this.levelText.textContent = `Lv.${session.level}`;
     this.coinText.textContent = String(Math.floor(session.coins));
@@ -670,7 +674,38 @@ function updateHud(this: any) {
     this.xpText.textContent = `经验 ${Math.floor(session.xp)} / ${session.xpNeed}`;
     this.lootCountText.textContent = String(dropTotalAmount(session.drops));
     this.lootBag.classList.toggle("has-loot", session.drops.length > 0);
+    this.updateQuickExtractionButton();
     this.updateTacticPanel();
+    this.updateTestToolsUi?.();
+  }
+
+function updateQuickExtractionButton(this: any) {
+    const session = this.session;
+    const button = this.quickExtractionButton;
+    if (!button) return;
+
+    const active = Boolean(session && this.phase === "playing" && session.extractionWindowWave !== null && session.mode !== "pvp");
+    button.classList.toggle("hidden", !active);
+    if (!active) return;
+
+    const isTest = session.mode === "test";
+    const duration = Math.max(0.1, session.extractionWindowDuration || 5);
+    const remaining = isTest ? duration : Math.max(0, session.extractionWindowTimer || 0);
+    const seconds = isTest ? "测" : Math.max(1, Math.ceil(remaining));
+    const progress = clamp((remaining / duration) * 100, 0, 100);
+    button.style.setProperty("--extract-progress", `${progress}%`);
+    button.innerHTML = `
+      <svg class="quick-extraction-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12.8 4.2a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z"></path>
+        <path d="m11.7 7.3-3 3.3 3.2 2.2 1.8 4.5"></path>
+        <path d="m8.7 10.6-2.1 3-3.2 1.1"></path>
+        <path d="m12 12.8 3.2-1 2.4-3.2"></path>
+        <path d="m13.7 17.3 3.2 2.5"></path>
+        <path d="m9.8 14.9-2.2 4.7"></path>
+      </svg>
+      <span>撤离</span>
+      <strong>${seconds}</strong>
+    `;
   }
 
 function updateTacticPanel(this: any) {
@@ -705,8 +740,10 @@ function updateTacticPanel(this: any) {
 function updateTacticPanelState(this: any) {
     this.tacticPanel.classList.toggle("expanded", this.tacticPanelExpanded);
     this.tacticPanel.classList.toggle("collapsed", !this.tacticPanelExpanded);
+    this.tacticToggle.checked = this.tacticPanelExpanded;
     this.tacticToggle.setAttribute("aria-expanded", String(this.tacticPanelExpanded));
     this.tacticToggle.setAttribute("aria-label", this.tacticPanelExpanded ? "收起已选择战术升级" : "展开已选择战术升级");
+    this.tacticToggle.closest<HTMLElement>(".battle-check-row")?.classList.toggle("active", this.tacticPanelExpanded);
   }
 
 export const gameBattleResultLootMethods = {
@@ -725,6 +762,7 @@ export const gameBattleResultLootMethods = {
   closeLootScreen,
   pulseLootBag,
   updateHud,
+  updateQuickExtractionButton,
   updateTacticPanel,
   updateTacticPanelState,
 } satisfies Record<string, GameMethod>;

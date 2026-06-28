@@ -177,6 +177,17 @@ type PvpRankFinishResponse = {
 const AUTH_KEY = "game-marbles-auth-v1";
 const API_BASE = apiBaseUrl();
 
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code = "",
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 export class GameBackend {
   private auth: AuthCache = loadAuth();
   private playerRevision = 0;
@@ -232,6 +243,15 @@ export class GameBackend {
       };
     } catch (error) {
       console.warn("[backend] bootstrap failed", error);
+      if (error instanceof ApiRequestError && error.status === 401) {
+        this.switchAccount();
+        return {
+          online: false,
+          save: localSave,
+          notice: "登录状态已失效，请重新登录",
+          requiresLogin: true,
+        };
+      }
       this.online = false;
       return {
         online: false,
@@ -657,7 +677,7 @@ export class GameBackend {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(data?.message || `HTTP ${response.status}`);
+      throw new ApiRequestError(data?.message || `HTTP ${response.status}`, response.status, data?.code || "");
     }
     return data as T;
   }

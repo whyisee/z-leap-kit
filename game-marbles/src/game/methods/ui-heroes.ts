@@ -593,17 +593,22 @@ function heroMarbleLoadoutHtml(this: any, character: CharacterConfig, owned: boo
           ${loadout
             .map((id, index) => {
               const config = marbleConfigs[id];
+              const visual = this.marbleVisualConfig(config.id);
+              const cosmetic = this.equippedMarbleCosmetic(config.id);
               return `
                 <button
                   class="hero-marble-slot ${index === activeSlot ? "active" : ""}"
                   type="button"
                   data-hero-marble-slot="${index}"
-                  style="--marble-color: ${config.color}"
+                  style="--marble-color: ${visual.color}; --marble-accent: ${visual.accentColor}; --marble-trail: ${visual.trail || config.trail}"
                   ${owned ? "" : "disabled"}
                 >
-                  <span>槽位 ${index + 1}</span>
-                  <strong><i></i>${config.name}</strong>
-                  <em>Lv.${this.marbleLevel(id)} · ${config.tags.map((tag) => this.marbleTagLabel(tag)).join("/")}</em>
+                  ${this.marblePreviewIconHtml(visual, "hero-marble-slot-icon")}
+                  <span class="hero-marble-slot-copy">
+                    <span>槽位 ${index + 1}</span>
+                    <strong>${config.name}</strong>
+                    <em>Lv.${this.marbleLevel(id)} · ${cosmetic ? this.escapeText(cosmetic.name) : "默认外观"}</em>
+                  </span>
                   <b>${owned ? "更换" : "锁定"}</b>
                 </button>
               `;
@@ -615,9 +620,10 @@ function heroMarbleLoadoutHtml(this: any, character: CharacterConfig, owned: boo
             ? `
               <div class="hero-marble-picker" style="--marble-color: ${currentConfig.color}">
                 <div class="hero-marble-picker-head">
+                  ${this.marblePreviewIconHtml(this.marbleVisualConfig(currentConfig.id), "hero-marble-picker-head-icon")}
                   <div>
                     <span>槽位 ${activeSlot + 1}</span>
-                    <strong><i></i>${currentConfig.name}</strong>
+                    <strong>${currentConfig.name}</strong>
                   </div>
                   <button type="button" data-hero-marble-picker-close>收起</button>
                 </div>
@@ -627,19 +633,25 @@ function heroMarbleLoadoutHtml(this: any, character: CharacterConfig, owned: boo
                       const equippedIndex = loadout.indexOf(config.id);
                       const duplicate = equippedIndex >= 0 && equippedIndex !== activeSlot;
                       const selected = current === config.id;
+                      const visual = this.marbleVisualConfig(config.id);
+                      const cosmetic = this.equippedMarbleCosmetic(config.id);
                       return `
                         <button
                           class="hero-marble-picker-row ${selected ? "active" : ""}"
                           type="button"
                           data-hero-id="${character.id}"
                           data-hero-marble-equip="${config.id}"
-                          style="--marble-color: ${config.color}"
+                          style="--marble-color: ${visual.color}; --marble-accent: ${visual.accentColor}; --marble-trail: ${visual.trail || config.trail}"
                           ${duplicate ? "disabled" : ""}
                         >
-                          <i></i>
-                          <span>
+                          ${this.marblePreviewIconHtml(visual, "hero-marble-picker-icon")}
+                          <span class="hero-marble-picker-copy">
                             <strong>${config.name}</strong>
                             <small>Lv.${this.marbleLevel(config.id)} · 伤害 ${Math.round(config.damage * this.marbleDamageLevelMul(config.id) * 10) / 10} · ${config.tags.map((tag) => this.marbleTagLabel(tag)).join("/")}</small>
+                            <span class="hero-marble-visual-meta">
+                              <b>${cosmetic ? this.escapeText(cosmetic.name) : "默认外观"}</b>
+                              <small>${this.marbleShapeLabel(visual.shape)} · ${this.marbleTrailStyleLabel(visual.trailStyle)}</small>
+                            </span>
                           </span>
                           <em>${selected ? "已装备" : duplicate ? "已占用" : recommended.has(config.id) ? "推荐" : "可用"}</em>
                         </button>

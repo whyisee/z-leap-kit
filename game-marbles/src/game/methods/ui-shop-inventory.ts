@@ -33,6 +33,8 @@ import {
   characterSortModes,
   characters,
   clamp,
+  cosmeticAssetSources,
+  cosmeticsForPool,
   collectibleConfigs,
   collectibleForRarity,
   combinedRarityBoost,
@@ -374,6 +376,283 @@ function marbleUpgradeCardHtml(this: any, marble: MarbleConfig) {
           </button>
         </div>
       </article>
+    `;
+  }
+
+function marbleLibraryHtml(this: any) {
+    return `
+      <div class="marble-library" aria-label="弹珠列表">
+        ${Object.values(marbleConfigs).map((marble) => this.marbleListCardHtml(marble)).join("")}
+      </div>
+    `;
+  }
+
+function marbleListCardHtml(this: any, marble: MarbleConfig) {
+    const level = this.marbleLevel(marble.id);
+    const capped = level >= MARBLE_MAX_LEVEL;
+    const cost = capped ? 0 : marbleShardCost(level);
+    const shards = this.inventory().marbleShards[marble.id] || 0;
+    const upgradeable = !capped && shards >= cost;
+    const visual = this.marbleVisualConfig(marble.id);
+    const equipped = this.equippedMarbleCosmetic(marble.id);
+    const role = this.marbleRoleText(marble);
+
+    return `
+      <button
+        class="marble-list-card ${this.marbleDetailId === marble.id ? "active" : ""} ${upgradeable ? "upgradeable" : ""}"
+        type="button"
+        data-marble-select="${marble.id}"
+        style="--marble-color: ${visual.color}; --marble-trail: ${visual.trail || marble.trail}"
+      >
+        ${this.marblePreviewIconHtml(visual, "marble-list-icon")}
+        <span class="marble-list-copy">
+          <strong>${marble.name}</strong>
+          <em>Lv.${level}/${MARBLE_MAX_LEVEL} · ${role}</em>
+          <i>${capped ? "已满级" : upgradeable ? `可升级 · 碎片 ${shards}/${cost}` : `碎片 ${shards}/${cost}`}</i>
+        </span>
+        ${equipped ? `<small class="marble-skin-badge">${this.escapeText(equipped.visualLabel)}</small>` : ""}
+        ${upgradeable ? `<small class="marble-upgrade-badge">升</small>` : ""}
+      </button>
+    `;
+  }
+
+function marbleModalHtml(this: any) {
+    if (!this.marbleDetailId) return "";
+    const marble = marbleConfigs[this.marbleDetailId as MarbleId];
+    if (!marble) return "";
+
+    return `
+      <div class="hero-modal marble-detail-modal" role="dialog" aria-label="弹珠详情" data-marble-detail-backdrop>
+        <div class="hero-modal-panel marble-modal-panel">
+          <button class="hero-modal-close" type="button" data-marble-detail-close aria-label="关闭">×</button>
+          ${this.marbleDetailHtml(marble)}
+        </div>
+      </div>
+    `;
+  }
+
+function marbleDetailHtml(this: any, marble: MarbleConfig) {
+    const level = this.marbleLevel(marble.id);
+    const capped = level >= MARBLE_MAX_LEVEL;
+    const cost = capped ? 0 : marbleShardCost(level);
+    const shards = this.inventory().marbleShards[marble.id] || 0;
+    const visual = this.marbleVisualConfig(marble.id);
+    const role = this.marbleRoleText(marble);
+
+    return `
+      <section class="marble-detail" style="--hero-color: ${visual.color}; --marble-color: ${visual.color}; --marble-trail: ${visual.trail || marble.trail}">
+        <div class="marble-detail-head">
+          ${this.marblePreviewIconHtml(visual, "marble-detail-icon")}
+          <div class="marble-detail-title">
+            <h3>${marble.name}</h3>
+            <span>Lv.${level}/${MARBLE_MAX_LEVEL} · ${role} · ${marble.tags.map((tag) => this.marbleTagLabel(tag)).join("/")}</span>
+          </div>
+          ${this.marbleUpgradeButtonHtml(marble, "hero-title-action")}
+        </div>
+
+        <div class="marble-detail-stats">
+          <div><span>伤害</span><strong>${this.marbleDamageText(marble)}</strong></div>
+          <div><span>冷却</span><strong>${marble.cooldown.toFixed(2)}s</strong></div>
+          <div><span>速度</span><strong>${Math.round(marble.speed)}</strong></div>
+          <div><span>反弹</span><strong>${marble.maxBounce}</strong></div>
+          <div><span>半径</span><strong>${marble.radius}</strong></div>
+          <div><span>存在</span><strong>${marble.lifetime.toFixed(1)}s</strong></div>
+        </div>
+
+        <div class="marble-detail-grid">
+          <section class="marble-detail-box">
+            <div class="marble-detail-box-title">
+              <span>战斗效果</span>
+              <em>${role}</em>
+            </div>
+            <p>${this.marbleEffectText(marble)}</p>
+            <div class="marble-detail-tags">
+              ${marble.tags.map((tag) => `<em>${this.marbleTagLabel(tag)}</em>`).join("")}
+            </div>
+          </section>
+
+          <section class="marble-detail-box marble-upgrade-panel">
+            <div class="marble-detail-box-title">
+              <span>强化进度</span>
+              <em>${capped ? "已满级" : "消耗弹珠碎片"}</em>
+            </div>
+            <div class="marble-upgrade-track">
+              <span style="width: ${capped ? 100 : Math.min(100, Math.round((shards / Math.max(1, cost)) * 100))}%"></span>
+            </div>
+            <div class="marble-upgrade-row">
+              <span>${capped ? "碎片可继续保留" : `碎片 ${shards}/${cost}`}</span>
+              ${this.marbleUpgradeButtonHtml(marble, "small-button")}
+            </div>
+          </section>
+        </div>
+
+        ${this.marbleDetailCosmeticsHtml(marble)}
+      </section>
+    `;
+  }
+
+function marbleUpgradeButtonHtml(this: any, marble: MarbleConfig, className = "small-button") {
+    const level = this.marbleLevel(marble.id);
+    const capped = level >= MARBLE_MAX_LEVEL;
+    const cost = capped ? 0 : marbleShardCost(level);
+    const shards = this.inventory().marbleShards[marble.id] || 0;
+    const disabled = capped || shards < cost;
+
+    return `
+      <button class="${className}" type="button" data-marble-upgrade="${marble.id}" ${disabled ? "disabled" : ""}>
+        ${capped ? "满级" : "升级"}
+      </button>
+    `;
+  }
+
+function marbleDamageText(this: any, marble: MarbleConfig) {
+    const level = this.marbleLevel(marble.id);
+    const capped = level >= MARBLE_MAX_LEVEL;
+    const damage = Math.round(marble.damage * this.marbleDamageLevelMul(marble.id) * 10) / 10;
+    const nextDamage = capped ? damage : Math.round(marble.damage * (1 + level * 0.045) * 10) / 10;
+    return capped ? `${damage}` : `${damage}→${nextDamage}`;
+  }
+
+function marbleRoleText(this: any, marble: MarbleConfig) {
+    const roles: Record<MarbleId, string> = {
+      basic: "稳定单体",
+      split: "数量压制",
+      blast: "范围爆破",
+      burn: "持续灼烧",
+      lightning: "连锁打击",
+      slow: "减速控制",
+    };
+    return roles[marble.id] || "战术弹珠";
+  }
+
+function marbleEffectText(this: any, marble: MarbleConfig) {
+    const effects: Record<MarbleId, string> = {
+      basic: "基础弹珠没有复杂触发条件，伤害稳定、冷却短，适合作为队伍的可靠输出底盘。",
+      split: "多次碰撞后会派生小型弹珠，适合处理密集敌群，也能放大反弹和数量类战术升级收益。",
+      blast: "命中后触发小范围爆破，对聚集敌人收益更高，适合作为清场和破阵核心。",
+      burn: "命中后附加持续灼烧，更适合处理高血量目标和 Boss，搭配持续伤害升级收益稳定。",
+      lightning: "命中后触发连锁电弧，在分散目标之间跳转，适合补刀和压制后排敌人。",
+      slow: "命中后降低敌人推进速度，为队伍争取更多反弹和技能释放时间，是偏控制的防线弹珠。",
+    };
+    return effects[marble.id] || "用于构筑不同队伍打法的战术弹珠。";
+  }
+
+function marbleShapeLabel(this: any, shape: string) {
+    const labels: Record<string, string> = {
+      orb: "圆珠",
+      candy: "糖芯",
+      star: "星形",
+      leaf: "叶片",
+      crystal: "晶体",
+      bomb: "爆弹",
+      flame: "火焰",
+      bolt: "电弧",
+      snowflake: "雪晶",
+      ring: "星环",
+      flower: "花瓣",
+      comet: "彗星",
+    };
+    return labels[shape] || "圆珠";
+  }
+
+function marbleTrailStyleLabel(this: any, style: string) {
+    const labels: Record<string, string> = {
+      soft: "柔光拖尾",
+      spark: "火星尾焰",
+      stardust: "星尘尾焰",
+      leaf: "叶片尾焰",
+      ribbon: "绸带尾焰",
+      flame: "燃烧尾焰",
+      electric: "电弧尾焰",
+      frost: "霜雾尾焰",
+      firework: "礼花尾焰",
+      petal: "花瓣尾焰",
+      aurora: "极光尾焰",
+      galaxy: "星河尾焰",
+    };
+    return labels[style] || "柔光拖尾";
+  }
+
+function marbleTrailLengthLabel(this: any, length: number) {
+    if (length >= 1.75) return "超长";
+    if (length >= 1.25) return "长";
+    if (length <= 0.8) return "短";
+    return "标准";
+  }
+
+function marbleTrailWidthLabel(this: any, width: number) {
+    if (width >= 1.45) return "宽";
+    if (width >= 1.15) return "偏宽";
+    if (width <= 0.85) return "细";
+    return "标准";
+  }
+
+function marbleTrailAnimationLabel(this: any, animation: string) {
+    const labels: Record<string, string> = {
+      steady: "稳定",
+      pulse: "脉冲",
+      flicker: "闪烁",
+      sparkle: "星闪",
+      flow: "流动",
+      zigzag: "折跃",
+      orbit: "环绕",
+    };
+    return labels[animation] || "稳定";
+  }
+
+function marbleDetailCosmeticsHtml(this: any, marble: MarbleConfig) {
+    const equipped = this.equippedMarbleCosmetic(marble.id);
+    const visual = this.marbleVisualConfig(marble.id);
+    const skins = this.sortedCosmeticsByRarity(cosmeticsForPool("marble").filter((item) => item.targetId === marble.id));
+    const owned = skins.filter((item) => this.save.cosmetics.owned[item.id]);
+
+    return `
+      <section class="marble-detail-box marble-detail-cosmetics">
+        <div class="marble-detail-box-title">
+          <span>弹珠幻化</span>
+          <em>${equipped ? "已装备幻化" : "未装备幻化"}</em>
+        </div>
+        <div class="marble-cosmetic-current ${equipped?.rarity || "base"}">
+          ${this.marblePreviewIconHtml(visual, "marble-cosmetic-current-icon")}
+          <div>
+            <strong>${equipped ? equipped.name : `${marble.name} · 默认外观`}</strong>
+            <span>${equipped ? equipped.desc : "使用弹珠原始颜色、拖尾和命中特效。"}</span>
+          </div>
+        </div>
+        <div class="marble-visual-facts">
+          <div><span>外形</span><strong>${this.marbleShapeLabel(visual.shape)}</strong></div>
+          <div><span>主色</span><strong>${equipped ? "已替换" : "默认"}</strong></div>
+          <div><span>尾焰</span><strong>${this.marbleTrailStyleLabel(visual.trailStyle)}</strong></div>
+          <div><span>长度</span><strong>${this.marbleTrailLengthLabel(visual.trailLength || 1)}</strong></div>
+          <div><span>宽度</span><strong>${this.marbleTrailWidthLabel(visual.trailWidth || 1)}</strong></div>
+          <div><span>动效</span><strong>${this.marbleTrailAnimationLabel(visual.trailAnimation || "steady")}</strong></div>
+        </div>
+        <div class="marble-detail-cosmetic-options">
+          ${
+            owned.length
+              ? owned
+                  .map(
+                    (item) => `
+                      <button
+                        type="button"
+                        class="${item.rarity} ${equipped?.id === item.id ? "active" : ""}"
+                        data-cosmetic-equip="${item.id}"
+                        style="--cosmetic-color: ${item.color}; --cosmetic-accent: ${item.accentColor}"
+                      >
+                        ${this.marblePreviewIconHtml(this.marbleCosmeticPreview(item), "marble-cosmetic-option-icon")}
+                        <span class="marble-cosmetic-option-copy">
+                          <strong>${this.escapeText(item.name.replace(`${marble.name} · `, ""))}</strong>
+                          <small>${this.marbleTrailStyleLabel(item.marbleTrailStyle || "soft")} · ${this.marbleTrailLengthLabel(item.marbleTrailLength || 1)} · ${this.marbleTrailAnimationLabel(item.marbleTrailAnimation || "steady")}</small>
+                        </span>
+                      </button>
+                    `,
+                  )
+                  .join("")
+              : `<p>还没有这个弹珠的幻化外观。</p>`
+          }
+        </div>
+        <button class="secondary-button" type="button" data-menu="cosmetics">去幻化舱获取</button>
+      </section>
     `;
   }
 
@@ -881,6 +1160,20 @@ export const gameShopInventoryUiMethods = {
   shopItemCardHtml,
   shopItemIconText,
   shopCrystalRedeemHintHtml,
+  marbleLibraryHtml,
+  marbleListCardHtml,
+  marbleModalHtml,
+  marbleDetailHtml,
+  marbleUpgradeButtonHtml,
+  marbleDamageText,
+  marbleRoleText,
+  marbleEffectText,
+  marbleShapeLabel,
+  marbleTrailStyleLabel,
+  marbleTrailLengthLabel,
+  marbleTrailWidthLabel,
+  marbleTrailAnimationLabel,
+  marbleDetailCosmeticsHtml,
   marbleUpgradeCardHtml,
   warehouseResourceStripHtml,
   protocolTabsHtml,

@@ -18,7 +18,708 @@
 
 .marble-library {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.marble-list-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 84px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--marble-color) 44%, rgba(84, 199, 255, 0.16));
+  border-radius: 8px;
+  color: #eef4ff;
+  background:
+    radial-gradient(circle at 14% 18%, color-mix(in srgb, var(--marble-color) 22%, transparent), transparent 38%),
+    linear-gradient(145deg, color-mix(in srgb, var(--marble-color) 12%, transparent), transparent 70%),
+    rgba(9, 17, 29, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 10px 18px rgba(0, 0, 0, 0.14);
+  cursor: pointer;
+  text-align: left;
+}
+
+.marble-list-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.13), transparent);
+  transform: translateX(-80%);
+  transition:
+    opacity 0.18s ease,
+    transform 0.36s ease;
+}
+
+.marble-list-card:hover::before,
+.marble-list-card.active::before {
+  opacity: 1;
+  transform: translateX(80%);
+}
+
+.marble-list-card.active {
+  border-color: color-mix(in srgb, var(--marble-color) 86%, #fff);
+  background:
+    radial-gradient(circle at 18% 20%, color-mix(in srgb, var(--marble-color) 34%, transparent), transparent 42%),
+    linear-gradient(145deg, color-mix(in srgb, var(--marble-color) 22%, transparent), rgba(84, 199, 255, 0.08)),
+    rgba(16, 25, 41, 0.88);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 24px color-mix(in srgb, var(--marble-color) 22%, transparent);
+}
+
+.marble-list-card.upgradeable {
+  border-color: color-mix(in srgb, #f6c95f 52%, var(--marble-color));
+}
+
+.marble-list-icon,
+.marble-detail-icon,
+.marble-preview-icon {
+  position: relative;
+  display: grid !important;
+  flex: 0 0 auto;
+  isolation: isolate;
+  place-items: center;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.marble-list-icon {
+  width: 54px;
+  height: 54px;
+}
+
+.marble-list-icon i,
+.marble-detail-icon i,
+.marble-preview-icon i {
+  position: absolute;
+  z-index: 2;
+  inset: 7px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--marble-accent, var(--marble-color)) 72%, rgba(255, 255, 255, 0.48));
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.85), transparent 19%),
+    linear-gradient(145deg, color-mix(in srgb, var(--marble-color) 88%, #fff), color-mix(in srgb, var(--marble-color) 74%, #061019));
+  box-shadow:
+    inset -5px -6px 10px rgba(0, 0, 0, 0.28),
+    inset 4px 4px 8px rgba(255, 255, 255, 0.2),
+    0 0 16px color-mix(in srgb, var(--marble-color) 70%, transparent);
+}
+
+.marble-list-icon b,
+.marble-detail-icon b,
+.marble-preview-icon b {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 2%;
+  width: 82%;
+  height: 16%;
+  border-radius: 999px;
+  background: var(--marble-trail);
+  filter: blur(0.8px);
+  opacity: 0.74;
+  transform: translateY(-50%) rotate(-24deg);
+}
+
+.marble-preview-icon::before {
+  position: absolute;
+  z-index: 0;
+  inset: 7px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--marble-color) 42%, transparent), transparent 68%);
+  content: "";
+  filter: blur(5px);
+  opacity: 0.62;
+}
+
+.marble-shape-star::before {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 61% 34%, 98% 35%, 68% 56%, 79% 92%, 50% 70%, 21% 92%, 32% 56%, 2% 35%, 39% 34%);
+}
+
+.marble-shape-leaf::before {
+  border-radius: 88% 12% 82% 18%;
+  transform: rotate(-28deg);
+}
+
+.marble-shape-crystal::before {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 92% 28%, 78% 100%, 22% 100%, 8% 28%);
+}
+
+.marble-shape-flame::before {
+  border-radius: 70% 28% 58% 42%;
+  clip-path: polygon(74% 0%, 96% 44%, 72% 92%, 36% 100%, 8% 68%, 22% 28%);
+}
+
+.marble-shape-bolt::before {
+  border-radius: 0;
+  clip-path: polygon(40% 0%, 88% 42%, 61% 44%, 72% 100%, 14% 46%, 43% 44%);
+}
+
+.marble-shape-snowflake::before {
+  clip-path: polygon(50% 0%, 64% 28%, 96% 24%, 78% 50%, 96% 76%, 64% 72%, 50% 100%, 36% 72%, 4% 76%, 22% 50%, 4% 24%, 36% 28%);
+}
+
+.marble-shape-flower::before {
+  border-radius: 38% 62% 38% 62%;
+  clip-path: polygon(50% 0%, 66% 28%, 100% 30%, 76% 54%, 84% 90%, 50% 74%, 16% 90%, 24% 54%, 0% 30%, 34% 28%);
+}
+
+.marble-shape-comet::before {
+  border-radius: 70% 28% 72% 28%;
+  transform: rotate(-16deg);
+}
+
+.marble-shape-candy::before {
+  opacity: 0.5;
+}
+
+.marble-preview-icon em {
+  position: absolute;
+  z-index: 3;
+  inset: 18%;
+  display: block !important;
+  border: 1px solid color-mix(in srgb, var(--marble-accent, var(--marble-color)) 74%, rgba(255, 255, 255, 0.36));
+  border-radius: 50%;
+  opacity: 0.72;
+  pointer-events: none;
+  transform: rotate(-18deg);
+}
+
+.marble-impact-electric em {
+  inset: 22%;
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--marble-accent, var(--marble-color)) 78%, #fff);
+  clip-path: polygon(42% 0%, 88% 42%, 60% 42%, 74% 100%, 12% 46%, 42% 46%);
+}
+
+.marble-impact-flare em,
+.marble-impact-spark em {
+  inset: 18%;
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--marble-accent, var(--marble-color)) 78%, #fff);
+  clip-path: polygon(50% 0%, 59% 36%, 100% 50%, 59% 64%, 50% 100%, 41% 64%, 0% 50%, 41% 36%);
+}
+
+.marble-impact-frost em,
+.marble-impact-crystal em {
+  inset: 17%;
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 84% 20%, 100% 50%, 84% 80%, 50% 100%, 16% 80%, 0% 50%, 16% 20%);
+}
+
+.marble-impact-petal em {
+  inset: 20%;
+  border-radius: 78% 22% 78% 22%;
+}
+
+.marble-impact-ribbon em {
+  inset: 28% 12%;
+  border-radius: 999px;
+  transform: rotate(-26deg);
+}
+
+.marble-impact-galaxy em,
+.marble-impact-pulse em {
+  inset: 14%;
+  border-radius: 50%;
+  transform: rotate(-20deg) scaleX(1.18);
+}
+
+.marble-shape-star i {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 61% 34%, 98% 35%, 68% 56%, 79% 92%, 50% 70%, 21% 92%, 32% 56%, 2% 35%, 39% 34%);
+}
+
+.marble-shape-leaf i {
+  border-radius: 88% 12% 82% 18%;
+  transform: rotate(-28deg);
+}
+
+.marble-shape-crystal i {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 92% 28%, 78% 100%, 22% 100%, 8% 28%);
+}
+
+.marble-shape-bomb i {
+  border-radius: 50% 50% 46% 54%;
+}
+
+.marble-shape-flame i {
+  border-radius: 70% 28% 58% 42%;
+  clip-path: polygon(74% 0%, 96% 44%, 72% 92%, 36% 100%, 8% 68%, 22% 28%);
+}
+
+.marble-shape-bolt i {
+  border-radius: 0;
+  clip-path: polygon(40% 0%, 88% 42%, 61% 44%, 72% 100%, 14% 46%, 43% 44%);
+}
+
+.marble-shape-snowflake i {
+  clip-path: polygon(50% 0%, 64% 28%, 96% 24%, 78% 50%, 96% 76%, 64% 72%, 50% 100%, 36% 72%, 4% 76%, 22% 50%, 4% 24%, 36% 28%);
+}
+
+.marble-shape-ring i {
+  inset: 11px;
+  border: 5px solid color-mix(in srgb, var(--marble-color) 74%, #fff);
+  background: rgba(4, 9, 16, 0.78);
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--marble-color) 46%, transparent),
+    0 0 14px color-mix(in srgb, var(--marble-color) 70%, transparent);
+}
+
+.marble-shape-flower i {
+  border-radius: 38% 62% 38% 62%;
+  clip-path: polygon(50% 0%, 66% 28%, 100% 30%, 76% 54%, 84% 90%, 50% 74%, 16% 90%, 24% 54%, 0% 30%, 34% 28%);
+}
+
+.marble-shape-comet i {
+  border-radius: 70% 28% 72% 28%;
+  transform: rotate(-16deg);
+}
+
+.marble-shape-candy i {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.78) 0 18%, transparent 18% 38%, rgba(255, 255, 255, 0.7) 38% 54%, transparent 54%),
+    linear-gradient(145deg, color-mix(in srgb, var(--marble-color) 88%, #fff), color-mix(in srgb, var(--marble-color) 74%, #061019));
+}
+
+.marble-trail-electric b {
+  height: 12%;
+  clip-path: polygon(0 55%, 24% 35%, 44% 68%, 66% 24%, 100% 55%, 66% 86%, 42% 52%, 24% 76%);
+}
+
+.marble-trail-flame b,
+.marble-trail-firework b {
+  background: linear-gradient(90deg, var(--marble-trail), rgba(246, 201, 95, 0.78));
+}
+
+.marble-list-copy {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  padding-right: 24px;
+}
+
+.marble-list-card strong,
+.marble-list-card em,
+.marble-list-card i {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marble-list-card strong {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 1000;
+}
+
+.marble-list-card em {
+  margin-top: 4px;
+  color: rgba(238, 244, 255, 0.66);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.marble-list-card i {
+  margin-top: 4px;
+  color: color-mix(in srgb, var(--marble-color) 76%, #fff);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.marble-upgrade-badge,
+.marble-skin-badge {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  font-weight: 1000;
+  line-height: 1;
+}
+
+.marble-upgrade-badge {
+  top: 7px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  color: #191205;
+  background: #f6c95f;
+  font-size: 11px;
+}
+
+.marble-skin-badge {
+  right: 8px;
+  bottom: 8px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  color: #f8fbff;
+  background: color-mix(in srgb, var(--marble-color) 58%, rgba(6, 12, 22, 0.84));
+  font-size: 10px;
+}
+
+.marble-modal-panel {
+  border-color: color-mix(in srgb, var(--marble-color, #54c7ff) 46%, rgba(84, 199, 255, 0.34));
+}
+
+.marble-detail {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  padding-right: 58px;
+  color: #eef4ff;
+}
+
+.marble-detail-head {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.marble-detail-icon {
+  width: 78px;
+  height: 78px;
+}
+
+.marble-detail-title {
+  min-width: 0;
+}
+
+.marble-detail-title h3,
+.marble-detail-title span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marble-detail-title h3 {
+  color: #fff;
+  font-size: 26px;
+  font-weight: 1000;
+}
+
+.marble-detail-title span {
+  margin-top: 5px;
+  color: rgba(238, 244, 255, 0.66);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.marble-detail-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.marble-detail-stats div,
+.marble-detail-box {
+  min-width: 0;
+  border: 1px solid rgba(190, 213, 255, 0.14);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--marble-color) 10%, transparent), transparent 74%),
+    rgba(6, 12, 22, 0.54);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.marble-detail-stats div {
+  padding: 9px 10px;
+}
+
+.marble-detail-stats span,
+.marble-detail-stats strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marble-detail-stats span {
+  color: rgba(238, 244, 255, 0.58);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.marble-detail-stats strong {
+  margin-top: 3px;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 1000;
+}
+
+.marble-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.marble-detail-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.marble-detail-box-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.marble-detail-box-title span,
+.marble-detail-box-title em {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marble-detail-box-title span {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 1000;
+}
+
+.marble-detail-box-title em {
+  color: color-mix(in srgb, var(--marble-color) 74%, #fff);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.marble-detail-box p {
+  margin: 0;
+  color: rgba(238, 244, 255, 0.72);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.marble-detail-tags,
+.marble-detail-cosmetic-options {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.marble-detail-tags em {
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--marble-color) 44%, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+  color: rgba(238, 244, 255, 0.86);
+  background: color-mix(in srgb, var(--marble-color) 14%, rgba(255, 255, 255, 0.06));
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.marble-upgrade-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.marble-upgrade-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--marble-color), #f6c95f);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--marble-color) 52%, transparent);
+}
+
+.marble-upgrade-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.marble-upgrade-row > span {
+  color: rgba(238, 244, 255, 0.7);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.marble-upgrade-row .small-button {
+  min-width: 84px;
+  min-height: 36px;
+}
+
+.marble-cosmetic-current {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.marble-cosmetic-current div {
+  min-width: 0;
+}
+
+.marble-cosmetic-current div strong,
+.marble-cosmetic-current div span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marble-cosmetic-current strong {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 1000;
+}
+
+.marble-cosmetic-current div span {
+  margin-top: 4px;
+  color: rgba(238, 244, 255, 0.64);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.marble-cosmetic-current-icon {
+  width: 52px;
+  height: 52px;
+}
+
+.marble-visual-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.marble-visual-facts div {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(190, 213, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.marble-visual-facts span,
+.marble-visual-facts strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marble-visual-facts span {
+  color: rgba(238, 244, 255, 0.52);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.marble-visual-facts strong {
+  margin-top: 3px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 1000;
+}
+
+.marble-detail-cosmetic-options button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  min-width: 148px;
+  max-width: 210px;
+  min-height: 46px;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px 5px 5px;
+  border: 1px solid color-mix(in srgb, var(--cosmetic-color) 54%, rgba(255, 255, 255, 0.14));
+  border-radius: 999px;
+  color: #eef4ff;
+  background:
+    radial-gradient(circle at 18% 20%, color-mix(in srgb, var(--cosmetic-color) 22%, transparent), transparent 44%),
+    rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+  font-weight: 950;
+}
+
+.marble-detail-cosmetic-options button.active {
+  border-color: rgba(246, 201, 95, 0.82);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--cosmetic-color) 24%, transparent);
+}
+
+.marble-detail-cosmetic-options button > i {
+  display: none;
+}
+
+.marble-cosmetic-option-icon {
+  width: 32px;
+  height: 32px;
+  border-width: 1px;
+}
+
+.marble-cosmetic-option-icon i {
+  inset: 7px;
+}
+
+.marble-cosmetic-option-icon b {
+  width: 48%;
+  height: 14%;
+}
+
+.marble-cosmetic-option-icon.marble-shape-ring i {
+  inset: 8px;
+  border-width: 3px;
+}
+
+.marble-detail-cosmetic-options .marble-cosmetic-option-copy {
+  min-width: 0;
+}
+
+.marble-detail-cosmetic-options .marble-cosmetic-option-copy,
+.marble-detail-cosmetic-options .marble-cosmetic-option-copy strong,
+.marble-detail-cosmetic-options .marble-cosmetic-option-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marble-detail-cosmetic-options button strong {
+  font-size: 12px;
+}
+
+.marble-detail-cosmetic-options button small {
+  margin-top: 2px;
+  color: rgba(238, 244, 255, 0.62);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.marble-detail-cosmetics .secondary-button {
+  justify-self: start;
+  min-height: 38px;
+  padding: 0 14px;
 }
 
 .marble-card {
@@ -80,6 +781,33 @@
 .marble-card-foot .small-button {
   min-width: 88px;
   min-height: 40px;
+}
+
+@media (max-width: 760px) {
+  .marble-library {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .marble-detail {
+    padding-right: 18px;
+  }
+
+  .marble-detail-head {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .marble-detail-head .hero-title-action {
+    grid-column: 1 / -1;
+  }
+
+  .marble-detail-icon {
+    width: 68px;
+    height: 68px;
+  }
+
+  .marble-detail-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .warehouse-stat-grid {

@@ -454,6 +454,48 @@
     rgba(7, 13, 24, 0.76);
 }
 
+.cosmetic-mini-card.rare,
+.cosmetic-result-item.rare,
+.cosmetic-card.rare,
+.cosmetic-shop-card.rare,
+.cosmetic-reveal-card.rare,
+.hero-cosmetic-card.rare,
+.marble-cosmetic-card.rare,
+.marble-cosmetic-current.rare,
+.marble-detail-cosmetic-options button.rare,
+.marble-cosmetic-options button.rare {
+  --cosmetic-rarity-name: #7de2ff;
+  --cosmetic-rarity-glow: rgba(84, 199, 255, 0.28);
+}
+
+.cosmetic-mini-card.epic,
+.cosmetic-result-item.epic,
+.cosmetic-card.epic,
+.cosmetic-shop-card.epic,
+.cosmetic-reveal-card.epic,
+.hero-cosmetic-card.epic,
+.marble-cosmetic-card.epic,
+.marble-cosmetic-current.epic,
+.marble-detail-cosmetic-options button.epic,
+.marble-cosmetic-options button.epic {
+  --cosmetic-rarity-name: #d7adff;
+  --cosmetic-rarity-glow: rgba(182, 140, 255, 0.36);
+}
+
+.cosmetic-mini-card.legendary,
+.cosmetic-result-item.legendary,
+.cosmetic-card.legendary,
+.cosmetic-shop-card.legendary,
+.cosmetic-reveal-card.legendary,
+.hero-cosmetic-card.legendary,
+.marble-cosmetic-card.legendary,
+.marble-cosmetic-current.legendary,
+.marble-detail-cosmetic-options button.legendary,
+.marble-cosmetic-options button.legendary {
+  --cosmetic-rarity-name: #ffd86b;
+  --cosmetic-rarity-glow: rgba(246, 201, 95, 0.48);
+}
+
 .cosmetic-mini-card {
   display: grid;
   min-height: 90px;
@@ -509,6 +551,33 @@
   height: 112%;
   object-fit: contain;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.18));
+}
+
+.cosmetic-icon.marble-preview-icon {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cosmetic-icon.marble-preview-icon::after {
+  display: none;
+}
+
+.cosmetic-icon.marble-preview-icon i {
+  position: absolute;
+  z-index: auto;
+  display: block;
+  color: inherit;
+  font-size: inherit;
+  line-height: normal;
+  text-shadow: none;
+}
+
+.cosmetic-icon.marble-preview-icon b,
+.cosmetic-icon.marble-preview-icon em {
+  display: block;
 }
 
 .character-cosmetic-portrait {
@@ -1671,6 +1740,7 @@
   display: grid;
   width: 32px;
   height: 32px;
+  padding: 0;
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--cosmetic-color) 58%, rgba(255, 255, 255, 0.16));
   border-radius: 50%;
@@ -1687,6 +1757,32 @@
   color: rgba(238, 244, 255, 0.56);
   font-size: 12px;
   font-weight: 850;
+}
+
+.marble-cosmetic-options .marble-cosmetic-option-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.cosmetic-mini-card strong,
+.cosmetic-result-item strong,
+.cosmetic-shop-card-head strong,
+.cosmetic-card-head strong,
+.hero-cosmetic-card strong,
+.cosmetic-reveal-card strong,
+.marble-cosmetic-head em,
+.marble-cosmetic-current div strong,
+.marble-detail-cosmetic-options .marble-cosmetic-option-copy strong {
+  color: var(--cosmetic-rarity-name, #fff);
+  text-shadow: 0 0 12px var(--cosmetic-rarity-glow, transparent);
+}
+
+.marble-cosmetic-options button.epic,
+.marble-cosmetic-options button.legendary,
+.marble-detail-cosmetic-options button.epic,
+.marble-detail-cosmetic-options button.legendary {
+  border-color: color-mix(in srgb, var(--cosmetic-rarity-name) 72%, rgba(255, 255, 255, 0.18));
+  box-shadow: 0 0 14px var(--cosmetic-rarity-glow);
 }
 
 .setting-cosmetic-card {

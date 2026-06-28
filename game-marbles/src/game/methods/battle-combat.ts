@@ -321,11 +321,21 @@ function pickTarget(this: any) {
     const session = this.requireSession();
     if (session.enemies.length === 0) return null;
 
-    return [...session.enemies].sort((a, b) => {
-      const bossBias = Number(b.type === "boss") - Number(a.type === "boss");
-      if (bossBias !== 0) return bossBias;
-      return b.y - a.y;
-    })[0];
+    let best: Enemy | null = null;
+    for (const enemy of session.enemies) {
+      if (enemy.dead) continue;
+      if (!best) {
+        best = enemy;
+        continue;
+      }
+      if (enemy.type === "boss" && best.type !== "boss") {
+        best = enemy;
+        continue;
+      }
+      if (enemy.type !== "boss" && best.type === "boss") continue;
+      if (enemy.y > best.y) best = enemy;
+    }
+    return best;
   }
 
 function updateEnemies(this: any, dt: number) {
@@ -409,6 +419,12 @@ function nearbyReboundTargetCount(this: any, enemy: Enemy) {
 
 function enemyBreakthrough(this: any, enemy: Enemy) {
     const session = this.requireSession();
+    if (session.mode === "test") {
+      this.addFloatingText(enemy.x, FIELD_BOTTOM - 24, "免疫", "#61e6a8");
+      this.addParticle(enemy.x, FIELD_BOTTOM, "#61e6a8", 12);
+      return;
+    }
+
     let damage = enemy.type === "boss" ? 3 : enemy.type === "elite" ? 2 : 1;
     if (session.heat >= 5) damage += 1;
     if (session.modifiers.cardStacks.touchArmor) {
@@ -440,6 +456,8 @@ function enemyBreakthrough(this: any, enemy: Enemy) {
 
 function updateMarbles(this: any, dt: number) {
     const session = this.requireSession();
+    const trailLimit = this.marbleTrailRecordLimit?.(session) ?? 0;
+    const enemyGrid = this.buildEnemyCollisionGrid?.(session.enemies);
 
     for (const marble of session.marbles) {
       marble.lifetime -= dt;
@@ -459,8 +477,12 @@ function updateMarbles(this: any, dt: number) {
 
       marble.x += marble.vx * dt;
       marble.y += marble.vy * dt;
-      marble.trail.push({ x: marble.x, y: marble.y });
-      if (marble.trail.length > 8) marble.trail.shift();
+      if (trailLimit > 0) {
+        marble.trail.push({ x: marble.x, y: marble.y });
+        while (marble.trail.length > trailLimit) marble.trail.shift();
+      } else if (marble.trail.length > 0) {
+        marble.trail.length = 0;
+      }
 
       if (marble.x - marble.radius < FIELD.x) {
         marble.x = FIELD.x + marble.radius;
@@ -488,10 +510,16 @@ function updateMarbles(this: any, dt: number) {
         else marble.hitCooldown.set(enemyId, timer - dt);
       }
 
-      for (const enemy of session.enemies) {
+      const collisionTargets = enemyGrid ? this.enemyCollisionCandidates(enemyGrid, marble) : session.enemies;
+      for (const enemy of collisionTargets) {
         if (enemy.dead || marble.hitCooldown.has(enemy.id)) continue;
-        const dist = Math.hypot(enemy.x - marble.x, enemy.y - marble.y);
-        if (dist <= enemy.radius + marble.radius) {
+        const hitRange = enemy.radius + marble.radius;
+        const dx = enemy.x - marble.x;
+        const dy = enemy.y - marble.y;
+        if (Math.abs(dx) > hitRange || Math.abs(dy) > hitRange) continue;
+        const distSq = dx * dx + dy * dy;
+        if (distSq <= hitRange * hitRange) {
+          const dist = Math.sqrt(distSq) || 1;
           this.handleMarbleHit(marble, enemy);
           marble.hitCooldown.set(enemy.id, 0.18);
           if (marble.pierce > 0) marble.pierce -= 1;
@@ -507,13 +535,77 @@ function updateMarbles(this: any, dt: number) {
     session.marbles = session.marbles.filter((marble) => marble.lifetime > 0 && marble.bounce <= marble.maxBounce);
   }
 
+function buildEnemyCollisionGrid(this: any, enemies: Enemy[]) {
+    const cellSize = 96;
+    const cols = Math.ceil(WIDTH / cellSize);
+    const rows = Math.ceil(HEIGHT / cellSize);
+    const cells = new Map<number, Enemy[]>();
+    for (const enemy of enemies) {
+      if (enemy.dead) continue;
+      const minX = clamp(Math.floor((enemy.x - enemy.radius) / cellSize), 0, cols - 1);
+      const maxX = clamp(Math.floor((enemy.x + enemy.radius) / cellSize), 0, cols - 1);
+      const minY = clamp(Math.floor((enemy.y - enemy.radius) / cellSize), 0, rows - 1);
+      const maxY = clamp(Math.floor((enemy.y + enemy.radius) / cellSize), 0, rows - 1);
+      for (let cy = minY; cy <= maxY; cy += 1) {
+        for (let cx = minX; cx <= maxX; cx += 1) {
+          const key = cy * cols + cx;
+          const bucket = cells.get(key);
+          if (bucket) bucket.push(enemy);
+          else cells.set(key, [enemy]);
+        }
+      }
+    }
+    return { cellSize, cols, rows, cells };
+  }
+
+function enemyCollisionCandidates(this: any, index: any, marble: Marble) {
+    const minX = clamp(Math.floor((marble.x - marble.radius) / index.cellSize), 0, index.cols - 1);
+    const maxX = clamp(Math.floor((marble.x + marble.radius) / index.cellSize), 0, index.cols - 1);
+    const minY = clamp(Math.floor((marble.y - marble.radius) / index.cellSize), 0, index.rows - 1);
+    const maxY = clamp(Math.floor((marble.y + marble.radius) / index.cellSize), 0, index.rows - 1);
+    const candidates: Enemy[] = [];
+    const seen = new Set<number>();
+    for (let cy = minY; cy <= maxY; cy += 1) {
+      for (let cx = minX; cx <= maxX; cx += 1) {
+        const bucket = index.cells.get(cy * index.cols + cx);
+        if (!bucket) continue;
+        for (const enemy of bucket) {
+          if (seen.has(enemy.id)) continue;
+          seen.add(enemy.id);
+          candidates.push(enemy);
+        }
+      }
+    }
+    return candidates;
+  }
+
+function marbleTrailRecordLimit(this: any, session: Session) {
+    if (this.save?.preferences?.battleEffectsEnabled === false) return 0;
+    const intensity = this.save?.preferences?.cosmeticEffectIntensity || "medium";
+    if (session.marbles.length > 140) return intensity === "high" ? 5 : 4;
+    if (session.speed >= 3 || session.marbles.length > 72) return intensity === "high" ? 8 : intensity === "medium" ? 6 : 4;
+    if (session.marbles.length > 24) return intensity === "high" ? 12 : intensity === "medium" ? 8 : 6;
+    if (intensity === "high") return 18;
+    if (intensity === "medium") return 12;
+    return 8;
+  }
+
 function handleMarbleHit(this: any, marble: Marble, enemy: Enemy) {
     const session = this.requireSession();
     marble.hitCount += 1;
     const connectedSlowTargets = marble.marbleId === "slow" ? this.connectedEnemies(enemy) : null;
+    const visual = this.marbleVisualConfig?.(marble.marbleId);
     this.damageEnemy(enemy, this.marbleDamage(marble, enemy), marble.marbleId, marble, true);
     this.sound.play("hit", 55, marbleIdSoundVariant(marble.marbleId));
-    this.addParticle(marble.x, marble.y, this.marbleVisualColor?.(marble.marbleId) || marbleConfigs[marble.marbleId].color, 4);
+    const particleBudget = session.speed === 4 || session.marbles.length > 56 ? 0.45 : session.marbles.length > 32 ? 0.68 : 1;
+    this.addParticle(
+      marble.x,
+      marble.y,
+      visual?.color || marbleConfigs[marble.marbleId].color,
+      Math.max(2, Math.round((visual?.cosmetic ? 6 : 4) * particleBudget)),
+    );
+    if (visual?.cosmetic && particleBudget > 0.6) this.addParticle(marble.x, marble.y, visual.accentColor || visual.color, 2);
+    if (visual?.cosmetic && !enemy.dead) this.addMarbleCosmeticEffect?.(marble, enemy.x, enemy.y, "hit", enemy);
 
     if (marble.marbleId === "split" && marble.hitCount >= 3 && !marble.splitDone) {
       marble.splitDone = true;
@@ -710,10 +802,11 @@ function killEnemy(this: any, enemy: Enemy, source: string, marble: Marble | nul
     session.kills += 1;
     this.addPvpPressureForKill?.(enemy);
     session.xp += enemy.exp * session.modifiers.expMul;
-    session.coins += enemy.coins * session.modifiers.coinMul;
-    if (enemy.burnTimer > 0 && session.characters.some((character) => character.id === "alchemist" && this.passiveUnlocked(character.id, "alchemist_salvage"))) {
+    if (session.mode !== "test") session.coins += enemy.coins * session.modifiers.coinMul;
+    if (session.mode !== "test" && enemy.burnTimer > 0 && session.characters.some((character) => character.id === "alchemist" && this.passiveUnlocked(character.id, "alchemist_salvage"))) {
       session.coins += 1 * session.modifiers.coinMul;
     }
+    this.addMarbleCosmeticEffect?.(marble, enemy.x, enemy.y, "defeat", enemy);
     this.addParticle(enemy.x, enemy.y, enemyConfigs[enemy.type].color, enemy.type === "boss" ? 44 : 14);
     this.sound.play(enemy.type === "elite" || enemy.type === "boss" ? "eliteKill" : "kill", enemy.type === "boss" ? 0 : 80);
     this.rollEnemyDrops(enemy);
@@ -741,6 +834,7 @@ function killEnemy(this: any, enemy: Enemy, source: string, marble: Marble | nul
 
 function rollEnemyDrops(this: any, enemy: Enemy) {
     const session = this.requireSession();
+    if (session.mode === "test") return;
     const baseChance: Record<EnemyType, number> = {
       small: 0.035,
       tank: 0.06,
@@ -839,10 +933,16 @@ function addDropText(this: any, x: number, y: number, drop: DropEntry) {
 
 function explode(this: any, x: number, y: number, radius: number, damage: number, marble: Marble) {
     const session = this.requireSession();
-    this.addParticle(x, y, "#f6c95f", 18);
+    this.addParticle(x, y, "#f6c95f", session.speed >= 3 ? 4 : 8);
+    const maxDist = radius + 44;
+    const maxDistSq = maxDist * maxDist;
     for (const enemy of session.enemies) {
-      const dist = Math.hypot(enemy.x - x, enemy.y - y);
-      if (!enemy.dead && dist < radius + enemy.radius) {
+      if (enemy.dead) continue;
+      const dx = enemy.x - x;
+      const dy = enemy.y - y;
+      if (dx * dx + dy * dy > maxDistSq) continue;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < radius + enemy.radius) {
         const falloff = 1 - Math.min(0.65, dist / (radius + enemy.radius) * 0.55);
         this.damageEnemy(enemy, damage * falloff * session.modifiers.damageMul, "blast", marble, false);
       }
@@ -856,11 +956,18 @@ function lightning(this: any, first: Enemy, jumps: number, damage: number, marbl
     let currentDamage = damage;
 
     for (let i = 0; i < jumps; i += 1) {
-      const next = session.enemies
-        .filter((enemy) => !enemy.dead && !visited.has(enemy.id))
-        .map((enemy) => ({ enemy, distance: Math.hypot(enemy.x - current.x, enemy.y - current.y) }))
-        .filter((item) => item.distance < 180)
-        .sort((a, b) => a.distance - b.distance)[0]?.enemy;
+      let next: Enemy | null = null;
+      let nextDistSq = 180 * 180;
+      for (const enemy of session.enemies) {
+        if (enemy.dead || visited.has(enemy.id)) continue;
+        const dx = enemy.x - current.x;
+        const dy = enemy.y - current.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < nextDistSq) {
+          next = enemy;
+          nextDistSq = distSq;
+        }
+      }
 
       if (!next) break;
       visited.add(next.id);
@@ -937,6 +1044,9 @@ export const gameBattleCombatMethods = {
   nearbyReboundTargetCount,
   enemyBreakthrough,
   updateMarbles,
+  buildEnemyCollisionGrid,
+  enemyCollisionCandidates,
+  marbleTrailRecordLimit,
   handleMarbleHit,
   applyConnectedSlow,
   applySlowToTargets,

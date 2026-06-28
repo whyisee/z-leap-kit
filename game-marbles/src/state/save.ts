@@ -297,6 +297,7 @@ export function defaultPreferences(): GamePreferences {
     autoExtractionMode: "balanced",
     autoRunMode: "manual",
     autoSkillEnabled: true,
+    battleEffectsEnabled: true,
     battleSpeed: 1,
     characterSortMode: "power",
     cosmeticEffectIntensity: "medium",
@@ -320,6 +321,7 @@ export function normalizePreferences(preferences: Partial<GamePreferences> = {})
       : defaults.autoExtractionMode,
     autoRunMode: autoRunModes.includes(preferences.autoRunMode as AutoRunMode) ? (preferences.autoRunMode as AutoRunMode) : defaults.autoRunMode,
     autoSkillEnabled: Boolean(preferences.autoSkillEnabled ?? defaults.autoSkillEnabled),
+    battleEffectsEnabled: Boolean(preferences.battleEffectsEnabled ?? defaults.battleEffectsEnabled),
     battleSpeed: speeds.includes(preferences.battleSpeed as Speed) ? (preferences.battleSpeed as Speed) : defaults.battleSpeed,
     characterSortMode: characterSortModes.includes(preferences.characterSortMode as CharacterSortMode)
       ? (preferences.characterSortMode as CharacterSortMode)

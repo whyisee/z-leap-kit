@@ -189,12 +189,11 @@ function updateAutoBattle(this: any) {
   }
 
 function updateAutoUi(this: any) {
-    this.autoButton.textContent = this.autoBattleEnabled ? "自动开" : "自动关";
-    this.autoButton.classList.toggle("active", this.autoBattleEnabled);
+    this.autoToggle.checked = this.autoBattleEnabled;
+    const autoRow = this.autoToggle.closest<HTMLElement>(".battle-check-row");
+    autoRow?.classList.toggle("active", this.autoBattleEnabled);
 
-    const stateText = byId("autoStateText");
     const skillText = byId("autoSkillText");
-    stateText.textContent = this.autoBattleEnabled ? "ON" : "OFF";
     skillText.textContent = this.autoSkillEnabled ? "ON" : "OFF";
 
     for (const button of this.autoPanel.querySelectorAll<HTMLElement>("[data-auto-mode]")) {

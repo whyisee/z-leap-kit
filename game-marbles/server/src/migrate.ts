@@ -1,5 +1,13 @@
+import { randomBytes, randomUUID, scryptSync } from "node:crypto";
 import { pool } from "./db";
 import { env } from "./env";
+
+function hashPassword(password: string, salt = randomBytes(16).toString("hex")) {
+  return {
+    salt,
+    hash: scryptSync(password, salt, 64).toString("hex"),
+  };
+}
 
 async function migrate() {
   const schema = `"${env.dbSchema}"`;
@@ -31,6 +39,16 @@ async function migrate() {
         { type: "gem", gemType: "guard", level: 1, amount: 1 },
         { type: "gem", gemType: "fortune", level: 1, amount: 1 },
       ],
+    },
+    {
+      code: "MARBLE_SKINS_ALL",
+      title: "测试 · 弹珠幻化全解锁",
+      rewards: [{ type: "allMarbleCosmetics" }],
+    },
+    {
+      code: "MARBLE_EFFECTS_ALL",
+      title: "测试 · 弹珠特效幻化全解锁",
+      rewards: [{ type: "allMarbleCosmetics" }],
     },
   ];
 
@@ -66,6 +84,31 @@ async function migrate() {
       token_hash text primary key,
       user_id uuid not null references ${schema}.gm_users(id) on delete cascade,
       device_id text,
+      expires_at timestamptz not null,
+      created_at timestamptz not null default now(),
+      last_seen_at timestamptz not null default now()
+    )
+  `);
+
+  await pool.query(`
+    create table if not exists ${schema}.gm_admin_users (
+      id uuid primary key,
+      username text not null unique,
+      password_hash text not null,
+      password_salt text not null,
+      nickname text not null,
+      role text not null default 'super_admin',
+      status text not null default 'active',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      last_login_at timestamptz
+    )
+  `);
+
+  await pool.query(`
+    create table if not exists ${schema}.gm_admin_sessions (
+      token_hash text primary key,
+      admin_id uuid not null references ${schema}.gm_admin_users(id) on delete cascade,
       expires_at timestamptz not null,
       created_at timestamptz not null default now(),
       last_seen_at timestamptz not null default now()
@@ -210,7 +253,33 @@ async function migrate() {
     );
   }
 
+  const adminUsername = env.adminUsername.trim().toLowerCase();
+  const adminPassword = env.adminPassword;
+  const adminNickname = env.adminNickname.trim() || "管理员";
+  if (!/^[a-z0-9_]{3,20}$/.test(adminUsername)) {
+    throw new Error("ADMIN_USERNAME must be 3-20 chars, lowercase letters, numbers or underscore.");
+  }
+  if (adminPassword.length < 6 || adminPassword.length > 64) {
+    throw new Error("ADMIN_PASSWORD must be 6-64 chars.");
+  }
+  const adminHash = hashPassword(adminPassword);
+  await pool.query(
+    `
+      insert into ${schema}.gm_admin_users (id, username, password_hash, password_salt, nickname, role, status)
+      values ($1, $2, $3, $4, $5, 'super_admin', 'active')
+      on conflict (username) do update
+      set password_hash = excluded.password_hash,
+          password_salt = excluded.password_salt,
+          nickname = excluded.nickname,
+          role = excluded.role,
+          status = 'active',
+          updated_at = now()
+    `,
+    [randomUUID(), adminUsername, adminHash.hash, adminHash.salt, adminNickname],
+  );
+
   await pool.query(`create index if not exists gm_auth_sessions_user_id_idx on ${schema}.gm_auth_sessions(user_id)`);
+  await pool.query(`create index if not exists gm_admin_sessions_admin_id_idx on ${schema}.gm_admin_sessions(admin_id, expires_at desc)`);
   await pool.query(`create index if not exists gm_battle_sessions_user_id_idx on ${schema}.gm_battle_sessions(user_id, started_at desc)`);
   await pool.query(`
     create index if not exists gm_leaderboard_entries_rank_idx

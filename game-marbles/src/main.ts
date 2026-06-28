@@ -1,4 +1,5 @@
 import "./styles.css";
+import { mountAdminApp } from "./admin/admin-app";
 import { gameMethods } from "./game/methods";
 
 import {
@@ -154,7 +155,7 @@ import {
   shopStockLeft,
 } from "./systems/shop/offers";
 import { upgradeCardHtml } from "./ui/overlays/upgrade";
-import { GameBackend, type PvpMatchResponse } from "./services/game-backend";
+import { ApiRequestError, GameBackend, type PvpMatchResponse } from "./services/game-backend";
 import { SoundManager } from "./services/sound";
 
 const legacyAccountAvatarMap: Record<string, string> = {
@@ -299,6 +300,7 @@ class MarblesGame {
   private readonly battleHud = byId("battleHud");
   private readonly bottomHud = byId("bottomHud");
   private readonly lootBag = byId("lootBag") as HTMLButtonElement;
+  private readonly quickExtractionButton = byId("quickExtractionButton") as HTMLButtonElement;
   private readonly lootScreen = byId("lootScreen");
   private readonly baseText = byId("baseText");
   private readonly waveText = byId("waveText");
@@ -310,12 +312,15 @@ class MarblesGame {
   private readonly xpText = byId("xpText");
   private readonly lootCountText = byId("lootCountText");
   private readonly speedButton = byId("speedButton") as HTMLButtonElement;
-  private readonly autoButton = byId("autoButton") as HTMLButtonElement;
+  private readonly effectToggle = byId("effectToggle") as HTMLInputElement;
+  private readonly autoToggle = byId("autoToggle") as HTMLInputElement;
   private readonly autoPanel = byId("autoPanel");
   private readonly tacticPanel = byId("tacticPanel");
-  private readonly tacticToggle = byId("tacticToggle") as HTMLButtonElement;
+  private readonly tacticToggle = byId("tacticToggle") as HTMLInputElement;
   private readonly tacticList = byId("tacticList");
   private readonly tacticCountText = byId("tacticCountText");
+  private readonly testToolsToggle = byId("testToolsToggle") as HTMLButtonElement;
+  private readonly testPanel = byId("testPanel");
   private readonly pauseButton = byId("pauseButton") as HTMLButtonElement;
   private readonly homeBackground = new Image();
   private readonly battleBackgrounds = new Map<string, HTMLImageElement>();
@@ -345,6 +350,7 @@ class MarblesGame {
   private heroLineupPickerOpen = false;
   private heroMarbleSlot = 0;
   private heroMarblePickerOpen = false;
+  private marbleDetailId: MarbleId | null = null;
   private menuNotice = "";
   private accountBusy = this.backend.hasStoredSession;
   private accountModalOpen = false;
@@ -358,6 +364,7 @@ class MarblesGame {
   private autoExtractionMode: AutoExtractionMode = this.save.preferences.autoExtractionMode;
   private autoRunMode: AutoRunMode = this.save.preferences.autoRunMode;
   private autoSkillEnabled = this.save.preferences.autoSkillEnabled;
+  private battleEffectsEnabled = this.save.preferences.battleEffectsEnabled;
   private pvpAutomationBefore: { autoBattleEnabled: boolean; autoSkillEnabled: boolean; autoUpgradeMode: AutoUpgradeMode } | null = null;
   private pvpMatchState: PvpMatchClientState | null = null;
   private pvpMatchPollTimer: number | null = null;
@@ -379,7 +386,11 @@ class MarblesGame {
   private characterSortMode: CharacterSortMode = this.save.preferences.characterSortMode;
   private tacticPanelExpanded = false;
   private tacticPanelSignature = "";
+  private testToolsOpen = false;
+  private testCharacterSlot = 0;
+  private testMarbleSlot = 0;
   private lastTime = performance.now();
+  private hudRefreshElapsed = 0;
 
   constructor() {
     const canvas = byId("gameCanvas") as HTMLCanvasElement;
@@ -542,28 +553,45 @@ class MarblesGame {
       this.saveBattlePreferences();
     });
 
-    this.autoButton.addEventListener("click", () => {
+    this.autoToggle.addEventListener("change", () => {
       if (!this.session) return;
       this.sound.play("ui");
-      this.autoBattleEnabled = !this.autoBattleEnabled;
+      this.autoBattleEnabled = this.autoToggle.checked;
       this.autoPanel.classList.remove("hidden");
       this.updateAutoUi();
       this.saveBattlePreferences();
     });
 
+    this.effectToggle.addEventListener("change", () => {
+      if (!this.session) return;
+      this.sound.play("ui");
+      this.battleEffectsEnabled = this.effectToggle.checked;
+      this.updateBattleEffectUi();
+      this.saveBattlePreferences();
+      this.addFloatingText(
+        WIDTH * 0.5,
+        FIELD.y + 56,
+        this.battleEffectsEnabled ? "战斗特效开启" : "战斗特效关闭",
+        this.battleEffectsEnabled ? "#61e6a8" : "#f6c95f",
+      );
+    });
+
+    this.tacticToggle.addEventListener("change", () => {
+      if (!this.session) return;
+      this.sound.play("ui");
+      this.tacticPanelExpanded = this.tacticToggle.checked;
+      this.updateTacticPanelState();
+    });
+
     this.battleHud.addEventListener("click", (event) => {
       const target = event.target as HTMLElement;
+      if (target.closest("[data-auto-config-toggle]")) {
+        this.autoPanel.classList.remove("hidden");
+      }
+
       if (target.closest("[data-auto-close]")) {
         this.sound.play("ui");
         this.autoPanel.classList.add("hidden");
-        return;
-      }
-
-      if (target.closest("[data-auto-toggle]")) {
-        this.sound.play("confirm");
-        this.autoBattleEnabled = !this.autoBattleEnabled;
-        this.updateAutoUi();
-        this.saveBattlePreferences();
         return;
       }
 
@@ -612,11 +640,64 @@ class MarblesGame {
         return;
       }
 
-      if (target.closest("[data-tactic-toggle]")) {
+      if (target.closest("[data-test-tools-toggle]")) {
         this.sound.play("ui");
-        this.tacticPanelExpanded = !this.tacticPanelExpanded;
-        this.updateTacticPanelState();
+        this.toggleTestTools?.();
+        return;
       }
+
+      const testSlot = target.closest<HTMLElement>("[data-test-character-slot]")?.dataset.testCharacterSlot;
+      if (testSlot !== undefined) {
+        this.sound.play("ui");
+        this.selectTestCharacterSlot?.(Number(testSlot));
+        return;
+      }
+
+      const testCharacter = target.closest<HTMLElement>("[data-test-character]")?.dataset.testCharacter;
+      if (testCharacter) {
+        this.sound.play("confirm");
+        this.applyTestCharacter?.(testCharacter);
+        return;
+      }
+
+      const testMarbleSlot = target.closest<HTMLElement>("[data-test-marble-slot]")?.dataset.testMarbleSlot;
+      if (testMarbleSlot !== undefined) {
+        this.sound.play("ui");
+        this.selectTestMarbleSlot?.(Number(testMarbleSlot));
+        return;
+      }
+
+      const testMarble = target.closest<HTMLElement>("[data-test-marble]")?.dataset.testMarble as MarbleId | undefined;
+      if (testMarble) {
+        this.sound.play("confirm");
+        this.applyTestMarble?.(testMarble);
+        return;
+      }
+
+      if (target.closest("[data-test-add-upgrade]")) {
+        this.sound.play("upgrade");
+        this.addSelectedTestUpgrade?.();
+        return;
+      }
+
+      if (target.closest("[data-test-random-upgrades]")) {
+        this.sound.play("upgrade");
+        this.addRandomTestUpgrades?.();
+        return;
+      }
+
+      if (target.closest("[data-test-reset-upgrades]")) {
+        this.sound.play("ui");
+        this.resetTestUpgrades?.();
+        return;
+      }
+
+    });
+
+    this.quickExtractionButton.addEventListener("click", () => {
+      if (!this.session || (this.session.mode !== "test" && this.session.extractionWindowWave === null) || this.phase !== "playing") return;
+      this.sound.play("confirm");
+      this.extractNow();
     });
 
     this.pauseButton.addEventListener("click", () => {
@@ -682,6 +763,7 @@ class MarblesGame {
       const heroMarbleEquipButton = target.closest<HTMLElement>("[data-hero-marble-equip]");
       const heroMarblePickerClose = target.closest("[data-hero-marble-picker-close]");
       const routeButton = target.closest<HTMLElement>("[data-hero-route]");
+      const marbleSelect = target.closest<HTMLElement>("[data-marble-select]")?.dataset.marbleSelect as MarbleId | undefined;
       const marbleUpgrade = target.closest<HTMLElement>("[data-marble-upgrade]")?.dataset.marbleUpgrade as
         | MarbleId
         | undefined;
@@ -708,6 +790,11 @@ class MarblesGame {
       if (target.dataset.collectionDetailBackdrop !== undefined || target.closest("[data-collection-detail-close]")) {
         this.collectionDetailKey = null;
         this.renderMenu("collection");
+        return;
+      }
+      if (target.dataset.marbleDetailBackdrop !== undefined || target.closest("[data-marble-detail-close]")) {
+        this.marbleDetailId = null;
+        this.renderMenu("marbles");
         return;
       }
       if (collectionClaim) {
@@ -822,6 +909,11 @@ class MarblesGame {
         const heroId = routeButton.dataset.heroId;
         const routeId = routeButton.dataset.heroRoute as CharacterRouteId | undefined;
         if (heroId && routeId) this.buyCharacterRoute(heroId, routeId);
+        return;
+      }
+      if (marbleSelect) {
+        this.marbleDetailId = marbleSelect;
+        this.renderMenu("marbles");
         return;
       }
       if (marbleUpgrade) {
@@ -1016,6 +1108,10 @@ class MarblesGame {
         this.startGame("endless");
         return;
       }
+      if (action === "startTest") {
+        this.startGame("test");
+        return;
+      }
       if (action === "startPvp") {
         this.startPvpMatchmaking();
         return;
@@ -1106,6 +1202,7 @@ class MarblesGame {
 
     this.lootBag.addEventListener("click", () => {
       if (!this.session || this.phase === "menu" || this.phase === "result") return;
+      if (this.session.extractionWindowWave !== null) return;
       this.sound.play("ui");
       this.openLootScreen();
     });
@@ -1126,7 +1223,7 @@ class MarblesGame {
   }
 
   private resizeCanvas() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
     this.canvas.width = Math.floor(WIDTH * dpr);
     this.canvas.height = Math.floor(HEIGHT * dpr);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1144,7 +1241,11 @@ class MarblesGame {
 
     this.draw();
     this.updatePvpChatOverlay?.();
-    this.updateHud();
+    this.hudRefreshElapsed += realDt;
+    if (!this.session || this.phase !== "playing" || this.hudRefreshElapsed >= 0.12) {
+      this.updateHud();
+      this.hudRefreshElapsed = 0;
+    }
     requestAnimationFrame((next) => this.loop(next));
   }
 
@@ -1325,7 +1426,7 @@ class MarblesGame {
         this.leaderboardState = {
           boardId: this.leaderboardTab,
           loading: false,
-          error: "该榜单即将开放",
+          error: "",
           entries: [],
           me: null,
           catalog,
@@ -1349,11 +1450,13 @@ class MarblesGame {
       }
     } catch (error) {
       console.warn("[leaderboard] load failed", error);
+      const authExpired = error instanceof ApiRequestError && error.status === 401;
+      if (authExpired) this.backend.switchAccount();
       this.leaderboardState = {
         ...this.leaderboardState,
         boardId: this.leaderboardTab,
         loading: false,
-        error: "无法连接排行榜，正在展示本地统计",
+        error: authExpired ? "登录状态已失效，请重新登录" : "无法连接排行榜，正在展示本地统计",
         entries: [],
         me: null,
         response: null,
@@ -1403,10 +1506,12 @@ class MarblesGame {
       };
     } catch (error) {
       console.warn("[leaderboard] locate me failed", error);
+      const authExpired = error instanceof ApiRequestError && error.status === 401;
+      if (authExpired) this.backend.switchAccount();
       this.leaderboardState = {
         ...this.leaderboardState,
         loading: false,
-        error: "暂时无法定位排名，请稍后重试",
+        error: authExpired ? "登录状态已失效，请重新登录" : "暂时无法定位排名，请稍后重试",
         fetchedAt: Date.now(),
       };
     }
@@ -1416,6 +1521,7 @@ class MarblesGame {
 
   private startGame(mode: BattleMode = "normal") {
     const isPvp = isPvpMode(mode);
+    const isTest = mode === "test";
     if (isPvp && !this.pvpPendingMatch) {
       this.startPvpMatchmaking();
       return;
@@ -1479,6 +1585,7 @@ class MarblesGame {
       this.autoSkillEnabled = true;
       this.autoUpgradeMode = "attack";
     }
+    this.battleTerminalOpen = false;
 
     const session: Session = {
       phase: "playing",
@@ -1511,7 +1618,10 @@ class MarblesGame {
       selectedUpgradeIds: [],
       drops: [],
       insuredDropKeys: [],
-      extractionWindowsSeen: [],
+      extractionWindowsSeen: isTest ? [1] : [],
+      extractionWindowWave: isTest ? 1 : null,
+      extractionWindowTimer: isTest ? Number.POSITIVE_INFINITY : 0,
+      extractionWindowDuration: 5,
       extractionResult: "none",
       extractedAtWave: null,
       lostDrops: [],
@@ -1553,16 +1663,19 @@ class MarblesGame {
     this.phase = "playing";
     this.speedButton.textContent = `${session.speed}x`;
     this.surface.classList.toggle("pvp-mode", isPvp);
+    this.testToolsOpen = isTest;
+    this.testCharacterSlot = 0;
+    this.testMarbleSlot = 0;
     this.autoPanel.classList.add("hidden");
     this.updateAutoUi();
     this.hideScreens();
     this.battleHud.classList.toggle("hidden", isPvp);
     this.bottomHud.classList.toggle("hidden", isPvp);
-    this.lootBag.classList.toggle("hidden", isPvp);
+    this.lootBag.classList.toggle("hidden", isPvp || isTest);
     this.tacticPanel.classList.remove("hidden");
     this.tacticPanelExpanded = false;
     this.activeBattleId = null;
-    if (!isPvp) {
+    if (!isPvp && !isTest) {
       void this.backend
         .startBattle({
           mode,
@@ -1577,6 +1690,7 @@ class MarblesGame {
     }
     this.updateTacticPanelState();
     this.updateTacticPanel();
+    this.updateTestToolsUi?.();
     this.sound.setMusicMode("battle");
     this.sound.play("start");
     if (isPvp) this.startPvpPreload?.();
@@ -1645,6 +1759,7 @@ class MarblesGame {
     this.autoExtractionMode = preferences.autoExtractionMode;
     this.autoRunMode = preferences.autoRunMode;
     this.autoSkillEnabled = preferences.autoSkillEnabled;
+    this.battleEffectsEnabled = preferences.battleEffectsEnabled;
     this.characterSortMode = preferences.characterSortMode;
 
     if (this.session) {
@@ -1653,6 +1768,7 @@ class MarblesGame {
     }
 
     this.updateAutoUi();
+    this.updateBattleEffectUi();
   }
 
   private saveBattlePreferences() {
@@ -1662,11 +1778,19 @@ class MarblesGame {
       autoExtractionMode: this.autoExtractionMode,
       autoRunMode: this.autoRunMode,
       autoSkillEnabled: this.autoSkillEnabled,
+      battleEffectsEnabled: this.battleEffectsEnabled,
       battleSpeed: this.session?.speed ?? this.save.preferences.battleSpeed,
       characterSortMode: this.characterSortMode,
       cosmeticEffectIntensity: this.save.preferences.cosmeticEffectIntensity,
     };
     this.persistSave("battle-preferences");
+  }
+
+  private updateBattleEffectUi() {
+    this.effectToggle.checked = this.battleEffectsEnabled;
+    const row = this.effectToggle.closest<HTMLElement>(".battle-check-row");
+    row?.classList.toggle("active", this.battleEffectsEnabled);
+    row?.setAttribute("title", this.battleEffectsEnabled ? "关闭战斗特效" : "开启战斗特效");
   }
 
   private unlockReadyCharacters() {
@@ -2193,7 +2317,11 @@ class MarblesGame {
 
 Object.assign(MarblesGame.prototype, gameMethods);
 
-new MarblesGame();
+if (window.location.pathname.replace(/\/+$/, "") === "/admin" || window.location.pathname.startsWith("/admin/")) {
+  mountAdminApp();
+} else {
+  new MarblesGame();
+}
 
 function marbleIdSoundVariant(id: MarbleId) {
   return {

@@ -1,6 +1,12 @@
+import fs from "node:fs";
+import path from "node:path";
+
 export type ServerEnv = {
   siteUrl: string;
   port: number;
+  adminUsername: string;
+  adminPassword: string;
+  adminNickname: string;
   dbHost: string;
   dbPort: number;
   dbName: string;
@@ -9,6 +15,37 @@ export type ServerEnv = {
   dbSchema: string;
   corsOrigins: string[];
 };
+
+const processEnvKeys = new Set(Object.keys(process.env));
+
+function loadEnvFile(filePath: string) {
+  if (!fs.existsSync(filePath)) return;
+  const content = fs.readFileSync(filePath, "utf8");
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(trimmed);
+    if (!match) continue;
+    const key = match[1];
+    if (processEnvKeys.has(key)) continue;
+    let value = match[2].trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+
+function loadLocalEnv() {
+  const root = process.env.BACKEND_ROOT || process.cwd();
+  loadEnvFile(path.join(root, ".env"));
+  loadEnvFile(path.join(root, ".env.local"));
+}
+
+loadLocalEnv();
 
 function numberEnv(name: string, fallback: number) {
   const value = Number(process.env[name]);
@@ -37,6 +74,9 @@ const siteUrl = process.env.SITE_URL || "http://localhost:4325";
 export const env: ServerEnv = {
   siteUrl,
   port: numberEnv("PORT", portFromSiteUrl(siteUrl)),
+  adminUsername: process.env.ADMIN_USERNAME || "admin",
+  adminPassword: process.env.ADMIN_PASSWORD || "Admin@2026",
+  adminNickname: process.env.ADMIN_NICKNAME || "管理员",
   dbHost: process.env.DB_HOST || "127.0.0.1",
   dbPort: numberEnv("DB_PORT", 5432),
   dbName: process.env.DB_NAME || "game_marbles",

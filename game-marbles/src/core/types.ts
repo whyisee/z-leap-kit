@@ -16,7 +16,7 @@ export type MenuView =
   | "protocols";
 export type Rarity = "common" | "rare" | "epic" | "legendary";
 export type ExtractionResult = "none" | "extracted" | "cleared" | "failed";
-export type BattleMode = "normal" | "endless" | "pvp";
+export type BattleMode = "normal" | "endless" | "pvp" | "test";
 export type CollectibleId = "scrap_shell" | "ancient_chip" | "void_lens" | "boss_core";
 export type GemType = "power" | "guard" | "fortune" | "swift" | "focus" | "rupture";
 export type EnemyType =
@@ -44,12 +44,25 @@ export type CosmeticType = "character" | "marble" | "avatarFrame" | "title" | "b
 export type CosmeticRarity = "rare" | "epic" | "legendary";
 export type CosmeticPoolId = "character" | "marble";
 export type CosmeticTicketId = "characterCosmetic" | "marbleCosmetic";
+export type MarbleVisualShape = "orb" | "candy" | "star" | "leaf" | "crystal" | "bomb" | "flame" | "bolt" | "snowflake" | "ring" | "flower" | "comet";
+export type MarbleTrailStyle = "soft" | "spark" | "stardust" | "leaf" | "ribbon" | "flame" | "electric" | "frost" | "firework" | "petal" | "aurora" | "galaxy";
+export type MarbleTrailAnimation = "steady" | "pulse" | "flicker" | "sparkle" | "flow" | "zigzag" | "orbit";
+export type MarbleImpactStyle = "spark" | "flare" | "electric" | "frost" | "petal" | "crystal" | "ribbon" | "galaxy" | "pulse";
 export type CharacterRouteId = string;
 export type StageId = string;
 export type PvpRankMode = "duel" | "power_duel" | "battle_royale";
 export type PvpRankTier = "bronze" | "silver" | "gold" | "platinum" | "diamond" | "master" | "legend";
 export type PvpRankDivision = 1 | 2 | 3 | null;
-export type LeaderboardBoardId = "pvp_duel_season" | "endless_wave_season" | "pvp_battle_royale_season";
+export type LeaderboardBoardId =
+  | "pvp_duel_season"
+  | "base_power_all_time"
+  | "character_power_all_time"
+  | "cosmetic_score_all_time"
+  | "campaign_progress_all_time"
+  | "wealth_coins_all_time"
+  | "achievement_count_all_time"
+  | "endless_wave_season"
+  | "pvp_battle_royale_season";
 
 export type Vec = {
   x: number;
@@ -88,6 +101,7 @@ export type GamePreferences = {
   autoExtractionMode: AutoExtractionMode;
   autoRunMode: AutoRunMode;
   autoSkillEnabled: boolean;
+  battleEffectsEnabled: boolean;
   battleSpeed: Speed;
   characterSortMode: CharacterSortMode;
   cosmeticEffectIntensity: CosmeticEffectIntensity;
@@ -106,6 +120,17 @@ export type CosmeticConfig = {
   visualLabel: string;
   assetKeys: string[];
   effectKeys?: string[];
+  marbleShape?: MarbleVisualShape;
+  marbleTrailStyle?: MarbleTrailStyle;
+  marbleTrailColor?: string;
+  marbleTrailAccentColor?: string;
+  marbleTrailHighlightColor?: string;
+  marbleTrailLength?: number;
+  marbleTrailWidth?: number;
+  marbleTrailAnimation?: MarbleTrailAnimation;
+  marbleTrailDensity?: number;
+  marbleHitEffect?: MarbleImpactStyle;
+  marbleDefeatEffect?: MarbleImpactStyle;
 };
 
 export type CosmeticGachaPool = {
@@ -171,6 +196,7 @@ export type LeaderboardBoardConfig = {
   title: string;
   enabled: boolean;
   mode: string;
+  period?: "season" | "all_time";
 };
 
 export type LeaderboardSeasonInfo = {
@@ -311,6 +337,9 @@ export type ShopReward =
       type: "ticket";
       ticketId: ShopTicketId;
       amount: number;
+    }
+  | {
+      type: "allMarbleCosmetics";
     };
 
 export type MetaUpgrade = {
@@ -528,7 +557,7 @@ export type Particle = {
 };
 
 export type VisualEffect = {
-  kind: "engineer-field" | "blast-wave" | "magnet-field";
+  kind: "engineer-field" | "blast-wave" | "magnet-field" | "marble-hit" | "marble-defeat";
   x: number;
   y: number;
   life: number;
@@ -536,6 +565,10 @@ export type VisualEffect = {
   radius: number;
   maxRadius: number;
   color: string;
+  accentColor?: string;
+  style?: MarbleImpactStyle;
+  rarity?: CosmeticRarity;
+  angle?: number;
 };
 
 export type WaveConfig = {
@@ -690,6 +723,9 @@ export type Session = {
   drops: DropEntry[];
   insuredDropKeys: string[];
   extractionWindowsSeen: number[];
+  extractionWindowWave: number | null;
+  extractionWindowTimer: number;
+  extractionWindowDuration: number;
   extractionResult: ExtractionResult;
   extractedAtWave: number | null;
   lostDrops: DropEntry[];

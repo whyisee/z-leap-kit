@@ -1,4 +1,5 @@
 import { characters } from "../../config/characters";
+import { cosmeticConfigs, cosmeticPools } from "../../config/cosmetics";
 import { collectibleConfigs, gemConfigs } from "../../config/loot";
 import { marbleConfigs } from "../../config/marbles";
 import { arenaShopItems, bundleShopItems, crystalShopItems, dailyShopItems, gemShopItems, shardShopItems, shopItems } from "../../config/shop";
@@ -321,6 +322,17 @@ function grantShopRewards(save: SaveData, rewards: ShopReward[]) {
       save.tickets[reward.ticketId] = (save.tickets[reward.ticketId] || 0) + reward.amount;
       labels.push(`${ticketName(reward.ticketId)} ${reward.amount}`);
     }
+
+    if (reward.type === "allMarbleCosmetics") {
+      save.cosmetics.owned ||= {};
+      const itemIds = cosmeticPools.marble.itemIds.filter((id) => cosmeticConfigs[id]?.type === "marble");
+      let newlyUnlocked = 0;
+      for (const id of itemIds) {
+        if ((save.cosmetics.owned[id] || 0) <= 0) newlyUnlocked += 1;
+        save.cosmetics.owned[id] = Math.max(1, save.cosmetics.owned[id] || 0);
+      }
+      labels.push(`弹珠幻化全套 ${itemIds.length} 件${newlyUnlocked > 0 ? `（新增 ${newlyUnlocked}）` : ""}`);
+    }
   }
 
   return labels;
@@ -345,6 +357,7 @@ function shopRewardLabel(reward: ShopReward) {
   if (reward.type === "gem") return `${gemConfigs[reward.gemType].name} Lv.${reward.level} x${reward.amount}`;
   if (reward.type === "characterUnlock") return `${characters.find((item) => item.id === reward.characterId)?.name || "角色"}解锁`;
   if (reward.type === "ticket") return `${ticketName(reward.ticketId)} x${reward.amount}`;
+  if (reward.type === "allMarbleCosmetics") return "弹珠幻化全套";
   return `${collectibleConfigs[reward.collectibleId].name} x${reward.amount}`;
 }
 
