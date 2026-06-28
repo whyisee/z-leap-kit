@@ -95,6 +95,10 @@ import {
   normalizeLineup,
   normalizeVelocity,
   parseGemKey,
+  applyPvpRankResult,
+  pvpRankDeltaText,
+  pvpRankLabel,
+  pvpRankProgressText,
   purchaseShopItem,
   randomChoice,
   randomRange,
@@ -208,7 +212,8 @@ function endGame(this: any, result: "win" | "lose", reason: string, extractionRe
 
     const stage = getStageById(session.stageId);
     const isEndless = isEndlessMode(session.mode);
-    const clearedStage = !isEndless && extractionResult === "cleared";
+    const isPvp = session.mode === "pvp";
+    const clearedStage = !isEndless && !isPvp && extractionResult === "cleared";
     const stageStars = clearedStage ? calculateStageStars(session, stage) : 0;
     this.ensureAutoInsuredDrops();
     session.result = result;
@@ -216,51 +221,67 @@ function endGame(this: any, result: "win" | "lose", reason: string, extractionRe
     session.extractionResult = extractionResult;
     this.sound.play(result === "win" ? "win" : "lose");
     this.sound.setMusicMode("menu");
-    const finalCoins = battleCoinReward(session, stage, result, extractionResult);
-    const shards = battleShardReward(session, extractionResult);
-    const { kept, lost } = splitDropsForExtraction(session.drops, extractionResult, session.insuredDropKeys);
+    const finalCoins = isPvp ? 0 : battleCoinReward(session, stage, result, extractionResult);
+    const shards = isPvp ? 0 : battleShardReward(session, extractionResult);
+    const pvpCoinReward = isPvp ? pvpCoinRewardForSession(session, result) : 0;
+    const pvpRankContext = isPvp ? pvpRankContextForSession.call(this, session) : null;
+    const pvpRankResult = isPvp ? applyPvpRankResult(this.save.pvpRanks.duel, result, pvpRankContext) : null;
+    const { kept, lost } = isPvp ? { kept: [], lost: session.drops } : splitDropsForExtraction(session.drops, extractionResult, session.insuredDropKeys);
     session.lostDrops = lost;
     const keptSummary = compactDropSummaryRows(dropSummaryRows(kept, session.insuredDropKeys));
     const lostSummary = compactDropSummaryRows(dropSummaryRows(lost, session.insuredDropKeys));
 
     this.save.coins += finalCoins;
+    this.save.pvpCoins = Math.max(0, Math.floor(this.save.pvpCoins || 0)) + pvpCoinReward;
+    if (pvpRankResult) this.save.pvpRanks.duel = pvpRankResult.profile;
     this.save.shards += shards;
-    applyBattleProgressToSave(this.save, session, extractionResult, stage, stageStars, clearedStage);
-    applyDropsToInventory(this.inventory(), kept);
-    const unlockedCharacters = this.unlockReadyCharacters();
-    this.persistSave("battle-finish");
+    if (!isPvp) {
+      applyBattleProgressToSave(this.save, session, extractionResult, stage, stageStars, clearedStage);
+      applyDropsToInventory(this.inventory(), kept);
+    }
+    const unlockedCharacters = isPvp ? [] : this.unlockReadyCharacters();
+    if (isPvp) {
+      saveGame(this.save);
+      void syncPvpRankSettlement.call(this, session, result, pvpRankContext, pvpRankResult);
+    } else {
+      this.persistSave("battle-finish");
+    }
     const battleId = this.activeBattleId;
     this.activeBattleId = null;
-    void this.backend.finishBattle({
-      battleId,
-      result,
-      wave: session.wave,
-      durationMs: Math.floor(session.elapsed * 1000),
-      kills: session.kills,
-      selectedUpgrades: session.selectedUpgradeIds,
-      acceptedRewards: {
-        coins: finalCoins,
-        shards,
-        drops: kept,
-      },
-      clientSummary: {
-        mode: session.mode,
-        stageId: stage.id,
-        stageIndex: stage.index,
-        stageStars,
-        level: session.level,
-        baseHp: session.baseHp,
-        maxBaseHp: session.maxBaseHp,
-        resultReason: reason,
-        extractionResult,
-        heat: session.heat,
-        maxHeat: session.maxHeat,
-        continueCount: session.continueCount,
-        extractedAtWave: session.extractedAtWave,
-        bestEndlessWave: this.save.bestEndlessWave,
-        lostDrops: lost,
-      },
-    });
+    if (!isPvp) {
+      void this.backend.finishBattle({
+        battleId,
+        result,
+        wave: session.wave,
+        durationMs: Math.floor(session.elapsed * 1000),
+        kills: session.kills,
+        selectedUpgrades: session.selectedUpgradeIds,
+        acceptedRewards: {
+          coins: finalCoins,
+          shards,
+          drops: kept,
+        },
+        clientSummary: {
+          mode: session.mode,
+          stageId: stage.id,
+          stageIndex: stage.index,
+          stageStars,
+          level: session.level,
+          baseHp: session.baseHp,
+          maxBaseHp: session.maxBaseHp,
+          resultReason: reason,
+          extractionResult,
+          heat: session.heat,
+          maxHeat: session.maxHeat,
+          continueCount: session.continueCount,
+          extractedAtWave: session.extractedAtWave,
+          bestEndlessWave: this.save.bestEndlessWave,
+          lostDrops: lost,
+        },
+      });
+    }
+
+    if (isPvp) clearPvpBattlefieldForResult(session);
 
     this.phase = "result";
     session.phase = "result";
@@ -272,27 +293,32 @@ function endGame(this: any, result: "win" | "lose", reason: string, extractionRe
     this.lootScreen.classList.add("hidden");
     this.resultScreen.classList.remove("hidden");
     this.resultScreen.classList.add("result-layout");
-    this.resultScreen.innerHTML = `
+    this.resultScreen.innerHTML = isPvp
+      ? pvpResultPanelHtml.call(this, session, result, reason, pvpCoinReward, pvpRankResult, extractionResult, stage)
+      : `
       <div class="panel main-panel result-panel">
         <div class="result-scroll">
           <p class="eyebrow">${extractionResultEyebrowForMode(session.mode, extractionResult)}</p>
           <h2>${extractionResultTitleForMode(session.mode, extractionResult)}</h2>
           <p class="subcopy">${reason}</p>
           <div class="result-grid">
-            <div class="stat-box"><span>${isEndless ? "模式" : "关卡"}</span><strong>${isEndless ? "无尽" : `${stage.chapter}-${stage.stage}`}</strong></div>
-            <div class="stat-box"><span>${isEndless ? "最高" : "星级"}</span><strong>${isEndless ? this.save.bestEndlessWave : stageStars > 0 ? "★".repeat(stageStars) : "-"}</strong></div>
+            <div class="stat-box"><span>${isPvp ? "模式" : isEndless ? "模式" : "关卡"}</span><strong>${isPvp ? "PVP" : isEndless ? "无尽" : `${stage.chapter}-${stage.stage}`}</strong></div>
+            <div class="stat-box"><span>${isPvp ? "结果" : isEndless ? "最高" : "星级"}</span><strong>${isPvp ? (result === "win" ? "胜利" : "失败") : isEndless ? this.save.bestEndlessWave : stageStars > 0 ? "★".repeat(stageStars) : "-"}</strong></div>
             <div class="stat-box"><span>波次</span><strong>${formatSessionWaveText(session)}</strong></div>
             <div class="stat-box"><span>用时</span><strong>${formatTime(session.elapsed)}</strong></div>
             <div class="stat-box"><span>击杀</span><strong>${session.kills}</strong></div>
-            <div class="stat-box"><span>等级</span><strong>Lv.${session.level}</strong></div>
-            <div class="stat-box"><span>金币</span><strong>${finalCoins}</strong></div>
-            <div class="stat-box"><span>碎片</span><strong>${shards}</strong></div>
-            <div class="stat-box"><span>热度</span><strong>${session.maxHeat}</strong></div>
-            <div class="stat-box"><span>货值</span><strong>${dropTotalValue(kept)}</strong></div>
+            <div class="stat-box"><span>${isPvp ? "战术" : "等级"}</span><strong>Lv.${session.level}</strong></div>
+            <div class="stat-box"><span>${isPvp ? "施压" : "金币"}</span><strong>${isPvp ? Math.floor(session.pvp?.pressureSent || 0) : finalCoins}</strong></div>
+            <div class="stat-box"><span>${isPvp ? "承压" : "碎片"}</span><strong>${isPvp ? Math.floor(session.pvp?.pressureTaken || 0) : shards}</strong></div>
+            <div class="stat-box"><span>${isPvp ? "对手" : "热度"}</span><strong>${isPvp ? this.selectedPvpOpponent?.()?.name || "-" : session.maxHeat}</strong></div>
+            <div class="stat-box" ${isPvp ? "data-pvp-coin-reward" : ""}><span>${isPvp ? "竞技币" : "货值"}</span><strong>${isPvp ? `+${pvpCoinReward}` : dropTotalValue(kept)}</strong></div>
+            ${isPvp ? `<div class="stat-box" data-pvp-rank-current><span>段位</span><strong>${pvpRankLabel(pvpRankResult.profile)}</strong></div>` : ""}
+            ${isPvp ? `<div class="stat-box" data-pvp-rank-delta><span>段位分</span><strong>${pvpRankDeltaText(pvpRankResult)}</strong></div>` : ""}
           </div>
+          ${isPvp ? pvpRankResultHtml(pvpRankResult) : ""}
           ${this.characterUnlockResultHtml(unlockedCharacters)}
-          ${this.dropSummaryHtml(keptSummary, "带回战利品", "没有带回额外掉落")}
-          ${lost.length > 0 ? this.dropSummaryHtml(lostSummary, "损失战利品", "没有损失掉落") : ""}
+          ${isPvp ? "" : this.dropSummaryHtml(keptSummary, "带回战利品", "没有带回额外掉落")}
+          ${!isPvp && lost.length > 0 ? this.dropSummaryHtml(lostSummary, "损失战利品", "没有损失掉落") : ""}
         </div>
         ${this.resultActionsHtml(extractionResult, stage)}
       </div>
@@ -300,8 +326,155 @@ function endGame(this: any, result: "win" | "lose", reason: string, extractionRe
     this.scheduleAutoResultAction(extractionResult, stage);
   }
 
+function clearPvpBattlefieldForResult(session: Session) {
+    session.enemies = [];
+    session.marbles = [];
+    session.particles = [];
+    session.effects = [];
+    session.dropVisuals = [];
+    session.spawnQueue = [];
+    session.waveConfig = null;
+    session.spawnTimer = 0;
+    if (session.pvp) {
+      for (const opponent of session.pvp.opponents || []) {
+        opponent.miniEnemies = [];
+        opponent.miniMarbles = [];
+        opponent.miniEntities = 0;
+        opponent.lastEvent = session.result === "win" ? "对战结束" : "战场清理";
+        opponent.eventTimer = 0;
+      }
+    }
+  }
+
+function pvpResultPanelHtml(
+    this: any,
+    session: Session,
+    result: "win" | "lose",
+    reason: string,
+    pvpCoinReward: number,
+    pvpRankResult: any,
+    extractionResult: ExtractionResult,
+    stage: StageConfig,
+  ) {
+    const won = result === "win";
+    const opponentName = this.selectedPvpOpponent?.()?.name || "对手";
+    return `
+      <div class="panel main-panel result-panel pvp-result-panel ${won ? "win" : "lose"}">
+        <div class="pvp-result-hero">
+          <span>PVP 对战</span>
+          <h2>${won ? "胜利" : "失败"}</h2>
+          <p>${reason || (won ? `已击败 ${opponentName}` : `${opponentName} 获胜`)}</p>
+        </div>
+        <div class="pvp-result-keygrid">
+          <div><span>波次</span><strong>${formatSessionWaveText(session)}</strong></div>
+          <div><span>用时</span><strong>${formatTime(session.elapsed)}</strong></div>
+          <div><span>击杀</span><strong>${session.kills}</strong></div>
+          <div data-pvp-coin-reward><span>竞技币</span><strong>+${pvpCoinReward}</strong></div>
+          <div data-pvp-rank-current><span>段位</span><strong>${pvpRankLabel(pvpRankResult.profile)}</strong></div>
+          <div data-pvp-rank-delta><span>段位分</span><strong>${pvpRankDeltaText(pvpRankResult)}</strong></div>
+        </div>
+        ${pvpRankResultHtml(pvpRankResult)}
+        ${this.resultActionsHtml(extractionResult, stage)}
+      </div>
+    `;
+  }
+
+function pvpCoinRewardForSession(session: Session, result: "win" | "lose") {
+    const base = result === "win" ? 120 : 45;
+    const waveBonus = Math.min(72, Math.max(0, (session.wave || 1) - 1) * 7);
+    const killBonus = Math.min(80, Math.floor((session.kills || 0) / 6));
+    const pressureBonus = Math.min(36, Math.floor((session.pvp?.pressureSent || 0) / 18));
+    return base + waveBonus + killBonus + pressureBonus;
+  }
+
+function pvpRankContextForSession(this: any, session: Session) {
+    const pvp = session.pvp;
+    const opponent = this.selectedPvpOpponent?.();
+    const opponentRating = Number(opponent?.rankScore);
+    return {
+      mode: "duel",
+      opponentRating: Number.isFinite(opponentRating) && opponentRating > 0 ? opponentRating : undefined,
+      wave: session.wave || 1,
+      kills: session.kills || 0,
+      pressureSent: Math.floor(pvp?.pressureSent || 0),
+      pressureTaken: Math.floor(pvp?.pressureTaken || 0),
+      baseHp: Math.max(0, Math.floor(session.baseHp || 0)),
+      maxBaseHp: Math.max(1, Math.floor(session.maxBaseHp || 1)),
+      lootValue: dropTotalValue(session.drops || []),
+    };
+  }
+
+async function syncPvpRankSettlement(this: any, session: Session, result: "win" | "lose", context: any, localRankResult: any) {
+    const pvp = session.pvp;
+    const response = await this.backend.finishPvpRank({
+      mode: "duel",
+      result,
+      summary: {
+        ...context,
+        matchId: pvp?.matchId || pvp?.serverSessionId || null,
+        ticketId: pvp?.matchTicketId || null,
+        opponentType: pvp?.opponentSource || null,
+      },
+    });
+    if (!response) return;
+
+    this.save = response.save;
+    saveGame(this.save);
+    if (this.leaderboardState) this.leaderboardState.fetchedAt = 0;
+
+    if (this.phase !== "result" || !this.resultScreen) return;
+    const coinBox = this.resultScreen.querySelector("[data-pvp-coin-reward] strong");
+    if (coinBox) coinBox.textContent = `+${response.pvpCoins}`;
+    const rankBox = this.resultScreen.querySelector("[data-pvp-rank-current] strong");
+    if (rankBox) rankBox.textContent = pvpRankLabel(response.rankResult.profile);
+    const deltaBox = this.resultScreen.querySelector("[data-pvp-rank-delta] strong");
+    if (deltaBox) deltaBox.textContent = pvpRankDeltaText(response.rankResult);
+    const resultBlock = this.resultScreen.querySelector("[data-pvp-rank-result]");
+    if (resultBlock) resultBlock.outerHTML = pvpRankResultHtml(response.rankResult);
+
+    if (localRankResult && response.rankResult.delta !== localRankResult.delta) {
+      console.info("[pvp] server rank settlement adjusted", {
+        local: localRankResult.delta,
+        server: response.rankResult.delta,
+      });
+    }
+  }
+
+function pvpRankResultHtml(result: any) {
+    if (!result) return "";
+    const before = pvpRankLabel(result.before);
+    const after = pvpRankLabel(result.profile);
+    const status = result.rankUp ? "段位提升" : result.rankDown ? "段位下降" : result.protectionUsed ? "保护触发" : "段位结算";
+    const reasons = (result.reasons || []).slice(0, 2);
+    return `
+      <section class="pvp-rank-result" data-pvp-rank-result>
+        <div>
+          <span>${status}</span>
+          <strong>${before} -> ${after}</strong>
+          <em>${pvpRankProgressText(result.profile)}</em>
+        </div>
+        ${reasons.length > 0 ? `<p>${reasons.map((reason: string) => `<b>${reason}</b>`).join("")}</p>` : ""}
+      </section>
+    `;
+  }
+
 function resultActionsHtml(this: any, result: ExtractionResult, stage: StageConfig) {
     const isEndless = this.session ? isEndlessMode(this.session.mode) : false;
+    const isPvp = this.session?.mode === "pvp";
+    if (isPvp) {
+      return `
+        <div class="pvp-rematch-control">
+          <label>
+            <input type="checkbox" data-pvp-auto-rematch />
+            <span>继续匹配</span>
+          </label>
+        </div>
+        <div class="result-actions extracted pvp-result-actions">
+          <button class="primary-button" type="button" data-action="retry" data-pvp-rematch-button>再次匹配</button>
+          <button class="secondary-button" type="button" data-action="menu">回基地</button>
+        </div>
+      `;
+    }
     if (result === "failed") {
       return `
         <div class="result-actions failure">
@@ -331,6 +504,7 @@ function resultActionsHtml(this: any, result: ExtractionResult, stage: StageConf
   }
 
 function scheduleAutoResultAction(this: any, result: ExtractionResult, stage: StageConfig) {
+    if (this.session?.mode === "pvp") return;
     if (!this.autoBattleEnabled || this.autoRunMode === "manual") return;
 
     window.setTimeout(() => {

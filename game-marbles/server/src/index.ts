@@ -2,9 +2,26 @@ import http from "node:http";
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { defaultSave, normalizeSave } from "../../src/state/save";
-import type { SaveData, ShopReward } from "../../src/core/types";
+import type { PvpRankMode, SaveData, ShopReward } from "../../src/core/types";
+import { applyPvpRankResult } from "../../src/systems/pvp/rank";
 import { pool, q, withTransaction } from "./db";
 import { env } from "./env";
+import {
+  handleLeaderboardCatalog,
+  handleLeaderboardList,
+  handleLeaderboardMe,
+  upsertPvpLeaderboardEntry,
+} from "./leaderboards";
+import { handlePvpAiChat, handlePvpAiPressure, handlePvpAiSnapshot, handlePvpAiStart } from "./pvp-ai";
+import {
+  handlePvpMatchCancel,
+  handlePvpMatchChat,
+  handlePvpMatchFinish,
+  handlePvpMatchPressure,
+  handlePvpMatchSnapshot,
+  handlePvpMatchStart,
+  handlePvpMatchStatus,
+} from "./pvp-matchmaking";
 
 type AuthContext = {
   userId: string;
@@ -137,6 +154,10 @@ function normalizeRedeemRewards(value: unknown): ShopReward[] {
       rewards.push({ type: "coins", amount: rewardAmount(reward.amount) });
     }
 
+    if (reward.type === "pvpCoins") {
+      rewards.push({ type: "pvpCoins", amount: rewardAmount(reward.amount) });
+    }
+
     if (reward.type === "energyCrystals") {
       rewards.push({ type: "energyCrystals", amount: rewardAmount(reward.amount) });
     }
@@ -193,6 +214,11 @@ function grantRedeemRewards(save: SaveData, rewards: ShopReward[]) {
     if (reward.type === "coins") {
       save.coins += reward.amount;
       labels.push(`金币 ${reward.amount}`);
+    }
+
+    if (reward.type === "pvpCoins") {
+      save.pvpCoins = Math.max(0, Math.floor(Number(save.pvpCoins) || 0)) + reward.amount;
+      labels.push(`竞技币 ${reward.amount}`);
     }
 
     if (reward.type === "energyCrystals") {
@@ -761,6 +787,125 @@ async function handleBattleFinish(auth: AuthContext, body: any) {
   };
 }
 
+function sanitizePvpRankMode(value: unknown): PvpRankMode {
+  if (value === "power_duel" || value === "battle_royale") return value;
+  return "duel";
+}
+
+function clampServerNumber(value: unknown, min: number, max: number, fallback: number) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
+}
+
+function optionalServerNumber(value: unknown, min: number, max: number) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number)) return undefined;
+  return Math.max(min, Math.min(max, number));
+}
+
+function sanitizePvpRankSummary(value: unknown) {
+  const summary = typeof value === "object" && value ? (value as Record<string, unknown>) : {};
+  return {
+    wave: clampServerNumber(summary.wave, 1, 20, 1),
+    kills: clampServerNumber(summary.kills, 0, 1200, 0),
+    baseHp: clampServerNumber(summary.baseHp, 0, 999, 0),
+    maxBaseHp: clampServerNumber(summary.maxBaseHp, 1, 999, 10),
+    pressureSent: clampServerNumber(summary.pressureSent, 0, 5000, 0),
+    pressureTaken: clampServerNumber(summary.pressureTaken, 0, 5000, 0),
+    opponentRating: optionalServerNumber(summary.opponentRating, 1, 999999),
+    disconnected: Boolean(summary.disconnected),
+    abnormal: Boolean(summary.abnormal),
+    repeatedOpponent: Boolean(summary.repeatedOpponent),
+    placementRank: optionalServerNumber(summary.placementRank, 1, 100),
+    playerCount: optionalServerNumber(summary.playerCount, 2, 100),
+    extracted: Boolean(summary.extracted),
+    lootValue: clampServerNumber(summary.lootValue, 0, 999999, 0),
+    matchId: String(summary.matchId || "").slice(0, 80),
+    ticketId: String(summary.ticketId || "").slice(0, 80),
+    opponentType: String(summary.opponentType || "").slice(0, 20),
+  };
+}
+
+function pvpCoinRewardForRankSummary(summary: ReturnType<typeof sanitizePvpRankSummary>, result: "win" | "lose") {
+  const base = result === "win" ? 120 : 45;
+  const waveBonus = Math.min(72, Math.max(0, summary.wave - 1) * 7);
+  const killBonus = Math.min(80, Math.floor(summary.kills / 6));
+  const pressureBonus = Math.min(36, Math.floor(summary.pressureSent / 18));
+  return base + waveBonus + killBonus + pressureBonus;
+}
+
+async function handlePvpRankFinish(auth: AuthContext, body: any) {
+  const mode = sanitizePvpRankMode(body.mode);
+  const result = body.result === "lose" ? "lose" : "win";
+  const summary = sanitizePvpRankSummary(body.summary);
+
+  return withTransaction(async (client) => {
+    let player = await client.query(`select revision, snapshot from ${q("gm_player_states")} where user_id = $1 for update`, [auth.userId]);
+    if (!player.rowCount) {
+      const fallback = normalizeIncomingSave(defaultSave());
+      player = await client.query(
+        `
+          insert into ${q("gm_player_states")} (user_id, schema_version, revision, snapshot)
+          values ($1, 1, 1, $2::jsonb)
+          returning revision, snapshot
+        `,
+        [auth.userId, JSON.stringify(fallback)],
+      );
+    }
+
+    const save = normalizeIncomingSave(player.rows[0].snapshot);
+    const rankResult = applyPvpRankResult(save.pvpRanks[mode], result, {
+      mode,
+      opponentRating: summary.opponentRating,
+      disconnected: summary.disconnected,
+      abnormal: summary.abnormal,
+      repeatedOpponent: summary.repeatedOpponent,
+      wave: summary.wave,
+      kills: summary.kills,
+      pressureSent: summary.pressureSent,
+      pressureTaken: summary.pressureTaken,
+      baseHp: summary.baseHp,
+      maxBaseHp: summary.maxBaseHp,
+      placementRank: summary.placementRank,
+      playerCount: summary.playerCount,
+      extracted: summary.extracted,
+      lootValue: summary.lootValue,
+    });
+    const pvpCoins = rankResult.abnormal ? 0 : pvpCoinRewardForRankSummary(summary, result);
+
+    save.pvpRanks[mode] = rankResult.profile;
+    save.pvpCoins = Math.max(0, Math.floor(Number(save.pvpCoins) || 0)) + pvpCoins;
+
+    const saved = await client.query(
+      `
+        update ${q("gm_player_states")}
+        set revision = revision + 1,
+            snapshot = $2::jsonb,
+            updated_at = now()
+        where user_id = $1
+        returning revision, snapshot
+      `,
+      [auth.userId, JSON.stringify(normalizeIncomingSave(save))],
+    );
+
+    if (!rankResult.abnormal) {
+      await upsertPvpLeaderboardEntry(client, auth.userId, mode, rankResult.profile);
+    }
+
+    return {
+      ok: true,
+      mode,
+      result,
+      pvpCoins,
+      summary,
+      rankResult,
+      playerRevision: Number(saved.rows[0].revision),
+      playerState: normalizeIncomingSave(saved.rows[0].snapshot),
+    };
+  });
+}
+
 async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   if (req.method === "OPTIONS") {
     sendJson(req, res, 204, null);
@@ -793,6 +938,78 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  if (req.method === "POST" && path === "/api/pvp/ai/start") {
+    const body = await readJson(req);
+    sendJson(req, res, 200, await handlePvpAiStart(req, body));
+    return;
+  }
+
+  if (req.method === "POST" && path === "/api/pvp/match/start") {
+    const body = await readJson(req);
+    sendJson(req, res, 200, await handlePvpMatchStart(req, body));
+    return;
+  }
+
+  const pvpMatchStatusMatch = /^\/api\/pvp\/match\/([^/]+)$/.exec(path);
+  if (req.method === "GET" && pvpMatchStatusMatch) {
+    sendJson(req, res, 200, await handlePvpMatchStatus(decodeURIComponent(pvpMatchStatusMatch[1])));
+    return;
+  }
+
+  const pvpMatchCancelMatch = /^\/api\/pvp\/match\/([^/]+)\/cancel$/.exec(path);
+  if (req.method === "POST" && pvpMatchCancelMatch) {
+    sendJson(req, res, 200, await handlePvpMatchCancel(decodeURIComponent(pvpMatchCancelMatch[1])));
+    return;
+  }
+
+  const pvpMatchSnapshotMatch = /^\/api\/pvp\/matches\/([^/]+)\/snapshot$/.exec(path);
+  if (req.method === "POST" && pvpMatchSnapshotMatch) {
+    const body = await readJson(req);
+    sendJson(req, res, 200, await handlePvpMatchSnapshot(decodeURIComponent(pvpMatchSnapshotMatch[1]), body));
+    return;
+  }
+
+  const pvpMatchPressureMatch = /^\/api\/pvp\/matches\/([^/]+)\/pressure$/.exec(path);
+  if (req.method === "POST" && pvpMatchPressureMatch) {
+    const body = await readJson(req);
+    sendJson(req, res, 200, await handlePvpMatchPressure(decodeURIComponent(pvpMatchPressureMatch[1]), body));
+    return;
+  }
+
+  const pvpMatchFinishMatch = /^\/api\/pvp\/matches\/([^/]+)\/finish$/.exec(path);
+  if (req.method === "POST" && pvpMatchFinishMatch) {
+    const body = await readJson(req);
+    sendJson(req, res, 200, await handlePvpMatchFinish(decodeURIComponent(pvpMatchFinishMatch[1]), body));
+    return;
+  }
+
+  const pvpMatchChatMatch = /^\/api\/pvp\/matches\/([^/]+)\/chat$/.exec(path);
+  if (req.method === "POST" && pvpMatchChatMatch) {
+    const body = await readJson(req);
+    sendJson(req, res, 200, await handlePvpMatchChat(decodeURIComponent(pvpMatchChatMatch[1]), body));
+    return;
+  }
+
+  const pvpAiSnapshotMatch = /^\/api\/pvp\/ai\/([^/]+)\/snapshot$/.exec(path);
+  if (req.method === "GET" && pvpAiSnapshotMatch) {
+    sendJson(req, res, 200, await handlePvpAiSnapshot(decodeURIComponent(pvpAiSnapshotMatch[1])));
+    return;
+  }
+
+  const pvpAiPressureMatch = /^\/api\/pvp\/ai\/([^/]+)\/pressure$/.exec(path);
+  if (req.method === "POST" && pvpAiPressureMatch) {
+    const body = await readJson(req);
+    sendJson(req, res, 200, await handlePvpAiPressure(decodeURIComponent(pvpAiPressureMatch[1]), body));
+    return;
+  }
+
+  const pvpAiChatMatch = /^\/api\/pvp\/ai\/([^/]+)\/chat$/.exec(path);
+  if (req.method === "POST" && pvpAiChatMatch) {
+    const body = await readJson(req);
+    sendJson(req, res, 200, await handlePvpAiChat(decodeURIComponent(pvpAiChatMatch[1]), body));
+    return;
+  }
+
   const auth = await requireAuth(req);
 
   if (req.method === "GET" && path === "/api/bootstrap") {
@@ -803,6 +1020,23 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   if (req.method === "GET" && path === "/api/activities") {
     const bootstrap = await handleBootstrap(auth);
     sendJson(req, res, 200, { activities: bootstrap.activities, serverTime: bootstrap.serverTime });
+    return;
+  }
+
+  if (req.method === "GET" && path === "/api/leaderboards") {
+    sendJson(req, res, 200, await handleLeaderboardCatalog(auth));
+    return;
+  }
+
+  const leaderboardMeMatch = /^\/api\/leaderboards\/([^/]+)\/me$/.exec(path);
+  if (req.method === "GET" && leaderboardMeMatch) {
+    sendJson(req, res, 200, await handleLeaderboardMe(auth, decodeURIComponent(leaderboardMeMatch[1]), url.searchParams));
+    return;
+  }
+
+  const leaderboardMatch = /^\/api\/leaderboards\/([^/]+)$/.exec(path);
+  if (req.method === "GET" && leaderboardMatch) {
+    sendJson(req, res, 200, await handleLeaderboardList(auth, decodeURIComponent(leaderboardMatch[1]), url.searchParams));
     return;
   }
 
@@ -823,6 +1057,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   if (req.method === "POST" && path === "/api/redeem-code") {
     const body: any = await readJson(req);
     sendJson(req, res, 200, await handleRedeemCode(auth, body));
+    return;
+  }
+
+  if (req.method === "POST" && path === "/api/pvp/rank/finish") {
+    const body: any = await readJson(req);
+    const response = await withIdempotency(auth.userId, body.opId, "POST /api/pvp/rank/finish", () => handlePvpRankFinish(auth, body));
+    sendJson(req, res, 200, response);
     return;
   }
 

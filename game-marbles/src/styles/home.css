@@ -39,7 +39,7 @@
   left: 264px;
   z-index: 4;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -134,6 +134,11 @@
     radial-gradient(ellipse at 50% 72%, rgba(246, 201, 95, 0.12), transparent 64%);
   content: "";
   pointer-events: none;
+}
+
+.facility-entry.cosmetic {
+  --facility-color: #b68cff;
+  --facility-accent: #f6c95f;
 }
 
 .account-panel {
@@ -1148,6 +1153,10 @@
   --facility-color: #ffe28c;
 }
 
+.facility-entry.pvp {
+  --facility-color: #ff6c7e;
+}
+
 .facility-entry.protocol {
   --facility-color: #b68cff;
 }
@@ -1467,10 +1476,19 @@
   left: 34px;
 }
 
+.home-scene .facility-entry.pvp {
+  top: 214px;
+  right: 34px;
+}
+
 .home-scene .facility-entry.protocol {
   top: 560px;
-  left: 50%;
-  --node-x: -50%;
+  left: 114px;
+}
+
+.home-scene .facility-entry.cosmetic {
+  top: 560px;
+  right: 114px;
 }
 
 .home-scene .facility-entry:hover {

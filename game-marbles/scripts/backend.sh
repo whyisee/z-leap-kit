@@ -6,6 +6,8 @@ RUNTIME_DIR="$ROOT_DIR/tmp/backend"
 PID_FILE="$RUNTIME_DIR/api.pid"
 LOG_FILE="$RUNTIME_DIR/api.log"
 TSX_BIN="$ROOT_DIR/node_modules/.bin/tsx"
+TSX_PREFLIGHT="$ROOT_DIR/node_modules/tsx/dist/preflight.cjs"
+TSX_LOADER="file://$ROOT_DIR/node_modules/tsx/dist/loader.mjs"
 
 load_env() {
   set -a
@@ -42,6 +44,10 @@ running_pid() {
 require_deps() {
   if [[ ! -x "$TSX_BIN" ]]; then
     echo "Missing dependencies. Run: npm install"
+    exit 1
+  fi
+  if [[ ! -f "$TSX_PREFLIGHT" || ! -f "${TSX_LOADER#file://}" ]]; then
+    echo "Missing tsx runtime files. Run: npm install"
     exit 1
   fi
 }
@@ -95,12 +101,13 @@ start_backend() {
   : > "$LOG_FILE"
   echo "Starting backend..."
   echo "Log: $LOG_FILE"
-  (
-    cd "$ROOT_DIR"
-    exec "$TSX_BIN" server/src/index.ts
-  ) >>"$LOG_FILE" 2>&1 &
+  local previous_dir
+  previous_dir="$(pwd)"
+  cd "$ROOT_DIR"
+  nohup node --require "$TSX_PREFLIGHT" --import "$TSX_LOADER" server/src/index.ts >>"$LOG_FILE" 2>&1 < /dev/null &
 
   echo "$!" > "$PID_FILE"
+  cd "$previous_dir"
   wait_for_health
 }
 

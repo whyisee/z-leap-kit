@@ -303,6 +303,24 @@
   transform: translateX(-50%);
 }
 
+.collection-tab-icon.cosmetics::before {
+  inset: 6px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 38% 28%, rgba(255, 255, 255, 0.88), transparent 20%),
+    linear-gradient(135deg, #f6c95f, #b68cff 62%, #54c7ff);
+  box-shadow: 0 0 12px rgba(182, 140, 255, 0.45);
+}
+
+.collection-tab-icon.cosmetics::after {
+  right: 7px;
+  bottom: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff2bf;
+}
+
 .collection-tab span,
 .collection-tab strong,
 .collection-tab em {

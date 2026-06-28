@@ -1,4 +1,5 @@
 import { characters } from "../config/characters";
+import { cosmeticConfigs, cosmeticPools } from "../config/cosmetics";
 import { collectibleConfigs } from "../config/loot";
 import { marbleConfigs } from "../config/marbles";
 import { getStageById, getStageByIndex, stages } from "../config/stages";
@@ -12,6 +13,9 @@ import type {
   CharacterMarbleLoadout,
   CharacterProgress,
   CharacterSortMode,
+  CosmeticEffectIntensity,
+  CosmeticSaveState,
+  CosmeticTicketId,
   GamePreferences,
   InventoryData,
   MarbleId,
@@ -22,12 +26,15 @@ import type {
   ShopState,
 } from "../core/types";
 import { parseGemKey } from "../systems/loot/gems";
+import { defaultPvpRanks, normalizePvpRanks } from "../systems/pvp/rank";
 
 export function defaultSave(): SaveData {
   const firstStage = stages[0]?.id || "c1s1";
   return {
     coins: 180,
     energyCrystals: 0,
+    pvpCoins: 0,
+    pvpRanks: defaultPvpRanks(),
     shards: 0,
     runs: 0,
     wins: 0,
@@ -46,6 +53,7 @@ export function defaultSave(): SaveData {
     preferences: defaultPreferences(),
     shop: defaultShopState(),
     collectionRewards: {},
+    cosmetics: defaultCosmetics(),
   };
 }
 
@@ -72,6 +80,8 @@ export function normalizeSave(save: SaveData): SaveData {
     ...save,
     coins: Math.max(0, Math.floor(Number(save.coins ?? defaults.coins))),
     energyCrystals: Math.max(0, Math.floor(Number(save.energyCrystals ?? defaults.energyCrystals))),
+    pvpCoins: Math.max(0, Math.floor(Number(save.pvpCoins ?? defaults.pvpCoins))),
+    pvpRanks: normalizePvpRanks(save.pvpRanks || defaults.pvpRanks),
     bestWave: Math.max(0, Math.floor(Number(save.bestWave ?? defaults.bestWave))),
     bestEndlessWave: Math.max(0, Math.floor(Number(save.bestEndlessWave ?? defaults.bestEndlessWave))),
     selectedStage,
@@ -93,6 +103,7 @@ export function normalizeSave(save: SaveData): SaveData {
     preferences: normalizePreferences(save.preferences || defaults.preferences),
     shop: normalizeShopState(save.shop || defaults.shop),
     collectionRewards: normalizeCollectionRewards(save.collectionRewards || defaults.collectionRewards),
+    cosmetics: normalizeCosmetics(save.cosmetics || defaults.cosmetics),
   };
 
   for (const character of characters) {
@@ -149,6 +160,81 @@ export function normalizeTickets(tickets: Partial<Record<ShopTicketId, number>> 
     normalized[id] = Math.max(0, Math.floor(Number(tickets[id] || 0)));
   }
   return normalized;
+}
+
+export function defaultCosmetics(): CosmeticSaveState {
+  return {
+    owned: {},
+    equippedCharacters: {},
+    equippedMarbles: {},
+    tickets: {
+      characterCosmetic: 3,
+      marbleCosmetic: 3,
+    },
+    prismDust: 0,
+    pity: Object.fromEntries(Object.keys(cosmeticPools).map((id) => [id, { sinceEpic: 0, sinceLegendary: 0 }])),
+    history: [],
+  };
+}
+
+export function normalizeCosmetics(cosmetics: Partial<CosmeticSaveState> = {}): CosmeticSaveState {
+  const defaults = defaultCosmetics();
+  const owned: Record<string, number> = {};
+  for (const [id, count] of Object.entries(cosmetics.owned || {})) {
+    if (!cosmeticConfigs[id]) continue;
+    owned[id] = Math.max(1, Math.floor(Number(count || 1)));
+  }
+
+  const equippedCharacters: Record<string, string> = {};
+  for (const [characterId, cosmeticId] of Object.entries(cosmetics.equippedCharacters || {})) {
+    const cosmetic = cosmeticConfigs[cosmeticId];
+    if (cosmetic?.type === "character" && cosmetic.targetId === characterId && owned[cosmeticId]) {
+      equippedCharacters[characterId] = cosmeticId;
+    }
+  }
+
+  const equippedMarbles: CosmeticSaveState["equippedMarbles"] = {};
+  for (const [marbleId, cosmeticId] of Object.entries(cosmetics.equippedMarbles || {})) {
+    const cosmetic = cosmeticConfigs[cosmeticId];
+    if (cosmetic?.type === "marble" && cosmetic.targetId === marbleId && owned[cosmeticId] && marbleId in marbleConfigs) {
+      equippedMarbles[marbleId as MarbleId] = cosmeticId;
+    }
+  }
+
+  const tickets = { ...defaults.tickets };
+  for (const id of Object.keys(tickets) as CosmeticTicketId[]) {
+    tickets[id] = Math.max(0, Math.floor(Number(cosmetics.tickets?.[id] ?? defaults.tickets[id])));
+  }
+
+  const pity = { ...defaults.pity };
+  for (const poolId of Object.keys(cosmeticPools)) {
+    const current = cosmetics.pity?.[poolId];
+    pity[poolId] = {
+      sinceEpic: Math.max(0, Math.floor(Number(current?.sinceEpic || 0))),
+      sinceLegendary: Math.max(0, Math.floor(Number(current?.sinceLegendary || 0))),
+    };
+  }
+
+  const history = (cosmetics.history || [])
+    .filter((entry) => cosmeticConfigs[entry.itemId] && cosmeticPools[entry.poolId])
+    .slice(-50)
+    .map((entry) => ({
+      poolId: entry.poolId,
+      itemId: entry.itemId,
+      rarity: cosmeticConfigs[entry.itemId].rarity,
+      duplicate: Boolean(entry.duplicate),
+      at: Math.max(0, Math.floor(Number(entry.at || Date.now()))),
+    }));
+
+  return {
+    owned,
+    equippedCharacters,
+    equippedMarbles,
+    tickets,
+    prismDust: Math.max(0, Math.floor(Number(cosmetics.prismDust || 0))),
+    pity,
+    history,
+  };
 }
 
 export function defaultShopState(date = new Date()): ShopState {
@@ -213,6 +299,7 @@ export function defaultPreferences(): GamePreferences {
     autoSkillEnabled: true,
     battleSpeed: 1,
     characterSortMode: "power",
+    cosmeticEffectIntensity: "medium",
   };
 }
 
@@ -222,6 +309,7 @@ export function normalizePreferences(preferences: Partial<GamePreferences> = {})
   const autoExtractionModes: AutoExtractionMode[] = ["safe", "balanced", "deep", "clear"];
   const autoRunModes: AutoRunMode[] = ["manual", "advance", "repeat"];
   const characterSortModes: CharacterSortMode[] = ["level", "rarity", "power", "attack"];
+  const cosmeticEffectIntensities: CosmeticEffectIntensity[] = ["low", "medium", "high"];
   const speeds: Speed[] = [1, 2, 4];
 
   return {
@@ -236,6 +324,9 @@ export function normalizePreferences(preferences: Partial<GamePreferences> = {})
     characterSortMode: characterSortModes.includes(preferences.characterSortMode as CharacterSortMode)
       ? (preferences.characterSortMode as CharacterSortMode)
       : defaults.characterSortMode,
+    cosmeticEffectIntensity: cosmeticEffectIntensities.includes(preferences.cosmeticEffectIntensity as CosmeticEffectIntensity)
+      ? (preferences.cosmeticEffectIntensity as CosmeticEffectIntensity)
+      : defaults.cosmeticEffectIntensity,
   };
 }
 

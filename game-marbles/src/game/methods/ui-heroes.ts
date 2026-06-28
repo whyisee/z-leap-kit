@@ -33,6 +33,8 @@ import {
   characterSortModes,
   characters,
   clamp,
+  cosmeticById,
+  cosmeticsForPool,
   collectibleConfigs,
   collectibleForRarity,
   combinedRarityBoost,
@@ -180,7 +182,21 @@ import {
 
 function characterPortraitHtml(this: any, character: CharacterConfig, className: string) {
     const src = characterPortraitSources[character.id];
+    const visual = this.characterVisualConfig?.(character.id);
+    const cosmetic = visual?.cosmetic;
     if (!src) return `<span class="${className}">${this.escapeText(character.name.slice(0, 1))}</span>`;
+    if (cosmetic) {
+      return `
+        <span
+          class="${className} character-cosmetic-portrait ${cosmetic.rarity}"
+          style="--cosmetic-color: ${cosmetic.color}; --cosmetic-accent: ${cosmetic.accentColor}"
+          title="${this.escapeText(cosmetic.name)}"
+        >
+          <img class="character-cosmetic-image" src="${src}" alt="${this.escapeText(character.name)}">
+          <em>${this.escapeText(cosmetic.visualLabel || "幻")}</em>
+        </span>
+      `;
+    }
     return `<img class="${className}" src="${src}" alt="${this.escapeText(character.name)}">`;
   }
 
@@ -390,6 +406,7 @@ function heroDetailTabsHtml(this: any) {
       { id: "skills", label: "技能" },
       { id: "marbles", label: "弹珠" },
       { id: "routes", label: "路线" },
+      { id: "cosmetics", label: "幻化" },
     ];
 
     return `
@@ -418,7 +435,41 @@ function heroDetailTabContentHtml(this: any, character: CharacterConfig, teamSlo
     if (this.heroDetailTab === "skills") return `${this.heroSkillHtml(character, progress.owned)}${this.heroPassiveHtml(character)}`;
     if (this.heroDetailTab === "marbles") return this.heroMarbleLoadoutHtml(character, progress.owned);
     if (this.heroDetailTab === "routes") return this.heroRoutesHtml(character);
+    if (this.heroDetailTab === "cosmetics") return this.heroCosmeticsHtml(character, progress.owned);
     return this.heroOverviewHtml(character, teamSlot);
+  }
+
+function heroCosmeticsHtml(this: any, character: CharacterConfig, owned: boolean) {
+    const items = cosmeticsForPool("character").filter((item) => item.targetId === character.id);
+    const equipped = this.equippedCharacterCosmetic(character.id);
+    return `
+      <div class="hero-route-title hero-cosmetic-title">
+        <span>角色幻化</span>
+        <em>${equipped ? `当前 ${equipped.name}` : "只改变外观表现"}</em>
+      </div>
+      <div class="hero-cosmetic-grid">
+        ${items
+          .map((item) => {
+            const hasItem = Boolean(this.save.cosmetics.owned[item.id]);
+            const isEquipped = this.save.cosmetics.equippedCharacters[character.id] === item.id;
+            return `
+              <article class="hero-cosmetic-card ${item.rarity} ${hasItem ? "owned" : "locked"} ${isEquipped ? "equipped" : ""}" style="--cosmetic-color: ${item.color}; --cosmetic-accent: ${item.accentColor}">
+                ${this.cosmeticIconHtml(item)}
+                <div>
+                  <span>${this.cosmeticRarityName(item.rarity)} · ${this.escapeText(item.theme || "常驻")}</span>
+                  <strong>${this.escapeText(item.name)}</strong>
+                  <p>${this.escapeText(item.desc)}</p>
+                </div>
+                <button class="small-button" type="button" data-cosmetic-equip="${item.id}" ${owned && hasItem && !isEquipped ? "" : "disabled"}>
+                  ${isEquipped ? "已装备" : hasItem ? "装备" : "未获得"}
+                </button>
+              </article>
+            `;
+          })
+          .join("")}
+      </div>
+      <button class="secondary-button" type="button" data-menu="cosmetics">去幻化舱</button>
+    `;
   }
 
 function heroOverviewHtml(this: any, character: CharacterConfig, teamSlot: number) {
@@ -744,6 +795,7 @@ export const gameHeroUiMethods = {
   heroDetailHtml,
   heroDetailTabsHtml,
   heroDetailTabContentHtml,
+  heroCosmeticsHtml,
   heroOverviewHtml,
   heroRoutesHtml,
   heroSkillHtml,

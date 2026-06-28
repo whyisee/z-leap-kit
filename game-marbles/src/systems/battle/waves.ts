@@ -24,6 +24,26 @@ export function createWave(wave: number, stage?: StageConfig): WaveConfig {
   };
 }
 
+export function createPvpWave(wave: number, stage?: StageConfig): WaveConfig {
+  const type = pvpWaveType(wave);
+  const base = createWave(wave === 10 ? 20 : wave + 2, stage);
+  const queue = base.queue.filter((enemy) => enemy !== "boss");
+
+  if (wave === 4 || wave === 8) queue.unshift("elite");
+  if (wave === 7) queue.push("fast", "fast", "shield");
+  if (wave === 9) queue.push("tank", "shield", "healer", "fast");
+
+  return {
+    wave,
+    type,
+    targetDuration: type === "boss" ? 26 : type === "elite" ? 14 : type === "pressure" ? 11 : 9,
+    queue: shuffle(queue.slice(0, type === "boss" ? 22 : 44)),
+    hpMultiplier: base.hpMultiplier * 0.78,
+    speedMultiplier: base.speedMultiplier * 1.04,
+    spawnInterval: clamp((type === "boss" ? 26 : 9) / Math.max(1, queue.length), 0.14, 0.48),
+  };
+}
+
 export function enemyThreatRank(enemy: Enemy) {
   return {
     boss: 9,
@@ -50,6 +70,14 @@ function defaultWaveType(wave: number): WaveConfig["type"] {
   if (wave === 10 || wave === 15) return "elite";
   if (wave === 8 || wave === 14) return "reward";
   if (wave % 4 === 0 || wave >= 17) return "pressure";
+  return "normal";
+}
+
+function pvpWaveType(wave: number): WaveConfig["type"] {
+  if (wave === 10) return "boss";
+  if (wave === 4 || wave === 8) return "elite";
+  if (wave === 5) return "reward";
+  if (wave === 3 || wave === 6 || wave >= 7) return "pressure";
   return "normal";
 }
 

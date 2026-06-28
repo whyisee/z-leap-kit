@@ -1,11 +1,12 @@
 import { characters } from "../../config/characters";
 import { collectibleConfigs, gemConfigs } from "../../config/loot";
 import { marbleConfigs } from "../../config/marbles";
-import { bundleShopItems, crystalShopItems, dailyShopItems, gemShopItems, shardShopItems, shopItems } from "../../config/shop";
+import { arenaShopItems, bundleShopItems, crystalShopItems, dailyShopItems, gemShopItems, shardShopItems, shopItems } from "../../config/shop";
 import { MARBLE_MAX_LEVEL } from "../../core/constants";
 import type { CurrencyId, MarbleId, SaveData, ShopCategory, ShopItemConfig, ShopPrice, ShopReward, ShopTicketId } from "../../core/types";
 import { defaultCharacterProgress, shopDateKey, shopWeekKey } from "../../state/save";
 import { gemKey } from "../loot/gems";
+import { pvpRankMeetsRequirement, pvpRankRequirementLabel } from "../pvp/rank";
 
 const MAX_DAILY_SHARD_REFRESHES = 3;
 const BASE_SHARD_REFRESH_COST = 12;
@@ -51,6 +52,7 @@ export function shopItemsForCategory(save: SaveData, category: ShopCategory) {
       .filter((item): item is ShopItemConfig => Boolean(item));
     return [...shardOffers, ...gemShopItems];
   }
+  if (category === "arena") return arenaShopItems;
   if (category === "crystal") return crystalShopItems;
   if (category === "bundles") return bundleShopItems;
   return [];
@@ -78,9 +80,16 @@ export function shopStockLeft(save: SaveData, item: ShopItemConfig) {
 }
 
 export function shopItemLocked(save: SaveData, item: ShopItemConfig) {
-  if (!item.unlock) return "";
-  if (item.unlock.type === "stage") return save.progress.unlockedStage >= item.unlock.value ? "" : item.unlock.desc;
-  return save.wins >= item.unlock.value ? "" : item.unlock.desc;
+  const unlock = item.unlock;
+  if (!unlock) return "";
+  if (unlock.type === "pvpRank") {
+    const profile = save.pvpRanks?.[unlock.mode];
+    const division = unlock.division ?? 3;
+    if (profile && pvpRankMeetsRequirement(profile, unlock.tier, division)) return "";
+    return unlock.desc || `达到${pvpRankRequirementLabel(unlock.tier, division)}解锁`;
+  }
+  if (unlock.type === "stage") return save.progress.unlockedStage >= unlock.value ? "" : unlock.desc;
+  return save.wins >= unlock.value ? "" : unlock.desc;
 }
 
 export function shopItemDisabledReason(save: SaveData, item: ShopItemConfig) {
@@ -151,6 +160,7 @@ export function shopRewardSummary(rewards: ShopReward[]) {
 export function shopItemColor(item: ShopItemConfig) {
   const price = item.price;
   if (price.currency === "energyCrystals" && price.amount > 0) return "#9f79ff";
+  if (price.currency === "pvpCoins") return "#54c7ff";
   const reward = item.rewards[0];
   if (!reward) return "#54c7ff";
   if (reward.type === "marbleShard") return marbleConfigs[reward.marbleId].color;
@@ -163,6 +173,7 @@ export function shopItemColor(item: ShopItemConfig) {
 
 export function shopItemBadge(item: ShopItemConfig) {
   if (item.price.amount <= 0) return "免费";
+  if (item.category === "arena") return "竞技";
   if (item.category === "growth") return "成长";
   if (item.category === "crystal") return "晶体";
   if (item.category === "bundles") return item.refresh === "once" ? "一次" : "限购";
@@ -175,7 +186,9 @@ export function shopPriceText(price: ShopPrice) {
 }
 
 export function currencyName(currency: CurrencyId) {
-  return currency === "energyCrystals" ? "能源晶体" : "金币";
+  if (currency === "energyCrystals") return "能源晶体";
+  if (currency === "pvpCoins") return "竞技币";
+  return "金币";
 }
 
 function recommendedShopItems(save: SaveData) {
@@ -237,11 +250,14 @@ function purchaseKey(save: SaveData, item: ShopItemConfig) {
 }
 
 function currencyAmount(save: SaveData, currency: CurrencyId) {
+  if (currency === "pvpCoins") return Math.max(0, Math.floor(Number(save.pvpCoins) || 0));
   return currency === "energyCrystals" ? save.energyCrystals : save.coins;
 }
 
 function spendCurrency(save: SaveData, price: ShopPrice) {
-  if (price.currency === "energyCrystals") {
+  if (price.currency === "pvpCoins") {
+    save.pvpCoins = Math.max(0, Math.floor(Number(save.pvpCoins) || 0)) - price.amount;
+  } else if (price.currency === "energyCrystals") {
     save.energyCrystals -= price.amount;
   } else {
     save.coins -= price.amount;
@@ -259,6 +275,11 @@ function grantShopRewards(save: SaveData, rewards: ShopReward[]) {
     if (reward.type === "coins") {
       save.coins += reward.amount;
       labels.push(`金币 ${reward.amount}`);
+    }
+
+    if (reward.type === "pvpCoins") {
+      save.pvpCoins = Math.max(0, Math.floor(Number(save.pvpCoins) || 0)) + reward.amount;
+      labels.push(`竞技币 ${reward.amount}`);
     }
 
     if (reward.type === "energyCrystals") {
@@ -317,6 +338,7 @@ function randomRewardMarbleId(save: SaveData): MarbleId {
 
 function shopRewardLabel(reward: ShopReward) {
   if (reward.type === "coins") return `金币 ${reward.amount}`;
+  if (reward.type === "pvpCoins") return `竞技币 ${reward.amount}`;
   if (reward.type === "energyCrystals") return `能源晶体 ${reward.amount}`;
   if (reward.type === "marbleShard") return `${marbleConfigs[reward.marbleId].name}碎片 x${reward.amount}`;
   if (reward.type === "randomMarbleShard") return `随机弹珠碎片 x${reward.amount}`;

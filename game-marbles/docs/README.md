@@ -11,6 +11,8 @@
 - [基地主页 UI 改版方案](./HOME_UI_REDESIGN.md)
 - [战术卡片扩展设计](./TACTICAL_CARD_DESIGN.md)
 - [PVP 模式设计方案](./PVP_DESIGN.md)
+- [排行榜功能设计](./LEADERBOARD_DESIGN.md)
+- [幻化抽卡系统设计](./COSMETIC_GACHA_DESIGN.md)
 
 ## 后端文档
 

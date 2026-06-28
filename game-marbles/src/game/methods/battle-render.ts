@@ -188,6 +188,11 @@ function draw(this: any) {
       return;
     }
 
+    if (session.mode === "pvp") {
+      this.drawPvpBattle(ctx, session);
+      return;
+    }
+
     this.drawBackground(ctx);
     this.drawField(ctx);
     this.drawEnemies(ctx, session);
@@ -478,17 +483,18 @@ function drawEnemies(this: any, ctx: CanvasRenderingContext2D, session: Session)
 function drawMarbles(this: any, ctx: CanvasRenderingContext2D, session: Session) {
     for (const marble of session.marbles) {
       const config = marbleConfigs[marble.marbleId];
+      const visual = this.marbleVisualConfig?.(marble.marbleId) || config;
       ctx.save();
       for (let i = 0; i < marble.trail.length; i += 1) {
         const point = marble.trail[i];
         const alpha = i / marble.trail.length;
-        ctx.fillStyle = config.trail.replace(/0\.\d+\)/, `${0.05 + alpha * 0.22})`);
+        ctx.fillStyle = visual.trail.replace(/0\.\d+\)/, `${0.05 + alpha * 0.22})`);
         ctx.beginPath();
         ctx.arc(point.x, point.y, marble.radius * (0.45 + alpha * 0.45), 0, Math.PI * 2);
         ctx.fill();
       }
-      ctx.fillStyle = config.color;
-      ctx.shadowColor = config.color;
+      ctx.fillStyle = visual.color;
+      ctx.shadowColor = visual.color;
       ctx.shadowBlur = 12;
       ctx.beginPath();
       ctx.arc(marble.x, marble.y, marble.radius, 0, Math.PI * 2);
@@ -586,6 +592,10 @@ function drawSkillEffects(this: any, ctx: CanvasRenderingContext2D, session: Ses
 
 function drawCharacters(this: any, ctx: CanvasRenderingContext2D, session: Session) {
     for (const character of session.characters) {
+      const visual = this.characterVisualConfig?.(character.id) || { color: character.color, accentColor: character.color, cosmetic: null, label: "" };
+      const bodyColor = visual.color || character.color;
+      const accentColor = visual.accentColor || bodyColor;
+      const cosmetic = visual.cosmetic;
       ctx.save();
       ctx.fillStyle = "rgba(0,0,0,0.32)";
       ctx.beginPath();
@@ -597,9 +607,20 @@ function drawCharacters(this: any, ctx: CanvasRenderingContext2D, session: Sessi
       const plateX = character.x - plateSize / 2;
       const plateY = character.y - 33;
 
+      if (cosmetic) {
+        const aura = 0.5 + Math.sin(session.elapsed * 4.8 + character.x * 0.02) * 0.5;
+        ctx.globalAlpha = 0.18 + aura * 0.16;
+        ctx.strokeStyle = this.hexToRgba?.(accentColor, 0.9) || accentColor;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(character.x, character.y + 22, 44 + aura * 5, 16 + aura * 3, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
       ctx.fillStyle = "rgba(7, 12, 22, 0.92)";
-      ctx.shadowColor = character.color;
-      ctx.shadowBlur = character.skillActive > 0 ? 24 : 12;
+      ctx.shadowColor = cosmetic ? accentColor : character.color;
+      ctx.shadowBlur = character.skillActive > 0 ? (cosmetic ? 30 : 24) : cosmetic ? 18 : 12;
       roundRect(ctx, plateX, plateY, plateSize, plateSize, 16);
       ctx.fill();
       ctx.shadowBlur = 0;
@@ -608,8 +629,8 @@ function drawCharacters(this: any, ctx: CanvasRenderingContext2D, session: Sessi
       roundRect(ctx, plateX + 2, plateY + 2, plateSize - 4, plateSize - 4, 14);
       ctx.clip();
       const backdrop = ctx.createLinearGradient(plateX, plateY, plateX, plateY + plateSize);
-      backdrop.addColorStop(0, "rgba(255,255,255,0.18)");
-      backdrop.addColorStop(1, character.color);
+      backdrop.addColorStop(0, cosmetic ? this.hexToRgba?.(accentColor, 0.5) || "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.18)");
+      backdrop.addColorStop(1, bodyColor);
       ctx.fillStyle = backdrop;
       ctx.fillRect(plateX, plateY, plateSize, plateSize);
 
@@ -622,12 +643,82 @@ function drawCharacters(this: any, ctx: CanvasRenderingContext2D, session: Sessi
         ctx.textBaseline = "middle";
         ctx.fillText(character.name.slice(0, 1), character.x, character.y - 3);
       }
+      if (cosmetic) {
+        const coatY = plateY + plateSize * 0.58;
+        ctx.fillStyle = this.hexToRgba?.(bodyColor, 0.52) || "rgba(84,199,255,0.52)";
+        ctx.beginPath();
+        ctx.moveTo(plateX + 4, coatY);
+        ctx.lineTo(plateX + plateSize - 4, coatY - 6);
+        ctx.lineTo(plateX + plateSize - 2, plateY + plateSize - 2);
+        ctx.lineTo(plateX + 2, plateY + plateSize - 2);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = this.hexToRgba?.(accentColor, 0.68) || "rgba(246,201,95,0.68)";
+        ctx.beginPath();
+        ctx.moveTo(plateX + 8, plateY + plateSize - 7);
+        ctx.lineTo(plateX + 25, coatY + 4);
+        ctx.lineTo(plateX + 31, plateY + plateSize - 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(plateX + plateSize - 8, plateY + plateSize - 7);
+        ctx.lineTo(plateX + plateSize - 25, coatY + 2);
+        ctx.lineTo(plateX + plateSize - 31, plateY + plateSize - 2);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = this.hexToRgba?.(accentColor, 0.74) || accentColor;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(plateX + 9, plateY + plateSize - 9);
+        ctx.lineTo(plateX + plateSize - 8, plateY + 13);
+        ctx.stroke();
+      }
       ctx.restore();
 
-      ctx.strokeStyle = "rgba(255,255,255,0.44)";
-      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = cosmetic ? accentColor : "rgba(255,255,255,0.44)";
+      ctx.lineWidth = cosmetic ? 3.2 : 2.5;
       roundRect(ctx, plateX, plateY, plateSize, plateSize, 16);
       ctx.stroke();
+
+      if (cosmetic) {
+        ctx.fillStyle = this.hexToRgba?.(bodyColor, 0.88) || bodyColor;
+        ctx.shadowColor = bodyColor;
+        ctx.shadowBlur = 12;
+        roundRect(ctx, plateX + 5, plateY - 15, plateSize - 10, 16, 7);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#fff";
+        ctx.font = "950 9px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(cosmetic.name || "幻化").split("·").pop()?.trim().slice(0, 4) || "幻化", character.x, plateY - 7);
+
+        ctx.fillStyle = accentColor;
+        ctx.shadowColor = accentColor;
+        ctx.shadowBlur = 10;
+        roundRect(ctx, plateX + plateSize - 22, plateY + plateSize - 20, 19, 17, 6);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#08111d";
+        ctx.font = "950 10px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(visual.label || "幻").slice(0, 1), plateX + plateSize - 12.5, plateY + plateSize - 11.5);
+
+        for (let i = 0; i < 3; i += 1) {
+          const angle = session.elapsed * 2.1 + i * ((Math.PI * 2) / 3);
+          const sparkleX = character.x + Math.cos(angle) * (34 + i * 2);
+          const sparkleY = character.y - 5 + Math.sin(angle) * 22;
+          ctx.fillStyle = i % 2 === 0 ? accentColor : bodyColor;
+          ctx.globalAlpha = 0.58;
+          ctx.beginPath();
+          ctx.arc(sparkleX, sparkleY, 2.2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }
 
       const cooldown = this.skillCooldownFor(character);
       const progress = cooldown <= 0 ? 1 : clamp(1 - character.skillTimer / cooldown, 0, 1);
@@ -644,8 +735,9 @@ function drawCharacters(this: any, ctx: CanvasRenderingContext2D, session: Sessi
       ctx.arc(character.x, character.y, 33, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.strokeStyle = ready ? "#f6c95f" : character.color;
-      ctx.shadowColor = ready ? "#f6c95f" : character.color;
+      const ringColor = ready ? (cosmetic ? accentColor : "#f6c95f") : bodyColor;
+      ctx.strokeStyle = ringColor;
+      ctx.shadowColor = ringColor;
       ctx.shadowBlur = ready ? 22 : 9;
       ctx.lineWidth = ready ? 7 : 6;
       ctx.beginPath();
@@ -655,14 +747,14 @@ function drawCharacters(this: any, ctx: CanvasRenderingContext2D, session: Sessi
 
       if (ready) {
         ctx.globalAlpha = 0.28 + pulse * 0.34;
-        ctx.strokeStyle = "rgba(246,201,95,0.9)";
+        ctx.strokeStyle = cosmetic ? this.hexToRgba?.(accentColor, 0.9) || accentColor : "rgba(246,201,95,0.9)";
         ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.arc(character.x, character.y, 43 + pulse * 8, 0, Math.PI * 2);
         ctx.stroke();
 
         ctx.globalAlpha = 1;
-        ctx.fillStyle = "#f6c95f";
+        ctx.fillStyle = cosmetic ? accentColor : "#f6c95f";
         for (let i = 0; i < 4; i += 1) {
           const angle = session.elapsed * 3.2 + i * (Math.PI / 2);
           ctx.beginPath();
@@ -674,7 +766,7 @@ function drawCharacters(this: any, ctx: CanvasRenderingContext2D, session: Sessi
       if (character.skillActive > 0) {
         const activePulse = 0.5 + Math.sin(session.elapsed * 9) * 0.5;
         ctx.globalAlpha = 0.22 + activePulse * 0.24;
-        ctx.strokeStyle = character.color;
+        ctx.strokeStyle = bodyColor;
         ctx.lineWidth = 5;
         ctx.beginPath();
         ctx.arc(character.x, character.y, 55 + activePulse * 10, 0, Math.PI * 2);

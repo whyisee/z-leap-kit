@@ -24,6 +24,13 @@ import type {
   CharacterRuntime,
   CharacterSortMode,
   CollectibleId,
+  CosmeticConfig,
+  CosmeticDrawResult,
+  CosmeticEffectIntensity,
+  CosmeticGachaPool,
+  CosmeticPoolId,
+  CosmeticRarity,
+  CosmeticTicketId,
   DropEntry,
   Enemy,
   EnemyType,
@@ -36,6 +43,17 @@ import type {
   MenuView,
   MetaUpgrade,
   Phase,
+  PvpInfoMessage,
+  PvpInfoTab,
+  PvpMiniEnemy,
+  PvpMiniMarble,
+  PvpOpponentState,
+  PvpPressureType,
+  PvpRankDivision,
+  PvpRankMode,
+  PvpRankProfile,
+  PvpRankTier,
+  PvpSessionState,
   Rarity,
   SaveData,
   Session,
@@ -48,6 +66,7 @@ import type {
   WaveConfig,
 } from "../../core/types";
 import { characters } from "../../config/characters";
+import { cosmeticById, cosmeticConfigs, cosmeticPools, cosmeticsForPool } from "../../config/cosmetics";
 import { collectibleConfigs, gemConfigs } from "../../config/loot";
 import { enemyConfigs } from "../../config/enemies";
 import { marbleConfigs } from "../../config/marbles";
@@ -73,7 +92,7 @@ import {
 } from "../../state/save";
 import { normalizeVelocity, reflectVelocity } from "../../systems/battle/physics";
 import { densestPoint, nearestEnemy } from "../../systems/battle/targeting";
-import { createWave, enemyThreatRank } from "../../systems/battle/waves";
+import { createPvpWave, createWave, enemyThreatRank } from "../../systems/battle/waves";
 import {
   battleWaveBannerText,
   continuePreviewForSession,
@@ -127,6 +146,19 @@ import {
 } from "../../systems/progression/tactical-upgrades";
 import { xpNeedForLevel } from "../../systems/progression/xp";
 import {
+  applyPvpRankResult,
+  pvpRankDeltaText,
+  pvpRankDisplayLabel,
+  pvpRankLabel,
+  pvpRankMatchScore,
+  pvpRankMeetsRequirement,
+  pvpRankProgressRatio,
+  pvpRankProgressText,
+  pvpRankRecordText,
+  pvpRankRequirementLabel,
+  pvpRankSeasonText,
+} from "../../systems/pvp/rank";
+import {
   ensureShopState,
   purchaseShopItem,
   refreshShardShop,
@@ -175,12 +207,43 @@ export const navIconSources: Partial<Record<MenuView, string>> = {
 export const homeAssetSources = {
   background: new URL("../../assets/home/home-hub-background.webp", import.meta.url).href,
   battleTerminal: new URL("../../assets/home/entry-battle-terminal.png", import.meta.url).href,
+  pvpArena: new URL("../../assets/home/entry-pvp-arena.png", import.meta.url).href,
   heroesBay: new URL("../../assets/home/entry-heroes-bay.png", import.meta.url).href,
   marbleWorkshop: new URL("../../assets/home/entry-marble-workshop.png", import.meta.url).href,
   inventoryVault: new URL("../../assets/home/entry-inventory-vault.png", import.meta.url).href,
   shopStation: new URL("../../assets/home/entry-shop-station.png", import.meta.url).href,
   protocolCore: new URL("../../assets/home/entry-protocol-core.png", import.meta.url).href,
   collectionRoom: new URL("../../assets/home/entry-collection-room.png", import.meta.url).href,
+  cosmeticChamber: new URL("../../assets/home/entry-cosmetic-chamber.png", import.meta.url).href,
+};
+
+export const cosmeticAssetSources = {
+  pools: {
+    character: new URL("../../assets/cosmetics/pool-character.webp", import.meta.url).href,
+    marble: new URL("../../assets/cosmetics/pool-marble.webp", import.meta.url).href,
+  },
+  resources: {
+    characterCosmetic: new URL("../../assets/cosmetics/resource-character-ticket.png", import.meta.url).href,
+    marbleCosmetic: new URL("../../assets/cosmetics/resource-marble-ticket.png", import.meta.url).href,
+    prismDust: new URL("../../assets/cosmetics/resource-prism-dust.png", import.meta.url).href,
+    energyCrystal: new URL("../../assets/cosmetics/resource-energy-crystal.png", import.meta.url).href,
+  },
+  tabs: {
+    character: new URL("../../assets/cosmetics/pool-tab-character.png", import.meta.url).href,
+    marble: new URL("../../assets/cosmetics/pool-tab-marble.png", import.meta.url).href,
+  },
+  items: {
+    character: {
+      rare: new URL("../../assets/cosmetics/item-character-rare.png", import.meta.url).href,
+      epic: new URL("../../assets/cosmetics/item-character-epic.png", import.meta.url).href,
+      legendary: new URL("../../assets/cosmetics/item-character-legendary.png", import.meta.url).href,
+    },
+    marble: {
+      rare: new URL("../../assets/cosmetics/item-marble-rare.png", import.meta.url).href,
+      epic: new URL("../../assets/cosmetics/item-marble-epic.png", import.meta.url).href,
+      legendary: new URL("../../assets/cosmetics/item-marble-legendary.png", import.meta.url).href,
+    },
+  },
 };
 
 export const characterPortraitSources: Record<string, string> = {
@@ -210,9 +273,9 @@ export const battleBackgroundSources: Record<string, string> = {
 
 export type WarehouseTab = "gems" | "shards" | "collectibles";
 export type ProtocolTab = "gems" | "protocols";
-export type HeroDetailTab = "overview" | "skills" | "marbles" | "routes";
+export type HeroDetailTab = "overview" | "skills" | "marbles" | "routes" | "cosmetics";
 export type ProfileEditMode = "summary" | "name" | "avatar";
-export type CollectionTab = "characters" | "enemies" | "gems" | "marbles" | "loot" | "tactics" | "protocols" | "achievements";
+export type CollectionTab = "characters" | "enemies" | "gems" | "marbles" | "loot" | "tactics" | "protocols" | "achievements" | "cosmetics";
 export type CollectionReward = {
   coins: number;
   energyCrystals?: number;
@@ -268,6 +331,7 @@ export {
   WIDTH,
   applyBattleProgressToSave,
   applyDropsToInventory,
+  applyPvpRankResult,
   autoInsuredDropKeys,
   battleCoinReward,
   battleShardReward,
@@ -280,6 +344,10 @@ export {
   characterSkillCost,
   characters,
   clamp,
+  cosmeticById,
+  cosmeticConfigs,
+  cosmeticPools,
+  cosmeticsForPool,
   collectibleConfigs,
   collectibleForRarity,
   combinedRarityBoost,
@@ -289,6 +357,7 @@ export {
   continuePreviewForSession,
   countInsuredDrops,
   createDefaultTacticalState,
+  createPvpWave,
   createWave,
   defaultCharacterProgress,
   defaultInventory,
@@ -338,6 +407,16 @@ export {
   normalizeLineup,
   normalizeVelocity,
   parseGemKey,
+  pvpRankDeltaText,
+  pvpRankDisplayLabel,
+  pvpRankLabel,
+  pvpRankMatchScore,
+  pvpRankMeetsRequirement,
+  pvpRankProgressRatio,
+  pvpRankProgressText,
+  pvpRankRecordText,
+  pvpRankRequirementLabel,
+  pvpRankSeasonText,
   purchaseShopItem,
   randomChoice,
   randomRange,
@@ -389,6 +468,13 @@ export type {
   CharacterRuntime,
   CharacterSortMode,
   CollectibleId,
+  CosmeticConfig,
+  CosmeticDrawResult,
+  CosmeticEffectIntensity,
+  CosmeticGachaPool,
+  CosmeticPoolId,
+  CosmeticRarity,
+  CosmeticTicketId,
   DropEntry,
   DropSummaryItem,
   Enemy,
@@ -402,6 +488,17 @@ export type {
   MenuView,
   MetaUpgrade,
   Phase,
+  PvpInfoMessage,
+  PvpInfoTab,
+  PvpMiniEnemy,
+  PvpMiniMarble,
+  PvpOpponentState,
+  PvpPressureType,
+  PvpRankDivision,
+  PvpRankMode,
+  PvpRankProfile,
+  PvpRankTier,
+  PvpSessionState,
   Rarity,
   SaveData,
   Session,

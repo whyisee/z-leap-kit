@@ -95,6 +95,8 @@ import {
   normalizeLineup,
   normalizeVelocity,
   parseGemKey,
+  pvpRankDisplayLabel,
+  pvpRankLabel,
   purchaseShopItem,
   randomChoice,
   randomRange,
@@ -188,7 +190,10 @@ function shopPageHtml(this: any) {
 
     return `
       <div class="panel main-panel menu-page shop-page">
-        ${this.menuPageTitleHtml("补给商场", `金币 ${Math.floor(this.save.coins)} · 晶体 ${Math.floor(this.save.energyCrystals)}`)}
+        ${this.menuPageTitleHtml(
+          "补给商场",
+          `金币 ${Math.floor(this.save.coins)} · 竞技币 ${Math.floor(this.save.pvpCoins || 0)} · 晶体 ${Math.floor(this.save.energyCrystals)}`,
+        )}
         ${this.noticeHtml()}
 
         <section class="shop-summary">
@@ -205,8 +210,8 @@ function shopPageHtml(this: any) {
             <strong>${Math.floor(this.save.energyCrystals)}</strong>
           </div>
           <div>
-            <span>保险券</span>
-            <strong>${this.save.tickets?.insurance || 0}</strong>
+            <span>竞技币</span>
+            <strong>${Math.floor(this.save.pvpCoins || 0)}</strong>
           </div>
         </section>
 
@@ -253,6 +258,7 @@ function shopTabContentHtml(this: any, category: ShopCategory) {
       recommended: "今日推荐",
       daily: "日常补给",
       growth: "成长材料",
+      arena: "竞技商店",
       crystal: "晶体商店",
       bundles: "限购礼包",
     }[category];
@@ -260,6 +266,7 @@ function shopTabContentHtml(this: any, category: ShopCategory) {
       recommended: "可领取、缺口补齐和高级精选",
       daily: "金币补给与每日免费资源",
       growth: `金币购买碎片与宝石 · 刷新 ${shopRefreshLeft(this.save)}/3`,
+      arena: `PVP 对战获得竞技币 · 当前 ${pvpRankDisplayLabel(this.save.pvpRanks.duel)}`,
       crystal: "角色授权和搜打撤道具",
       bundles: "一次性与周限购整备",
     }[category];
@@ -320,6 +327,7 @@ function shopItemIconText(this: any, item: ShopItemConfig) {
     const reward = item.rewards[0];
     if (!reward) return "补";
     if (reward.type === "coins") return "金";
+    if (reward.type === "pvpCoins") return "竞";
     if (reward.type === "energyCrystals") return "晶";
     if (reward.type === "gem") return "宝";
     if (reward.type === "marbleShard" || reward.type === "randomMarbleShard") return "弹";
@@ -373,6 +381,7 @@ function warehouseResourceStripHtml(this: any) {
     return `
       <div class="warehouse-resource-strip" aria-label="资源状态">
         <div><span>金币</span><strong>${Math.floor(this.save.coins)}</strong></div>
+        <div><span>竞技币</span><strong>${Math.floor(this.save.pvpCoins || 0)}</strong></div>
         <div><span>能源晶体</span><strong>${Math.floor(this.save.energyCrystals)}</strong></div>
       </div>
     `;

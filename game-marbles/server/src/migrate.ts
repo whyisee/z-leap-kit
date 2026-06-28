@@ -95,6 +95,24 @@ async function migrate() {
   `);
 
   await pool.query(`
+    create table if not exists ${schema}.gm_leaderboard_entries (
+      board_id text not null,
+      season_id text not null,
+      user_id uuid not null references ${schema}.gm_users(id) on delete cascade,
+      score bigint not null default 0,
+      sort_score bigint not null default 0,
+      display_score text not null default '',
+      metrics jsonb not null default '{}'::jsonb,
+      nickname text not null default '',
+      avatar text not null default 'avatar_green',
+      risk_state text not null default 'normal',
+      hidden_until timestamptz,
+      updated_at timestamptz not null default now(),
+      primary key (board_id, season_id, user_id)
+    )
+  `);
+
+  await pool.query(`
     create table if not exists ${schema}.gm_battle_sessions (
       id uuid primary key,
       user_id uuid not null references ${schema}.gm_users(id) on delete cascade,
@@ -194,6 +212,14 @@ async function migrate() {
 
   await pool.query(`create index if not exists gm_auth_sessions_user_id_idx on ${schema}.gm_auth_sessions(user_id)`);
   await pool.query(`create index if not exists gm_battle_sessions_user_id_idx on ${schema}.gm_battle_sessions(user_id, started_at desc)`);
+  await pool.query(`
+    create index if not exists gm_leaderboard_entries_rank_idx
+    on ${schema}.gm_leaderboard_entries(board_id, season_id, sort_score desc, updated_at asc)
+  `);
+  await pool.query(`
+    create index if not exists gm_leaderboard_entries_user_idx
+    on ${schema}.gm_leaderboard_entries(user_id, board_id, season_id)
+  `);
   await pool.query(`create index if not exists gm_redeem_redemptions_code_idx on ${schema}.gm_redeem_redemptions(code, redeemed_at desc)`);
 
   console.log(`Migrated schema ${env.dbSchema}`);

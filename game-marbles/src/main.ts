@@ -27,12 +27,19 @@ import type {
   CharacterRuntime,
   CharacterSortMode,
   CollectibleId,
+  CosmeticDrawResult,
+  CosmeticEffectIntensity,
+  CosmeticPoolId,
   DropEntry,
   Enemy,
   EnemyType,
   ExtractionResult,
   GemType,
   InventoryData,
+  LeaderboardBoardId,
+  LeaderboardCatalogResponse,
+  LeaderboardEntry,
+  LeaderboardResponse,
   Marble,
   MarbleConfig,
   MarbleId,
@@ -86,6 +93,7 @@ import {
   formatSessionWaveText,
   isEndlessMode,
   isRunComplete,
+  isPvpMode,
   maxHeatForMode,
   shouldOpenExtractionWindowForSession,
 } from "./systems/battle/modes";
@@ -129,6 +137,7 @@ import {
   upgradeCardTypeLabel,
 } from "./systems/progression/tactical-upgrades";
 import { xpNeedForLevel } from "./systems/progression/xp";
+import { pvpRankDisplayLabel, pvpRankMatchScore } from "./systems/pvp/rank";
 import {
   ensureShopState,
   purchaseShopItem,
@@ -145,7 +154,7 @@ import {
   shopStockLeft,
 } from "./systems/shop/offers";
 import { upgradeCardHtml } from "./ui/overlays/upgrade";
-import { GameBackend } from "./services/game-backend";
+import { GameBackend, type PvpMatchResponse } from "./services/game-backend";
 import { SoundManager } from "./services/sound";
 
 const legacyAccountAvatarMap: Record<string, string> = {
@@ -178,12 +187,14 @@ const navIconSources: Partial<Record<MenuView, string>> = {
 const homeAssetSources = {
   background: new URL("./assets/home/home-hub-background.webp", import.meta.url).href,
   battleTerminal: new URL("./assets/home/entry-battle-terminal.png", import.meta.url).href,
+  pvpArena: new URL("./assets/home/entry-pvp-arena.png", import.meta.url).href,
   heroesBay: new URL("./assets/home/entry-heroes-bay.png", import.meta.url).href,
   marbleWorkshop: new URL("./assets/home/entry-marble-workshop.png", import.meta.url).href,
   inventoryVault: new URL("./assets/home/entry-inventory-vault.png", import.meta.url).href,
   shopStation: new URL("./assets/home/entry-shop-station.png", import.meta.url).href,
   protocolCore: new URL("./assets/home/entry-protocol-core.png", import.meta.url).href,
   collectionRoom: new URL("./assets/home/entry-collection-room.png", import.meta.url).href,
+  cosmeticChamber: new URL("./assets/home/entry-cosmetic-chamber.png", import.meta.url).href,
 };
 
 const characterPortraitSources: Record<string, string> = {
@@ -213,9 +224,9 @@ const battleBackgroundSources: Record<string, string> = {
 
 type WarehouseTab = "gems" | "shards" | "collectibles";
 type ProtocolTab = "gems" | "protocols";
-type HeroDetailTab = "overview" | "skills" | "marbles" | "routes";
+type HeroDetailTab = "overview" | "skills" | "marbles" | "routes" | "cosmetics";
 type ProfileEditMode = "summary" | "name" | "avatar";
-type CollectionTab = "characters" | "enemies" | "gems" | "marbles" | "loot" | "tactics" | "protocols" | "achievements";
+type CollectionTab = "characters" | "enemies" | "gems" | "marbles" | "loot" | "tactics" | "protocols" | "achievements" | "cosmetics";
 type CollectionReward = {
   coins: number;
   energyCrystals?: number;
@@ -249,6 +260,23 @@ type CollectionAchievement = {
 type WarehouseDetail = {
   tab: WarehouseTab;
   key: string;
+};
+
+type PvpMatchClientState = Omit<PvpMatchResponse, "status"> & {
+  status: PvpMatchResponse["status"] | "starting" | "failed";
+  error?: string;
+};
+
+type LeaderboardClientState = {
+  boardId: LeaderboardBoardId;
+  loading: boolean;
+  error: string;
+  entries: LeaderboardEntry[];
+  me: LeaderboardEntry | null;
+  catalog: LeaderboardCatalogResponse | null;
+  response: LeaderboardResponse | null;
+  fetchedAt: number;
+  totalEstimate: number;
 };
 
 interface MarblesGame {
@@ -303,6 +331,11 @@ class MarblesGame {
   private protocolTab: ProtocolTab = "gems";
   private collectionTab: CollectionTab = "characters";
   private collectionDetailKey: string | null = null;
+  private cosmeticPoolId: CosmeticPoolId = "character";
+  private cosmeticMode: "draw" | "shop" = "draw";
+  private cosmeticLastResults: CosmeticDrawResult[] = [];
+  private cosmeticRevealResults: CosmeticDrawResult[] = [];
+  private cosmeticRevealPoolId: CosmeticPoolId | null = null;
   private warehouseDetail: WarehouseDetail | null = null;
   private shopTab: ShopCategory = "recommended";
   private battleTerminalOpen = false;
@@ -325,6 +358,24 @@ class MarblesGame {
   private autoExtractionMode: AutoExtractionMode = this.save.preferences.autoExtractionMode;
   private autoRunMode: AutoRunMode = this.save.preferences.autoRunMode;
   private autoSkillEnabled = this.save.preferences.autoSkillEnabled;
+  private pvpAutomationBefore: { autoBattleEnabled: boolean; autoSkillEnabled: boolean; autoUpgradeMode: AutoUpgradeMode } | null = null;
+  private pvpMatchState: PvpMatchClientState | null = null;
+  private pvpMatchPollTimer: number | null = null;
+  private pvpPendingMatch: PvpMatchResponse | null = null;
+  private pvpResultAutoRematchTimer: number | null = null;
+  private pvpResultAutoRematchDeadline = 0;
+  private leaderboardTab: LeaderboardBoardId = "pvp_duel_season";
+  private leaderboardState: LeaderboardClientState = {
+    boardId: "pvp_duel_season",
+    loading: false,
+    error: "",
+    entries: [],
+    me: null,
+    catalog: null,
+    response: null,
+    fetchedAt: 0,
+    totalEstimate: 0,
+  };
   private characterSortMode: CharacterSortMode = this.save.preferences.characterSortMode;
   private tacticPanelExpanded = false;
   private tacticPanelSignature = "";
@@ -549,7 +600,15 @@ class MarblesGame {
         this.sound.play("ui");
         this.autoSkillEnabled = !this.autoSkillEnabled;
         this.updateAutoUi();
-        this.saveBattlePreferences();
+        if (this.session?.mode === "pvp") {
+          if (this.session.pvp) {
+            this.session.pvp.skillModeText = this.autoSkillEnabled ? "技能自动释放" : "技能手动释放";
+            this.session.pvp.skillModeTimer = 2.4;
+          }
+          this.addFloatingText(WIDTH * 0.34, FIELD.y + 56, this.autoSkillEnabled ? "技能自动释放" : "技能手动释放", this.autoSkillEnabled ? "#61e6a8" : "#f6c95f");
+        } else {
+          this.saveBattlePreferences();
+        }
         return;
       }
 
@@ -569,6 +628,7 @@ class MarblesGame {
     this.canvas.addEventListener("pointerdown", (event) => {
       this.handleCanvasPointer(event);
     });
+    this.bindPvpChatEvents?.();
 
     this.menuScreen.addEventListener("click", (event) => {
       const target = event.target as HTMLElement;
@@ -587,15 +647,28 @@ class MarblesGame {
       const collectionTab = target.closest<HTMLElement>("[data-collection-tab]")?.dataset.collectionTab as
         | CollectionTab
         | undefined;
+      const leaderboardTab = target.closest<HTMLElement>("[data-leaderboard-tab]")?.dataset.leaderboardTab as
+        | LeaderboardBoardId
+        | undefined;
       const collectionEntry = target.closest<HTMLElement>("[data-collection-entry]")?.dataset.collectionEntry;
       const collectionClaim = target.closest<HTMLElement>("[data-collection-claim]")?.dataset.collectionClaim;
       const collectionClaimAll = target.closest("[data-collection-claim-all]");
+      const cosmeticMode = target.closest<HTMLElement>("[data-cosmetic-mode]")?.dataset.cosmeticMode;
+      const cosmeticPool = target.closest<HTMLElement>("[data-cosmetic-pool]")?.dataset.cosmeticPool as CosmeticPoolId | undefined;
+      const cosmeticDraw = target.closest<HTMLElement>("[data-cosmetic-draw]")?.dataset.cosmeticDraw;
+      const cosmeticEquip = target.closest<HTMLElement>("[data-cosmetic-equip]")?.dataset.cosmeticEquip;
+      const cosmeticExchange = target.closest<HTMLElement>("[data-cosmetic-exchange]")?.dataset.cosmeticExchange;
+      const cosmeticRevealClose = target.closest("[data-cosmetic-reveal-close]");
+      const cosmeticEffectIntensity = target.closest<HTMLElement>("[data-cosmetic-effect-intensity]")?.dataset.cosmeticEffectIntensity as
+        | CosmeticEffectIntensity
+        | undefined;
       const warehouseItem = target.closest<HTMLElement>("[data-warehouse-item]");
       const shopTab = target.closest<HTMLElement>("[data-shop-tab]")?.dataset.shopTab as ShopCategory | undefined;
       const shopBuy = target.closest<HTMLElement>("[data-shop-buy]")?.dataset.shopBuy;
       const stageSelect = target.closest<HTMLElement>("[data-stage-select]")?.dataset.stageSelect;
       const upgradeId = target.closest<HTMLElement>("[data-buy]")?.dataset.buy;
       const heroSelect = target.closest<HTMLElement>("[data-hero-select]")?.dataset.heroSelect;
+      const heroCosmetic = target.closest<HTMLElement>("[data-hero-cosmetic]")?.dataset.heroCosmetic;
       const heroLevel = target.closest<HTMLElement>("[data-hero-level]")?.dataset.heroLevel;
       const heroSkillLevel = target.closest<HTMLElement>("[data-hero-skill-level]")?.dataset.heroSkillLevel;
       const heroLineupPicker = target.closest<HTMLElement>("[data-hero-lineup-picker]")?.dataset.heroLineupPicker;
@@ -650,8 +723,46 @@ class MarblesGame {
         this.renderMenu("collection");
         return;
       }
+      if (cosmeticMode) {
+        this.setCosmeticMode(cosmeticMode);
+        return;
+      }
+      if (cosmeticPool) {
+        this.setCosmeticPool(cosmeticPool);
+        return;
+      }
+      if (cosmeticDraw === "single" || cosmeticDraw === "ten") {
+        this.drawCosmetics(cosmeticDraw === "ten" ? 10 : 1);
+        return;
+      }
+      if (cosmeticRevealClose) {
+        this.cosmeticRevealResults = [];
+        this.cosmeticRevealPoolId = null;
+        this.renderMenu("cosmetics");
+        return;
+      }
+      if (cosmeticEquip) {
+        this.equipCosmetic(cosmeticEquip);
+        return;
+      }
+      if (cosmeticExchange) {
+        this.exchangeCosmetic(cosmeticExchange);
+        return;
+      }
+      if (cosmeticEffectIntensity) {
+        this.save.preferences.cosmeticEffectIntensity = cosmeticEffectIntensity;
+        this.persistSave("cosmetic-effect-intensity");
+        this.renderMenu("settings");
+        return;
+      }
       if (heroSort) {
         this.setCharacterSortMode(heroSort);
+        return;
+      }
+      if (heroCosmetic) {
+        this.openHeroModal(heroCosmetic);
+        this.heroDetailTab = "cosmetics";
+        this.renderMenu("heroes");
         return;
       }
       if (heroDetailTab) {
@@ -821,6 +932,11 @@ class MarblesGame {
         this.renderMenu("collection");
         return;
       }
+      if (leaderboardTab) {
+        this.leaderboardTab = leaderboardTab;
+        this.renderMenu("ranking");
+        return;
+      }
       if (warehouseItem) {
         const tab = warehouseItem.dataset.warehouseItemType as WarehouseTab | undefined;
         const key = warehouseItem.dataset.warehouseItem;
@@ -851,6 +967,19 @@ class MarblesGame {
       if (action === "closeBattleTerminal") {
         this.battleTerminalOpen = false;
         this.renderMenu("home");
+        return;
+      }
+      if (action === "openPvpShop") {
+        this.shopTab = "arena";
+        this.renderMenu("roulette");
+        return;
+      }
+      if (action === "refreshLeaderboard") {
+        void this.refreshLeaderboard(true);
+        return;
+      }
+      if (action === "locateLeaderboardMe") {
+        void this.locateLeaderboardMe();
         return;
       }
       if (menuView) {
@@ -885,6 +1014,14 @@ class MarblesGame {
       }
       if (action === "startEndless") {
         this.startGame("endless");
+        return;
+      }
+      if (action === "startPvp") {
+        this.startPvpMatchmaking();
+        return;
+      }
+      if (action === "cancelPvpMatch") {
+        this.cancelPvpMatchmaking(true);
         return;
       }
       if (action === "reset") {
@@ -943,10 +1080,19 @@ class MarblesGame {
       const target = event.target as HTMLElement;
       const action = target.closest<HTMLElement>("[data-action]")?.dataset.action;
       if (target.closest("button")) this.sound.play("ui", 40);
+      if (!action) return;
+      this.clearPvpResultAutoRematch();
       if (action === "again") this.startGame(this.session?.mode || "normal");
       if (action === "next") this.startNextResultStage();
       if (action === "retry") this.retryResultStage();
       if (action === "menu" || action === "upgrade") this.renderMenu("home");
+    });
+
+    this.resultScreen.addEventListener("change", (event) => {
+      const target = event.target as HTMLInputElement;
+      if (!target?.matches?.("[data-pvp-auto-rematch]")) return;
+      if (target.checked) this.startPvpResultAutoRematchCountdown();
+      else this.clearPvpResultAutoRematch();
     });
 
     this.pauseScreen.addEventListener("click", (event) => {
@@ -997,11 +1143,284 @@ class MarblesGame {
     }
 
     this.draw();
+    this.updatePvpChatOverlay?.();
     this.updateHud();
     requestAnimationFrame((next) => this.loop(next));
   }
 
+  private startPvpMatchmaking() {
+    if (!this.canPlay()) {
+      this.sound.play("lose");
+      this.menuNotice = "账号同步中，请稍候";
+      this.renderMenu("pvp");
+      return;
+    }
+
+    this.clearPvpMatchTimer();
+    const now = Date.now();
+    this.pvpMatchState = {
+      ticketId: "",
+      mode: "duel",
+      status: "starting",
+      opponentType: null,
+      matchId: null,
+      waitMs: 0,
+      timeoutMs: 5_000,
+      fallbackAt: now + 5_000,
+      serverTime: now,
+      message: "正在创建匹配票据。",
+      opponent: null,
+    };
+    this.renderMenu("pvp");
+
+    void this.backend
+      .startPvpMatchmaking({
+        mode: "duel",
+        rank: this.pvpRankForMode("duel"),
+        rankScore: pvpRankMatchScore(this.save.pvpRanks.duel),
+        lineup: normalizeLineup(this.save.lineup, this.save.characters),
+      })
+      .then((match) => {
+        if (this.phase !== "menu" || this.menuView !== "pvp") {
+          void this.backend.cancelPvpMatchmaking(match.ticketId);
+          return;
+        }
+        this.pvpMatchState = match;
+        this.handlePvpMatchUpdate(match);
+      })
+      .catch(() => {
+        this.pvpMatchState = {
+          ticketId: "",
+          mode: "duel",
+          status: "failed",
+          opponentType: null,
+          matchId: null,
+          waitMs: 0,
+          timeoutMs: 5_000,
+          fallbackAt: Date.now() + 5_000,
+          serverTime: Date.now(),
+          message: "匹配服务器暂不可用，请稍后再试。",
+          opponent: null,
+          error: "match-start-failed",
+        };
+        this.sound.play("lose");
+        this.renderMenu("pvp");
+      });
+  }
+
+  private handlePvpMatchUpdate(match: PvpMatchResponse) {
+    if (match.status === "matched") {
+      this.clearPvpMatchTimer();
+      this.pvpMatchState = null;
+      this.pvpPendingMatch = match;
+      this.menuNotice = match.message;
+      this.startGame("pvp");
+      return;
+    }
+
+    if (match.status === "cancelled") {
+      this.clearPvpMatchTimer();
+      this.pvpMatchState = match;
+      this.renderMenu("pvp");
+      return;
+    }
+
+    this.pvpMatchState = match;
+    this.renderMenu("pvp");
+    this.schedulePvpMatchPoll(match.ticketId, this.pvpMatchPollDelay(match));
+  }
+
+  private schedulePvpMatchPoll(ticketId: string, delayMs = 1000) {
+    this.clearPvpMatchTimer();
+    this.pvpMatchPollTimer = window.setTimeout(() => {
+      void this.pollPvpMatch(ticketId);
+    }, delayMs);
+  }
+
+  private async pollPvpMatch(ticketId: string) {
+    if (!this.pvpMatchState || this.pvpMatchState.ticketId !== ticketId || this.pvpMatchState.status !== "queued") return;
+    try {
+      const match = await this.backend.getPvpMatchStatus(ticketId);
+      if (!this.pvpMatchState || this.pvpMatchState.ticketId !== ticketId) return;
+      this.handlePvpMatchUpdate(match);
+    } catch {
+      if (!this.pvpMatchState || this.pvpMatchState.ticketId !== ticketId) return;
+      this.pvpMatchState = {
+        ...this.pvpMatchState,
+        status: "failed",
+        message: "匹配状态同步失败，请重试。",
+        error: "match-poll-failed",
+      };
+      this.sound.play("lose");
+      this.renderMenu("pvp");
+    }
+  }
+
+  private pvpMatchPollDelay(match: PvpMatchResponse) {
+    const remaining = Math.max(0, match.fallbackAt - match.serverTime);
+    if (remaining <= 1000) return Math.max(120, remaining + 80);
+    return 1000;
+  }
+
+  private cancelPvpMatchmaking(render = true) {
+    const ticketId = this.pvpMatchState?.ticketId;
+    this.clearPvpMatchTimer();
+    this.pvpMatchState = null;
+    if (ticketId) void this.backend.cancelPvpMatchmaking(ticketId);
+    if (render) this.renderMenu("pvp");
+  }
+
+  private clearPvpMatchTimer() {
+    if (this.pvpMatchPollTimer === null) return;
+    window.clearTimeout(this.pvpMatchPollTimer);
+    this.pvpMatchPollTimer = null;
+  }
+
+  private pvpRankForMode(mode: "duel" | "battle_royale") {
+    if (mode === "battle_royale") return "新兵 I";
+    return pvpRankDisplayLabel(this.save.pvpRanks.duel);
+  }
+
+  private ensureLeaderboardLoaded(force = false) {
+    if (this.phase !== "menu" || this.menuView !== "ranking") return;
+    const stale =
+      this.leaderboardState.boardId !== this.leaderboardTab ||
+      !this.leaderboardState.fetchedAt ||
+      Date.now() - this.leaderboardState.fetchedAt > 30_000;
+    if (!force && (this.leaderboardState.loading || !stale)) return;
+    void this.refreshLeaderboard(force);
+  }
+
+  private async refreshLeaderboard(force = false) {
+    if (this.leaderboardState.loading && !force) return;
+
+    if (!this.backend.isLoggedIn) {
+      this.leaderboardState = {
+        ...this.leaderboardState,
+        boardId: this.leaderboardTab,
+        loading: false,
+        error: "登录账号后可查看服务器赛季榜",
+        entries: [],
+        me: null,
+        response: null,
+        fetchedAt: Date.now(),
+        totalEstimate: 0,
+      };
+      if (this.phase === "menu" && this.menuView === "ranking") this.renderMenu("ranking");
+      return;
+    }
+
+    this.leaderboardState = {
+      ...this.leaderboardState,
+      boardId: this.leaderboardTab,
+      loading: true,
+      error: "",
+    };
+    if (this.phase === "menu" && this.menuView === "ranking") this.renderMenu("ranking");
+
+    try {
+      const catalog = await this.backend.getLeaderboards();
+      const board = catalog.boards.find((item) => item.id === this.leaderboardTab);
+      if (!board?.enabled) {
+        this.leaderboardState = {
+          boardId: this.leaderboardTab,
+          loading: false,
+          error: "该榜单即将开放",
+          entries: [],
+          me: null,
+          catalog,
+          response: null,
+          fetchedAt: Date.now(),
+          totalEstimate: 0,
+        };
+      } else {
+        const response = await this.backend.getLeaderboard(this.leaderboardTab, { limit: 50 });
+        this.leaderboardState = {
+          boardId: this.leaderboardTab,
+          loading: false,
+          error: "",
+          entries: response.entries || [],
+          me: response.me,
+          catalog,
+          response,
+          fetchedAt: Date.now(),
+          totalEstimate: response.totalEstimate || response.entries?.length || 0,
+        };
+      }
+    } catch (error) {
+      console.warn("[leaderboard] load failed", error);
+      this.leaderboardState = {
+        ...this.leaderboardState,
+        boardId: this.leaderboardTab,
+        loading: false,
+        error: "无法连接排行榜，正在展示本地统计",
+        entries: [],
+        me: null,
+        response: null,
+        fetchedAt: Date.now(),
+        totalEstimate: 0,
+      };
+    }
+
+    if (this.phase === "menu" && this.menuView === "ranking") this.renderMenu("ranking");
+  }
+
+  private async locateLeaderboardMe() {
+    if (this.leaderboardState.loading) return;
+    if (!this.backend.isLoggedIn) {
+      this.leaderboardState = {
+        ...this.leaderboardState,
+        error: "登录账号后可定位赛季排名",
+        fetchedAt: Date.now(),
+      };
+      this.renderMenu("ranking");
+      return;
+    }
+
+    this.leaderboardState = {
+      ...this.leaderboardState,
+      boardId: this.leaderboardTab,
+      loading: true,
+      error: "",
+    };
+    this.renderMenu("ranking");
+
+    try {
+      const response = await this.backend.getLeaderboardAroundMe(this.leaderboardTab, {
+        seasonId: this.leaderboardState.response?.seasonId,
+        radius: 5,
+      });
+      this.leaderboardState = {
+        ...this.leaderboardState,
+        boardId: this.leaderboardTab,
+        loading: false,
+        error: "",
+        entries: response.entries || [],
+        me: response.me,
+        response,
+        fetchedAt: Date.now(),
+        totalEstimate: this.leaderboardState.totalEstimate,
+      };
+    } catch (error) {
+      console.warn("[leaderboard] locate me failed", error);
+      this.leaderboardState = {
+        ...this.leaderboardState,
+        loading: false,
+        error: "暂时无法定位排名，请稍后重试",
+        fetchedAt: Date.now(),
+      };
+    }
+
+    if (this.phase === "menu" && this.menuView === "ranking") this.renderMenu("ranking");
+  }
+
   private startGame(mode: BattleMode = "normal") {
+    const isPvp = isPvpMode(mode);
+    if (isPvp && !this.pvpPendingMatch) {
+      this.startPvpMatchmaking();
+      return;
+    }
+
     if (!this.canPlay()) {
       this.sound.play("lose");
       this.menuNotice = "账号同步中，请稍候";
@@ -1009,6 +1428,7 @@ class MarblesGame {
       return;
     }
 
+    const pendingPvpMatch = isPvp ? this.pvpPendingMatch : null;
     const stage = this.currentStage();
     if (stage.index > this.save.progress.unlockedStage) {
       this.sound.play("lose");
@@ -1047,6 +1467,19 @@ class MarblesGame {
       };
     });
 
+    if (isPvp && !this.pvpAutomationBefore) {
+      this.pvpAutomationBefore = {
+        autoBattleEnabled: this.autoBattleEnabled,
+        autoSkillEnabled: this.autoSkillEnabled,
+        autoUpgradeMode: this.autoUpgradeMode,
+      };
+    }
+    if (isPvp) {
+      this.autoBattleEnabled = true;
+      this.autoSkillEnabled = true;
+      this.autoUpgradeMode = "attack";
+    }
+
     const session: Session = {
       phase: "playing",
       mode,
@@ -1057,7 +1490,7 @@ class MarblesGame {
       spawnTimer: 0,
       waveBannerTimer: 0,
       elapsed: 0,
-      speed: this.save.preferences.battleSpeed,
+      speed: isPvp ? 2 : this.save.preferences.battleSpeed,
       baseHp: maxBaseHp,
       maxBaseHp,
       level: 1,
@@ -1087,6 +1520,7 @@ class MarblesGame {
       continueCount: 0,
       continueBonus: 0,
       tacticState: createDefaultTacticalState(),
+      pvp: null,
       modifiers: {
         damageMul: (1 + upgradeLevel(upgrades, "teamDamage") * 0.03) * (1 + gemModifiers.damage),
         fireRateMul: (1 + upgradeLevel(upgrades, "fireRate") * 0.02) * (1 + gemModifiers.fireRate),
@@ -1111,34 +1545,42 @@ class MarblesGame {
       },
     };
 
+    if (isPvp) session.pvp = this.createLocalPvpState(pendingPvpMatch);
+    this.pvpPendingMatch = null;
+    this.clearPvpMatchTimer();
+    this.pvpMatchState = null;
     this.session = session;
     this.phase = "playing";
     this.speedButton.textContent = `${session.speed}x`;
+    this.surface.classList.toggle("pvp-mode", isPvp);
     this.autoPanel.classList.add("hidden");
     this.updateAutoUi();
     this.hideScreens();
-    this.battleHud.classList.remove("hidden");
-    this.bottomHud.classList.remove("hidden");
-    this.lootBag.classList.remove("hidden");
+    this.battleHud.classList.toggle("hidden", isPvp);
+    this.bottomHud.classList.toggle("hidden", isPvp);
+    this.lootBag.classList.toggle("hidden", isPvp);
     this.tacticPanel.classList.remove("hidden");
     this.tacticPanelExpanded = false;
     this.activeBattleId = null;
-    void this.backend
-      .startBattle({
-        mode,
-        stage: stage.index,
-        lineup: this.save.lineup,
-        baseGems: this.save.baseGems,
-        characterMarbles: this.save.characterMarbles,
-      })
-      .then((battle) => {
-        this.activeBattleId = battle?.battleId || null;
-      });
+    if (!isPvp) {
+      void this.backend
+        .startBattle({
+          mode,
+          stage: stage.index,
+          lineup: this.save.lineup,
+          baseGems: this.save.baseGems,
+          characterMarbles: this.save.characterMarbles,
+        })
+        .then((battle) => {
+          this.activeBattleId = battle?.battleId || null;
+        });
+    }
     this.updateTacticPanelState();
     this.updateTacticPanel();
     this.sound.setMusicMode("battle");
     this.sound.play("start");
-    this.startWave(1);
+    if (isPvp) this.startPvpPreload?.();
+    else this.startWave(1);
   }
 
   private resetSave() {
@@ -1146,6 +1588,15 @@ class MarblesGame {
     this.applyBattlePreferences();
     this.persistSave("reset");
     this.renderMenu();
+  }
+
+  private restorePvpAutomation() {
+    if (!this.pvpAutomationBefore) return;
+    this.autoBattleEnabled = this.pvpAutomationBefore.autoBattleEnabled;
+    this.autoSkillEnabled = this.pvpAutomationBefore.autoSkillEnabled;
+    this.autoUpgradeMode = this.pvpAutomationBefore.autoUpgradeMode;
+    this.pvpAutomationBefore = null;
+    this.updateAutoUi();
   }
 
   private persistSave(reason = "state") {
@@ -1213,6 +1664,7 @@ class MarblesGame {
       autoSkillEnabled: this.autoSkillEnabled,
       battleSpeed: this.session?.speed ?? this.save.preferences.battleSpeed,
       characterSortMode: this.characterSortMode,
+      cosmeticEffectIntensity: this.save.preferences.cosmeticEffectIntensity,
     };
     this.persistSave("battle-preferences");
   }
@@ -1244,6 +1696,47 @@ class MarblesGame {
     this.menuNotice = "";
     this.persistSave("stage-select");
     this.renderMenu("home");
+  }
+
+  private startPvpResultAutoRematchCountdown() {
+    if (this.phase !== "result" || this.session?.mode !== "pvp") return;
+    this.clearPvpResultAutoRematch(false);
+    this.pvpResultAutoRematchDeadline = Date.now() + 3000;
+
+    const tick = () => {
+      const checkbox = this.resultScreen.querySelector<HTMLInputElement>("[data-pvp-auto-rematch]");
+      if (this.phase !== "result" || this.session?.mode !== "pvp" || !checkbox?.checked) {
+        this.clearPvpResultAutoRematch();
+        return;
+      }
+
+      const remaining = Math.max(0, Math.ceil((this.pvpResultAutoRematchDeadline - Date.now()) / 1000));
+      this.updatePvpResultAutoRematchButton(remaining);
+      if (remaining <= 0) {
+        this.clearPvpResultAutoRematch(false);
+        this.retryResultStage();
+        return;
+      }
+
+      this.pvpResultAutoRematchTimer = window.setTimeout(tick, 180);
+    };
+
+    tick();
+  }
+
+  private clearPvpResultAutoRematch(resetButton = true) {
+    if (this.pvpResultAutoRematchTimer !== null) {
+      window.clearTimeout(this.pvpResultAutoRematchTimer);
+      this.pvpResultAutoRematchTimer = null;
+    }
+    this.pvpResultAutoRematchDeadline = 0;
+    if (resetButton) this.updatePvpResultAutoRematchButton(null);
+  }
+
+  private updatePvpResultAutoRematchButton(remaining: number | null) {
+    const button = this.resultScreen.querySelector<HTMLButtonElement>("[data-pvp-rematch-button]");
+    if (!button) return;
+    button.textContent = remaining === null ? "再次匹配" : `再次匹配 ${remaining}s`;
   }
 
   private retryResultStage() {

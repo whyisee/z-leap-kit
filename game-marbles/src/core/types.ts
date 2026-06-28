@@ -10,11 +10,13 @@ export type MenuView =
   | "heroes"
   | "marbles"
   | "challenges"
+  | "pvp"
   | "collection"
+  | "cosmetics"
   | "protocols";
 export type Rarity = "common" | "rare" | "epic" | "legendary";
 export type ExtractionResult = "none" | "extracted" | "cleared" | "failed";
-export type BattleMode = "normal" | "endless";
+export type BattleMode = "normal" | "endless" | "pvp";
 export type CollectibleId = "scrap_shell" | "ancient_chip" | "void_lens" | "boss_core";
 export type GemType = "power" | "guard" | "fortune" | "swift" | "focus" | "rupture";
 export type EnemyType =
@@ -33,12 +35,21 @@ export type AutoUpgradeMode = "rarity" | "attack" | "defense" | "income";
 export type AutoExtractionMode = "safe" | "balanced" | "deep" | "clear";
 export type AutoRunMode = "manual" | "advance" | "repeat";
 export type CharacterSortMode = "level" | "rarity" | "power" | "attack";
-export type CurrencyId = "coins" | "energyCrystals";
-export type ShopCategory = "recommended" | "daily" | "growth" | "crystal" | "bundles";
+export type CosmeticEffectIntensity = "low" | "medium" | "high";
+export type CurrencyId = "coins" | "energyCrystals" | "pvpCoins";
+export type ShopCategory = "recommended" | "daily" | "growth" | "arena" | "crystal" | "bundles";
 export type ShopRefreshType = "daily" | "weekly" | "once";
 export type ShopTicketId = "insurance" | "scan" | "refresh";
+export type CosmeticType = "character" | "marble" | "avatarFrame" | "title" | "baseDecor";
+export type CosmeticRarity = "rare" | "epic" | "legendary";
+export type CosmeticPoolId = "character" | "marble";
+export type CosmeticTicketId = "characterCosmetic" | "marbleCosmetic";
 export type CharacterRouteId = string;
 export type StageId = string;
+export type PvpRankMode = "duel" | "power_duel" | "battle_royale";
+export type PvpRankTier = "bronze" | "silver" | "gold" | "platinum" | "diamond" | "master" | "legend";
+export type PvpRankDivision = 1 | 2 | 3 | null;
+export type LeaderboardBoardId = "pvp_duel_season" | "endless_wave_season" | "pvp_battle_royale_season";
 
 export type Vec = {
   x: number;
@@ -48,6 +59,8 @@ export type Vec = {
 export type SaveData = {
   coins: number;
   energyCrystals: number;
+  pvpCoins: number;
+  pvpRanks: Record<PvpRankMode, PvpRankProfile>;
   shards: number;
   runs: number;
   wins: number;
@@ -66,6 +79,7 @@ export type SaveData = {
   preferences: GamePreferences;
   shop: ShopState;
   collectionRewards: Record<string, boolean>;
+  cosmetics: CosmeticSaveState;
 };
 
 export type GamePreferences = {
@@ -76,6 +90,129 @@ export type GamePreferences = {
   autoSkillEnabled: boolean;
   battleSpeed: Speed;
   characterSortMode: CharacterSortMode;
+  cosmeticEffectIntensity: CosmeticEffectIntensity;
+};
+
+export type CosmeticConfig = {
+  id: string;
+  type: CosmeticType;
+  targetId?: string;
+  rarity: CosmeticRarity;
+  name: string;
+  desc: string;
+  theme?: string;
+  color: string;
+  accentColor: string;
+  visualLabel: string;
+  assetKeys: string[];
+  effectKeys?: string[];
+};
+
+export type CosmeticGachaPool = {
+  id: CosmeticPoolId;
+  kind: "character" | "marble";
+  name: string;
+  desc: string;
+  ticket: CosmeticTicketId;
+  singleCrystalCost: number;
+  pity: {
+    epic: number;
+    legendary: number;
+  };
+  itemIds: string[];
+};
+
+export type CosmeticPityState = {
+  sinceEpic: number;
+  sinceLegendary: number;
+};
+
+export type CosmeticHistoryEntry = {
+  poolId: CosmeticPoolId;
+  itemId: string;
+  rarity: CosmeticRarity;
+  duplicate: boolean;
+  at: number;
+};
+
+export type CosmeticSaveState = {
+  owned: Record<string, number>;
+  equippedCharacters: Record<string, string>;
+  equippedMarbles: Partial<Record<MarbleId, string>>;
+  tickets: Record<CosmeticTicketId, number>;
+  prismDust: number;
+  pity: Record<string, CosmeticPityState>;
+  history: CosmeticHistoryEntry[];
+};
+
+export type PvpRankProfile = {
+  seasonId: string;
+  seasonStartedAt: number;
+  seasonEndsAt: number;
+  tier: PvpRankTier;
+  division: PvpRankDivision;
+  points: number;
+  masterPoints: number;
+  rating: number;
+  peakTier: PvpRankTier;
+  peakDivision: PvpRankDivision;
+  wins: number;
+  losses: number;
+  seasonMatches: number;
+  winStreak: number;
+  bestWinStreak: number;
+  placementMatchesLeft: number;
+  placementWins: number;
+  lossProtection: number;
+};
+
+export type LeaderboardBoardConfig = {
+  id: LeaderboardBoardId;
+  title: string;
+  enabled: boolean;
+  mode: string;
+};
+
+export type LeaderboardSeasonInfo = {
+  id: string;
+  startsAt: number;
+  endsAt: number;
+};
+
+export type LeaderboardEntry = {
+  rank: number;
+  userId: string;
+  nickname: string;
+  avatar: string;
+  displayScore: string;
+  score: number;
+  metrics: Record<string, unknown>;
+  updatedAt: number;
+  deltaToPrevious?: number;
+};
+
+export type LeaderboardCatalogResponse = {
+  season: LeaderboardSeasonInfo;
+  boards: LeaderboardBoardConfig[];
+  serverTime: number;
+};
+
+export type LeaderboardResponse = {
+  boardId: LeaderboardBoardId;
+  seasonId: string;
+  offset?: number;
+  limit?: number;
+  totalEstimate?: number;
+  entries: LeaderboardEntry[];
+  me: LeaderboardEntry | null;
+  serverTime: number;
+};
+
+export type CosmeticDrawResult = {
+  itemId: string;
+  rarity: CosmeticRarity;
+  duplicate: boolean;
+  dust: number;
 };
 
 export type StageProgress = {
@@ -112,11 +249,19 @@ export type ShopItemConfig = {
   price: ShopPrice;
   stock: number;
   refresh: ShopRefreshType;
-  unlock?: {
-    type: "stage" | "wins";
-    value: number;
-    desc: string;
-  };
+  unlock?:
+    | {
+        type: "stage" | "wins";
+        value: number;
+        desc: string;
+      }
+    | {
+        type: "pvpRank";
+        mode: PvpRankMode;
+        tier: PvpRankTier;
+        division?: PvpRankDivision;
+        desc: string;
+      };
   rewards: ShopReward[];
 };
 
@@ -128,6 +273,10 @@ export type ShopPrice = {
 export type ShopReward =
   | {
       type: "coins";
+      amount: number;
+    }
+  | {
+      type: "pvpCoins";
       amount: number;
     }
   | {
@@ -549,5 +698,101 @@ export type Session = {
   continueCount: number;
   continueBonus: number;
   tacticState: TacticalState;
+  pvp: PvpSessionState | null;
   modifiers: Modifiers;
+};
+
+export type PvpPressureType = "small_reinforce" | "fast_raid" | "shield_boost" | "elite_drop" | "boss_boost";
+export type PvpInfoTab = "chat" | "battle";
+
+export type PvpInfoMessage = {
+  from: string;
+  text: string;
+  color: string;
+};
+
+export type PvpMiniEnemy = {
+  id: number;
+  type: EnemyType;
+  x: number;
+  y: number;
+  radius: number;
+  hp: number;
+  maxHp: number;
+  speed: number;
+};
+
+export type PvpMiniMarble = {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  damage: number;
+  life: number;
+  color: string;
+  trail: Vec[];
+};
+
+export type PvpOpponentState = {
+  id: string;
+  name: string;
+  avatar: string;
+  lineup: string[];
+  color: string;
+  rankScore?: number;
+  hp: number;
+  maxHp: number;
+  wave: number;
+  kills: number;
+  pressure: number;
+  pressureTaken: number;
+  lootValue: number;
+  eliminated: boolean;
+  statusText: string;
+  lastEvent: string;
+  eventTimer: number;
+  fieldDensity: number;
+  bossHpRatio: number;
+  miniEnemies: PvpMiniEnemy[];
+  miniMarbles: PvpMiniMarble[];
+  miniSpawnTimer: number;
+  miniShotTimer: number;
+  miniEntities: number;
+  snapshotAge?: number;
+};
+
+export type PvpSessionState = {
+  localPlayerId: string;
+  selectedOpponentId: string;
+  opponentSource: "player" | "server_ai";
+  matchId: string | null;
+  matchTicketId: string | null;
+  serverSessionId: string | null;
+  serverSyncTimer: number;
+  serverSyncBusy: boolean;
+  serverSyncError: string;
+  lastServerEventSeq: number;
+  resultSubmitting: boolean;
+  resultResolved: boolean;
+  preloadTimer: number;
+  preloadDuration: number;
+  preloadComplete: boolean;
+  infoTab: PvpInfoTab;
+  pressure: number;
+  pressureSent: number;
+  pressureTaken: number;
+  nextAutoPressureAt: number;
+  lastPressureType: PvpPressureType | null;
+  lastPressureText: string;
+  lastAutoUpgradeText: string;
+  lastAutoUpgradeTimer: number;
+  skillModeText: string;
+  skillModeTimer: number;
+  incomingPressureType: PvpPressureType | null;
+  incomingPressureStacks: number;
+  chatMessages: PvpInfoMessage[];
+  battleEvents: PvpInfoMessage[];
+  opponents: PvpOpponentState[];
 };

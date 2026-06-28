@@ -42,6 +42,7 @@ import {
   continuePreviewForSession,
   countInsuredDrops,
   createDefaultTacticalState,
+  createPvpWave,
   createWave,
   defaultAccountAvatarId,
   defaultCharacterProgress,
@@ -182,6 +183,11 @@ function update(this: any, dt: number, realDt: number) {
     const session = this.session;
     if (!session) return;
 
+    if (session.mode === "pvp" && !session.pvp?.preloadComplete) {
+      this.updatePvpSession?.(0, realDt);
+      return;
+    }
+
     session.elapsed += dt;
     session.modifiers.magnetic = Math.max(0, session.modifiers.magnetic - dt);
 
@@ -192,6 +198,7 @@ function update(this: any, dt: number, realDt: number) {
     this.updateParticles(dt);
     this.updateEffects(dt);
     this.updateDropVisuals(realDt);
+    this.updatePvpSession?.(dt, realDt);
 
     for (const character of session.characters) {
       character.skillTimer = Math.max(0, character.skillTimer - dt);
@@ -220,6 +227,10 @@ function updateWave(this: any, dt: number) {
       }
     } else if (session.enemies.length === 0) {
       if (isRunComplete(session)) {
+        if (session.mode === "pvp" && this.finishPvpByServer) {
+          this.finishPvpByServer("win", "PVP 决胜波已清除");
+          return;
+        }
         const stage = getStageById(session.stageId);
         this.endGame("win", `清除 ${stage.name}${stage.boss ? ` · 击败${stage.boss.name}` : ""}`, "cleared");
         return;
@@ -241,8 +252,9 @@ function updateWave(this: any, dt: number) {
 
 function startWave(this: any, wave: number) {
     const session = this.requireSession();
-    const config = createWave(wave, getStageById(session.stageId));
+    const config = session.mode === "pvp" ? createPvpWave(wave, getStageById(session.stageId)) : createWave(wave, getStageById(session.stageId));
     this.applyHeatToWave(config);
+    this.applyPvpPressureToWave?.(config);
     session.wave = wave;
     session.waveConfig = config;
     session.spawnQueue = this.arrangeSpawnQueueForRows(config.queue);

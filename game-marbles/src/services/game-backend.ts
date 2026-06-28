@@ -1,5 +1,16 @@
-import type { SaveData, ShopReward } from "../core/types";
+import type {
+  LeaderboardBoardId,
+  LeaderboardCatalogResponse,
+  LeaderboardResponse,
+  PvpMiniEnemy,
+  PvpMiniMarble,
+  PvpPressureType,
+  PvpRankMode,
+  SaveData,
+  ShopReward,
+} from "../core/types";
 import { normalizeSave } from "../state/save";
+import type { PvpRankApplyResult, PvpRankResultContext } from "../systems/pvp/rank";
 
 type AuthCache = {
   deviceId: string;
@@ -56,6 +67,111 @@ type RedeemCodeResponse = {
   rewardText: string;
   playerRevision: number;
   playerState: SaveData;
+};
+
+export type PvpServerEvent = {
+  seq: number;
+  kind: "system" | "battle" | "chat" | "pressure" | "result";
+  from: string;
+  text: string;
+  color: string;
+  pressureType?: PvpPressureType;
+  result?: "win" | "lose";
+};
+
+export type PvpAiSnapshotResponse = {
+  sessionId: string;
+  serverTime: number;
+  opponent: {
+    id: string;
+    name: string;
+    avatar: string;
+    lineup: string[];
+    color: string;
+    rankScore?: number;
+    hp: number;
+    maxHp: number;
+    wave: number;
+    kills: number;
+    pressure: number;
+    pressureTaken: number;
+    lootValue: number;
+    eliminated: boolean;
+    statusText: string;
+    lastEvent: string;
+    eventTimer: number;
+    fieldDensity: number;
+    bossHpRatio: number;
+    miniEnemies: PvpMiniEnemy[];
+    miniMarbles: PvpMiniMarble[];
+    miniEntities: number;
+  };
+  events: PvpServerEvent[];
+};
+
+export type PvpMatchMode = "duel" | "battle_royale";
+export type PvpMatchStatus = "queued" | "matched" | "cancelled";
+export type PvpOpponentType = "player" | "server_ai";
+
+export type PvpMatchProfile = {
+  id: string;
+  name: string;
+  avatar: string;
+  lineup?: string[];
+  color: string;
+  rank: string;
+  rankScore?: number;
+};
+
+export type PvpMatchResponse = {
+  ticketId: string;
+  mode: PvpMatchMode;
+  status: PvpMatchStatus;
+  opponentType: PvpOpponentType | null;
+  matchId: string | null;
+  waitMs: number;
+  timeoutMs: number;
+  fallbackAt: number;
+  serverTime: number;
+  message: string;
+  opponent: PvpMatchProfile | null;
+};
+
+export type PvpPlayerSnapshotPayload = {
+  ticketId: string;
+  snapshot: PvpAiSnapshotResponse["opponent"];
+};
+
+export type PvpPlayerFinishPayload = {
+  ticketId: string;
+  result: "win" | "lose";
+  reason: string;
+  wave: number;
+  baseHp: number;
+  kills: number;
+  pressureSent: number;
+  pressureTaken: number;
+  snapshot: PvpAiSnapshotResponse["opponent"];
+};
+
+export type PvpRankFinishPayload = {
+  mode: PvpRankMode;
+  result: "win" | "lose";
+  summary: PvpRankResultContext & {
+    matchId?: string | null;
+    ticketId?: string | null;
+    opponentType?: PvpOpponentType | PvpSessionOpponentType | null;
+  };
+};
+
+type PvpSessionOpponentType = "player" | "server_ai";
+
+type PvpRankFinishResponse = {
+  ok: true;
+  playerRevision: number;
+  playerState: SaveData;
+  rankResult: PvpRankApplyResult;
+  pvpCoins: number;
 };
 
 const AUTH_KEY = "game-marbles-auth-v1";
@@ -263,6 +379,210 @@ export class GameBackend {
     }
   }
 
+  async startPvpAiOpponent(payload: { stageId: string; lineup: string[]; avatar: string; nickname: string }) {
+    try {
+      const response = await this.request<PvpAiSnapshotResponse>("/pvp/ai/start", {
+        method: "POST",
+        auth: false,
+        body: {
+          ...payload,
+          deviceId: this.auth.deviceId,
+        },
+      });
+      this.online = true;
+      return response;
+    } catch (error) {
+      console.warn("[backend] pvp ai start failed", error);
+      this.online = false;
+      throw error;
+    }
+  }
+
+  async startPvpMatchmaking(payload: { mode: PvpMatchMode; rank: string; rankScore?: number; lineup: string[] }) {
+    try {
+      const response = await this.request<PvpMatchResponse>("/pvp/match/start", {
+        method: "POST",
+        auth: false,
+        body: {
+          ...payload,
+          userId: this.auth.userId,
+          deviceId: this.auth.deviceId,
+          nickname: this.auth.nickname || "玩家",
+          avatar: this.auth.avatar || "engineer",
+        },
+      });
+      this.online = true;
+      return response;
+    } catch (error) {
+      console.warn("[backend] pvp match start failed", error);
+      this.online = false;
+      throw error;
+    }
+  }
+
+  async getPvpMatchStatus(ticketId: string) {
+    try {
+      const response = await this.request<PvpMatchResponse>(`/pvp/match/${encodeURIComponent(ticketId)}`, {
+        auth: false,
+      });
+      this.online = true;
+      return response;
+    } catch (error) {
+      console.warn("[backend] pvp match status failed", error);
+      this.online = false;
+      throw error;
+    }
+  }
+
+  async cancelPvpMatchmaking(ticketId: string) {
+    try {
+      const response = await this.request<PvpMatchResponse>(`/pvp/match/${encodeURIComponent(ticketId)}/cancel`, {
+        method: "POST",
+        auth: false,
+      });
+      this.online = true;
+      return response;
+    } catch (error) {
+      console.warn("[backend] pvp match cancel failed", error);
+      this.online = false;
+      throw error;
+    }
+  }
+
+  async syncPvpPlayerSnapshot(matchId: string, payload: PvpPlayerSnapshotPayload) {
+    try {
+      const response = await this.request<PvpAiSnapshotResponse>(`/pvp/matches/${encodeURIComponent(matchId)}/snapshot`, {
+        method: "POST",
+        auth: false,
+        body: payload,
+      });
+      this.online = true;
+      return response;
+    } catch (error) {
+      console.warn("[backend] pvp player snapshot failed", error);
+      this.online = false;
+      throw error;
+    }
+  }
+
+  async sendPvpPlayerPressure(matchId: string, payload: { ticketId: string; pressureType: PvpPressureType; power: number }) {
+    try {
+      const response = await this.request<PvpAiSnapshotResponse>(`/pvp/matches/${encodeURIComponent(matchId)}/pressure`, {
+        method: "POST",
+        auth: false,
+        body: payload,
+      });
+      this.online = true;
+      return response;
+    } catch (error) {
+      console.warn("[backend] pvp player pressure failed", error);
+      this.online = false;
+      throw error;
+    }
+  }
+
+  async finishPvpPlayerMatch(matchId: string, payload: PvpPlayerFinishPayload) {
+    try {
+      const response = await this.request<PvpAiSnapshotResponse>(`/pvp/matches/${encodeURIComponent(matchId)}/finish`, {
+        method: "POST",
+        auth: false,
+        body: payload,
+      });
+      this.online = true;
+      return response;
+    } catch (error) {
+      console.warn("[backend] pvp player finish failed", error);
+      this.online = false;
+      throw error;
+    }
+  }
+
+  async finishPvpRank(payload: PvpRankFinishPayload) {
+    if (!this.auth.accessToken) return null;
+    try {
+      await this.saveQueue.catch(() => undefined);
+      const response = await this.request<PvpRankFinishResponse>("/pvp/rank/finish", {
+        method: "POST",
+        body: {
+          opId: opId("pvp-rank-finish"),
+          ...payload,
+        },
+      });
+      this.playerRevision = response.playerRevision;
+      this.online = true;
+      return {
+        ...response,
+        save: normalizeSave(response.playerState),
+      };
+    } catch (error) {
+      console.warn("[backend] pvp rank finish failed", error);
+      this.online = false;
+      return null;
+    }
+  }
+
+  async sendPvpPlayerChat(matchId: string, payload: { ticketId: string; text: string; from: string }) {
+    try {
+      const response = await this.request<PvpAiSnapshotResponse>(`/pvp/matches/${encodeURIComponent(matchId)}/chat`, {
+        method: "POST",
+        auth: false,
+        body: payload,
+      });
+      this.online = true;
+      return response;
+    } catch (error) {
+      console.warn("[backend] pvp player chat failed", error);
+      this.online = false;
+      throw error;
+    }
+  }
+
+  async getPvpAiSnapshot(sessionId: string) {
+    try {
+      const response = await this.request<PvpAiSnapshotResponse>(`/pvp/ai/${encodeURIComponent(sessionId)}/snapshot`, {
+        auth: false,
+      });
+      this.online = true;
+      return response;
+    } catch (error) {
+      console.warn("[backend] pvp ai snapshot failed", error);
+      this.online = false;
+      throw error;
+    }
+  }
+
+  async sendPvpAiPressure(sessionId: string, payload: { pressureType: PvpPressureType; power: number }) {
+    try {
+      const response = await this.request<PvpAiSnapshotResponse>(`/pvp/ai/${encodeURIComponent(sessionId)}/pressure`, {
+        method: "POST",
+        auth: false,
+        body: payload,
+      });
+      this.online = true;
+      return response;
+    } catch (error) {
+      console.warn("[backend] pvp ai pressure failed", error);
+      this.online = false;
+      throw error;
+    }
+  }
+
+  async sendPvpAiChat(sessionId: string, payload: { text: string; from: string }) {
+    try {
+      const response = await this.request<PvpAiSnapshotResponse>(`/pvp/ai/${encodeURIComponent(sessionId)}/chat`, {
+        method: "POST",
+        auth: false,
+        body: payload,
+      });
+      this.online = true;
+      return response;
+    } catch (error) {
+      console.warn("[backend] pvp ai chat failed", error);
+      this.online = false;
+      throw error;
+    }
+  }
+
   async redeemCode(code: string) {
     if (!this.auth.accessToken) throw new Error("请先登录账号");
     const response = await this.request<RedeemCodeResponse>("/redeem-code", {
@@ -278,6 +598,39 @@ export class GameBackend {
       ...response,
       save: normalizeSave(response.playerState),
     };
+  }
+
+  async getLeaderboards() {
+    if (!this.auth.accessToken) throw new Error("请先登录账号");
+    const response = await this.request<LeaderboardCatalogResponse>("/leaderboards");
+    this.online = true;
+    return response;
+  }
+
+  async getLeaderboard(
+    boardId: LeaderboardBoardId,
+    params: { seasonId?: string; offset?: number; limit?: number } = {},
+  ) {
+    if (!this.auth.accessToken) throw new Error("请先登录账号");
+    const query = new URLSearchParams();
+    if (params.seasonId) query.set("seasonId", params.seasonId);
+    if (params.offset !== undefined) query.set("offset", String(params.offset));
+    if (params.limit !== undefined) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    const response = await this.request<LeaderboardResponse>(`/leaderboards/${encodeURIComponent(boardId)}${suffix}`);
+    this.online = true;
+    return response;
+  }
+
+  async getLeaderboardAroundMe(boardId: LeaderboardBoardId, params: { seasonId?: string; radius?: number } = {}) {
+    if (!this.auth.accessToken) throw new Error("请先登录账号");
+    const query = new URLSearchParams();
+    if (params.seasonId) query.set("seasonId", params.seasonId);
+    if (params.radius !== undefined) query.set("radius", String(params.radius));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    const response = await this.request<LeaderboardResponse>(`/leaderboards/${encodeURIComponent(boardId)}/me${suffix}`);
+    this.online = true;
+    return response;
   }
 
   private async request<T>(

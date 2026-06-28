@@ -33,6 +33,7 @@ import {
   characterSortModes,
   characters,
   clamp,
+  cosmeticsForPool,
   collectibleConfigs,
   collectibleForRarity,
   combinedRarityBoost,
@@ -264,6 +265,8 @@ function collectionTabs(this: any): Array<{ id: CollectionTab; label: string; hi
     const activeProtocols = metaUpgrades.filter((item) => upgradeLevel(this.save.upgrades, item.id) > 0).length;
     const achievements = this.collectionAchievementEntries();
     const achieved = achievements.filter((entry) => entry.state === "known").length;
+    const cosmetics = this.collectionCosmeticEntries();
+    const ownedCosmetics = cosmetics.filter((entry) => entry.state === "known").length;
 
     return [
       {
@@ -279,6 +282,7 @@ function collectionTabs(this: any): Array<{ id: CollectionTab; label: string; hi
       { id: "tactics", label: "战术升级", hint: `${upgradeCards.length} 张`, icon: "tactics" },
       { id: "protocols", label: "基地协议", hint: `${activeProtocols}/${metaUpgrades.length}`, icon: "protocols" },
       { id: "achievements", label: "成就", hint: `${achieved}/${achievements.length}`, icon: "achievements" },
+      { id: "cosmetics", label: "幻化", hint: `${ownedCosmetics}/${cosmetics.length}`, icon: "cosmetics" },
     ];
   }
 
@@ -374,11 +378,12 @@ function collectionSectionsForTab(this: any, tab: CollectionTab): Array<{ title:
     if (tab === "tactics") return this.collectionTacticSections();
     if (tab === "protocols") return [{ title: "基地协议图鉴", hint: "基地中枢的长期成长项目", entries: this.collectionProtocolEntries() }];
     if (tab === "achievements") return [{ title: "成就档案", hint: "达成长期目标后收录，可领取一次奖励", entries: this.collectionAchievementEntries() }];
+    if (tab === "cosmetics") return [{ title: "幻化图鉴", hint: "角色与弹珠外观收集，不影响战斗数值", entries: this.collectionCosmeticEntries() }];
     return [{ title: "角色图鉴", hint: "点头像查看技能、默认弹珠和解锁奖励", entries: this.collectionCharacterEntries() }];
   }
 
 function collectionAllEntries(this: any) {
-    const tabs: CollectionTab[] = ["characters", "enemies", "gems", "marbles", "loot", "tactics", "protocols", "achievements"];
+    const tabs: CollectionTab[] = ["characters", "enemies", "gems", "marbles", "loot", "tactics", "protocols", "achievements", "cosmetics"];
     return tabs.flatMap((tab) => this.collectionSectionsForTab(tab).flatMap((section) => section.entries));
   }
 
@@ -853,6 +858,26 @@ function collectionAchievementEntryHtmlModel(this: any, achievement: CollectionA
     };
   }
 
+function collectionCosmeticEntries(this: any): CollectionEntry[] {
+    return [...cosmeticsForPool("character"), ...cosmeticsForPool("marble")].map((item) => {
+      const owned = Boolean(this.save.cosmetics.owned[item.id]);
+      const targetName = this.cosmeticTargetName(item);
+      return {
+        key: `cosmetics:${item.id}`,
+        color: item.color,
+        state: owned ? "known" : "locked",
+        iconHtml: this.cosmeticIconHtml(item).replace("cosmetic-icon", "collection-cosmetic-icon cosmetic-icon"),
+        eyebrow: `${this.cosmeticRarityName(item.rarity)} · ${owned ? "已拥有" : "未拥有"}`,
+        title: item.name,
+        desc: item.desc,
+        facts: [targetName, item.theme || "常驻", item.type === "character" ? "角色外观" : "弹珠特效"],
+        tags: [this.cosmeticRarityName(item.rarity), item.theme || "常驻", item.type === "character" ? "角色幻化" : "弹珠幻化"],
+        footer: owned ? `拥有 ${this.save.cosmetics.owned[item.id]} 个` : "前往幻化舱获取",
+        reward: { coins: item.rarity === "legendary" ? 120 : item.rarity === "epic" ? 80 : 40 },
+      };
+    });
+  }
+
 function collectionRarityReward(this: any, rarity: Rarity, scale = 1): CollectionReward {
     const coins = {
       common: 40,
@@ -879,7 +904,8 @@ function collectionTotalEntries(this: any) {
       Object.values(collectibleConfigs).length +
       upgradeCards.length +
       metaUpgrades.length +
-      this.collectionAchievementEntries().length
+      this.collectionAchievementEntries().length +
+      this.collectionCosmeticEntries().length
     );
   }
 
@@ -984,6 +1010,7 @@ export const gameCollectionUiMethods = {
   collectionProtocolEntries,
   collectionAchievementEntries,
   collectionAchievementEntryHtmlModel,
+  collectionCosmeticEntries,
   collectionRarityReward,
   collectionRewardText,
   collectionTotalEntries,

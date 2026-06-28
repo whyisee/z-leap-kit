@@ -95,6 +95,12 @@ import {
   normalizeLineup,
   normalizeVelocity,
   parseGemKey,
+  pvpRankDisplayLabel,
+  pvpRankLabel,
+  pvpRankProgressRatio,
+  pvpRankProgressText,
+  pvpRankRecordText,
+  pvpRankSeasonText,
   purchaseShopItem,
   randomChoice,
   randomRange,
@@ -179,12 +185,15 @@ import {
 } from "./shared";
 
 function renderMenu(this: any, view: MenuView = "home") {
+    this.restorePvpAutomation?.();
+    if (view !== "pvp") this.cancelPvpMatchmaking?.(false);
     this.menuView = view;
     if (view !== "home") this.battleTerminalOpen = false;
     if (view !== "inventory") this.warehouseDetail = null;
     if (view !== "collection") this.collectionDetailKey = null;
     this.phase = "menu";
     this.session = null;
+    this.surface.classList.remove("pvp-mode");
     this.sound.setMusicMode("menu");
     this.hideScreens();
     this.battleHud.classList.add("hidden");
@@ -198,6 +207,7 @@ function renderMenu(this: any, view: MenuView = "home") {
       ${this.menuNavHtml(view)}
       ${view !== "home" && view !== "challenges" && view !== "stagePicker" ? this.pageReturnHtml() : ""}
     `;
+    if (view === "ranking") this.ensureLeaderboardLoaded?.();
   }
 
 function homeMenuHtml(this: any, showChallenges = false, showStagePicker = false) {
@@ -247,6 +257,7 @@ function homeResourceStripHtml(this: any) {
     return `
       <div class="home-resource-strip" aria-label="资源状态">
         <div><span>金币</span><strong>${Math.floor(this.save.coins)}</strong></div>
+        <div><span>竞技币</span><strong>${Math.floor(this.save.pvpCoins || 0)}</strong></div>
         <div><span>能源晶体</span><strong>${Math.floor(this.save.energyCrystals)}</strong></div>
       </div>
     `;
@@ -305,6 +316,8 @@ function homeFacilitySceneHtml(this: any) {
       const level = upgradeLevel(this.save.upgrades, item.id);
       return level < item.max && this.save.coins >= metaCost(item, level);
     }).length;
+    const cosmeticTickets = (this.save.cosmetics.tickets.characterCosmetic || 0) + (this.save.cosmetics.tickets.marbleCosmetic || 0);
+    const cosmeticOwned = Object.keys(this.save.cosmetics.owned).length;
 
     const entries: Array<{
       title: string;
@@ -313,6 +326,13 @@ function homeFacilitySceneHtml(this: any) {
       image: string;
       tone: string;
     }> = [
+      {
+        title: "竞技大厅",
+        subtitle: `${pvpRankDisplayLabel(this.save.pvpRanks.duel)} · ${Math.floor(this.save.pvpCoins || 0)} 竞技币`,
+        target: "pvp",
+        image: homeAssetSources.pvpArena,
+        tone: "pvp",
+      },
       {
         title: "编队舱",
         subtitle: "角色整备",
@@ -347,6 +367,13 @@ function homeFacilitySceneHtml(this: any) {
         target: "collection",
         image: homeAssetSources.collectionRoom,
         tone: "collection",
+      },
+      {
+        title: "幻化舱",
+        subtitle: cosmeticTickets > 0 ? `${cosmeticTickets} 张可抽` : `${cosmeticOwned} 个外观`,
+        target: "cosmetics",
+        image: homeAssetSources.cosmeticChamber,
+        tone: "cosmetic",
       },
       {
         title: "基地中枢",
@@ -723,6 +750,7 @@ function menuPageHtml(this: any, view: MenuView) {
           <div class="marble-library">
             ${Object.values(marbleConfigs).map((marble) => this.marbleUpgradeCardHtml(marble)).join("")}
           </div>
+          ${this.marbleCosmeticLoadoutHtml()}
         </div>
       `;
     }
@@ -732,24 +760,11 @@ function menuPageHtml(this: any, view: MenuView) {
     }
 
     if (view === "ranking") {
-      const winRate = this.save.runs > 0 ? Math.round((this.save.wins / this.save.runs) * 100) : 0;
-      return `
-        <div class="panel main-panel menu-page compact-menu-page">
-          ${this.menuPageTitleHtml("排行")}
-          <div class="ranking-podium">
-            <span>${this.rankIconHtml()}</span>
-            <strong>${Math.max(this.save.bestWave, this.save.bestEndlessWave || 0)}</strong>
-            <em>本地最高波</em>
-          </div>
-          <div class="stat-strip ranking-stat-grid">
-            <div class="stat-box"><span>出战</span><strong>${this.save.runs}</strong></div>
-            <div class="stat-box"><span>通关</span><strong>${this.save.wins}</strong></div>
-            <div class="stat-box"><span>无尽</span><strong>${this.save.bestEndlessWave || 0}</strong></div>
-            <div class="stat-box"><span>胜率</span><strong>${winRate}%</strong></div>
-          </div>
-          <button class="secondary-button" type="button" data-menu="home">返回主界面</button>
-        </div>
-      `;
+      return this.rankingPageHtml();
+    }
+
+    if (view === "pvp") {
+      return this.pvpPageHtml();
     }
 
     if (view === "guide") {
@@ -796,6 +811,7 @@ function menuPageHtml(this: any, view: MenuView) {
               valueId: "music",
               inputAttr: "data-music-volume",
             })}
+            ${this.settingsCosmeticEffectHtml()}
             <button class="setting-row" type="button" data-menu="guide">
               <span>游戏引导</span><strong>查看</strong>
             </button>
@@ -809,6 +825,10 @@ function menuPageHtml(this: any, view: MenuView) {
 
     if (view === "collection") {
       return this.collectionPageHtml();
+    }
+
+    if (view === "cosmetics") {
+      return this.cosmeticPageHtml();
     }
 
     if (view === "protocols") {
@@ -825,6 +845,190 @@ function menuPageHtml(this: any, view: MenuView) {
     }
 
     return this.warehousePageHtml();
+  }
+
+function rankingPageHtml(this: any) {
+    const state = this.leaderboardState || {};
+    return `
+      <div class="panel main-panel menu-page leaderboard-page">
+        ${this.menuPageTitleHtml("排行榜", this.leaderboardSeasonMeta(state))}
+        ${this.leaderboardTabsHtml(state)}
+        ${this.leaderboardMineHtml(state)}
+        <div class="leaderboard-actions">
+          <button class="secondary-button" type="button" data-action="refreshLeaderboard" ${state.loading ? "disabled" : ""}>刷新</button>
+          <button class="secondary-button" type="button" data-action="locateLeaderboardMe" ${state.loading ? "disabled" : ""}>定位到我</button>
+        </div>
+        ${this.leaderboardBodyHtml(state)}
+      </div>
+    `;
+  }
+
+function leaderboardTabsHtml(this: any, state: any) {
+    const boards =
+      state.catalog?.boards || [
+        { id: "pvp_duel_season", title: "竞技榜", enabled: true },
+        { id: "endless_wave_season", title: "无尽榜", enabled: false },
+        { id: "pvp_battle_royale_season", title: "吃鸡榜", enabled: false },
+      ];
+    return `
+      <div class="leaderboard-tabs" role="tablist" aria-label="排行榜类型">
+        ${boards
+          .map(
+            (board: any) => `
+              <button
+                class="${this.leaderboardTab === board.id ? "active" : ""}"
+                type="button"
+                data-leaderboard-tab="${board.id}"
+                role="tab"
+                aria-selected="${this.leaderboardTab === board.id ? "true" : "false"}"
+              >
+                <span>${this.escapeText(board.title)}</span>
+                <em>${board.enabled ? "赛季" : "未开放"}</em>
+              </button>
+            `,
+          )
+          .join("")}
+      </div>
+    `;
+  }
+
+function leaderboardMineHtml(this: any, state: any) {
+    const me = state.me;
+    const duelRank = this.save.pvpRanks.duel;
+    const placementLeft = Math.max(0, Math.floor(duelRank.placementMatchesLeft || 0));
+    const rankText = me ? `#${me.rank}` : placementLeft > 0 ? "定级中" : "未入榜";
+    const scoreText = me?.displayScore || pvpRankDisplayLabel(duelRank);
+    const recordText = me ? this.leaderboardRecordText(me) : pvpRankRecordText(duelRank);
+    const deltaText = me
+      ? me.rank <= 1
+        ? "当前榜首"
+        : `距上一名 ${Math.floor(me.deltaToPrevious || 0)} 分`
+      : placementLeft > 0
+        ? `还需 ${placementLeft} 场`
+        : "完成对局后更新";
+    return `
+      <section class="leaderboard-me" aria-label="我的排名">
+        <div>
+          <span>我的排名</span>
+          <strong>${rankText}</strong>
+          <em>${deltaText}</em>
+        </div>
+        <div>
+          <span>当前段位</span>
+          <strong>${scoreText}</strong>
+          <em>${recordText}</em>
+        </div>
+        <div>
+          <span>本地最高</span>
+          <strong>第 ${Math.max(this.save.bestWave, this.save.bestEndlessWave || 0)} 波</strong>
+          <em>无尽 ${this.save.bestEndlessWave || 0}</em>
+        </div>
+      </section>
+    `;
+  }
+
+function leaderboardBodyHtml(this: any, state: any) {
+    const board = state.catalog?.boards?.find((item: any) => item.id === this.leaderboardTab);
+    if (state.loading) {
+      return `<div class="leaderboard-empty"><strong>同步排行榜...</strong><span>正在读取赛季榜单</span></div>`;
+    }
+    if (state.error) {
+      return `
+        <div class="leaderboard-empty warning"><strong>${this.escapeText(state.error)}</strong><span>服务器数据不可用时会保留本地统计</span></div>
+        ${this.localRankingFallbackHtml()}
+      `;
+    }
+    if (board && !board.enabled) {
+      return `<div class="leaderboard-empty"><strong>${this.escapeText(board.title)}即将开放</strong><span>当前版本先开放 1v1 赛季榜</span></div>`;
+    }
+    if (!state.entries?.length) {
+      const placementLeft = Math.max(0, Math.floor(this.save.pvpRanks.duel.placementMatchesLeft || 0));
+      const text = placementLeft > 0 ? "完成 5 场定级赛后进入赛季榜" : "本赛季暂无上榜玩家";
+      return `<div class="leaderboard-empty"><strong>${text}</strong><span>参与 1v1 匹配后会自动更新排名</span></div>`;
+    }
+    return `
+      <section class="leaderboard-list" aria-label="赛季排行榜">
+        <div class="leaderboard-list-head">
+          <span>排名</span>
+          <span>玩家</span>
+          <span>段位</span>
+          <span>战绩</span>
+        </div>
+        ${state.entries.map((entry: any) => this.leaderboardEntryHtml(entry)).join("")}
+      </section>
+    `;
+  }
+
+function leaderboardEntryHtml(this: any, entry: any) {
+    const account = this.backend.accountInfo;
+    const mine = account.userId && entry.userId === account.userId;
+    const rank = Math.max(0, Math.floor(Number(entry.rank) || 0));
+    const avatarId = this.accountAvatarCharacter(entry.avatar || "engineer").id;
+    const podium = rank >= 1 && rank <= 3 ? `top-${rank}` : "";
+    return `
+      <article class="leaderboard-row ${podium} ${mine ? "mine" : ""}">
+        <strong class="leaderboard-rank">#${rank}</strong>
+        <div class="leaderboard-player">
+          <span class="leaderboard-avatar" style="${this.accountAvatarStyle(avatarId)}">
+            ${this.accountAvatarImageHtml(avatarId, "leaderboard-avatar-img")}
+          </span>
+          <div>
+            <strong>${this.escapeText(entry.nickname || "玩家")}</strong>
+            <em>${mine ? "我" : `更新 ${this.leaderboardUpdatedText(entry.updatedAt)}`}</em>
+          </div>
+        </div>
+        <div class="leaderboard-score">
+          <strong>${this.escapeText(entry.displayScore || "-")}</strong>
+          <em>${Math.floor(entry.score || 0)} 分</em>
+        </div>
+        <div class="leaderboard-record">
+          <strong>${this.leaderboardRecordText(entry)}</strong>
+          <em>最高 ${this.leaderboardMetric(entry, "bestWinStreak")} 连胜</em>
+        </div>
+      </article>
+    `;
+  }
+
+function localRankingFallbackHtml(this: any) {
+    const winRate = this.save.runs > 0 ? Math.round((this.save.wins / this.save.runs) * 100) : 0;
+    return `
+      <div class="stat-strip ranking-stat-grid">
+        <div class="stat-box"><span>出战</span><strong>${this.save.runs}</strong></div>
+        <div class="stat-box"><span>通关</span><strong>${this.save.wins}</strong></div>
+        <div class="stat-box"><span>无尽</span><strong>${this.save.bestEndlessWave || 0}</strong></div>
+        <div class="stat-box"><span>胜率</span><strong>${winRate}%</strong></div>
+      </div>
+    `;
+  }
+
+function leaderboardRecordText(this: any, entry: any) {
+    const wins = this.leaderboardMetric(entry, "wins");
+    const losses = this.leaderboardMetric(entry, "losses");
+    const winRate = this.leaderboardMetric(entry, "winRate");
+    return `${wins}胜 ${losses}负 · ${winRate}%`;
+  }
+
+function leaderboardMetric(this: any, entry: any, key: string) {
+    const value = Number(entry?.metrics?.[key]);
+    return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  }
+
+function leaderboardUpdatedText(this: any, updatedAt: number) {
+    const diff = Math.max(0, Date.now() - Math.floor(Number(updatedAt) || Date.now()));
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return "刚刚";
+    if (minutes < 60) return `${minutes}分钟前`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}小时前`;
+    return `${Math.floor(hours / 24)}天前`;
+  }
+
+function leaderboardSeasonMeta(this: any, state: any) {
+    const season = state.catalog?.season;
+    const serverTime = Math.floor(state.catalog?.serverTime || state.response?.serverTime || Date.now());
+    if (!season?.endsAt) return "赛季榜";
+    const daysLeft = Math.max(0, Math.ceil((season.endsAt - serverTime) / 86400000));
+    return `赛季剩余 ${daysLeft} 天`;
   }
 
 function settingsAudioCardHtml(this: any, options: {
@@ -855,6 +1059,36 @@ function settingsAudioCardHtml(this: any, options: {
     `;
   }
 
+function settingsCosmeticEffectHtml(this: any) {
+    const active = this.save.preferences.cosmeticEffectIntensity || "medium";
+    const options = [
+      { id: "low", label: "低" },
+      { id: "medium", label: "中" },
+      { id: "high", label: "高" },
+    ];
+    return `
+      <section class="setting-cosmetic-card">
+        <div class="setting-slider-head">
+          <span>战斗特效强度</span>
+          <strong>${options.find((item) => item.id === active)?.label || "中"}</strong>
+        </div>
+        <div class="setting-segment-row" aria-label="战斗特效强度">
+          ${options
+            .map(
+              (item) => `
+                <button
+                  type="button"
+                  class="${active === item.id ? "active" : ""}"
+                  data-cosmetic-effect-intensity="${item.id}"
+                >${item.label}</button>
+              `,
+            )
+            .join("")}
+        </div>
+      </section>
+    `;
+  }
+
 function redeemCodeHtml(this: any) {
     const disabled = !this.canPlay() || this.redeemBusy;
     const helper = this.redeemNotice || (this.backend.isLoggedIn ? "每个账号同一兑换码只能领取一次" : "登录账号后可兑换礼包");
@@ -872,6 +1106,146 @@ function redeemCodeHtml(this: any) {
           </button>
         </div>
         <p class="redeem-helper">${this.escapeText(helper)}</p>
+      </section>
+    `;
+  }
+
+function pvpPageHtml(this: any) {
+    const match = this.pvpMatchState;
+    const matching = match && (match.status === "starting" || match.status === "queued");
+    const canStart = this.canPlay() && !matching;
+    const duelRank = this.save.pvpRanks.duel;
+    const duelRankLabel = pvpRankDisplayLabel(duelRank);
+    const duelFormalRankLabel = pvpRankLabel(duelRank);
+    const duelProgressText = pvpRankProgressText(duelRank);
+    const duelProgress = Math.round(pvpRankProgressRatio(duelRank) * 100);
+    return `
+      <div class="panel main-panel menu-page pvp-page">
+        ${this.menuPageTitleHtml("竞技大厅", `PVP · ${duelRankLabel} · 竞技币 ${Math.floor(this.save.pvpCoins || 0)}`)}
+        <section class="pvp-shop-strip">
+          <div>
+            <span>竞技奖励</span>
+            <strong>胜利 +24 段位分 · 120+ 竞技币</strong>
+          </div>
+          <button class="small-button" type="button" data-menu="ranking">赛季榜</button>
+          <button class="small-button" type="button" data-action="openPvpShop">竞技商店</button>
+        </section>
+        <section class="pvp-rank-overview" aria-label="竞技段位">
+          <div>
+            <span>当前段位</span>
+            <strong>${duelRankLabel}</strong>
+            <em>${duelFormalRankLabel}</em>
+          </div>
+          <div>
+            <span>段位分</span>
+            <strong>${duelProgressText}</strong>
+            <em>${duelProgress}%</em>
+          </div>
+          <div>
+            <span>赛季战绩</span>
+            <strong>${pvpRankRecordText(duelRank)}</strong>
+            <em>${pvpRankSeasonText(duelRank)}</em>
+          </div>
+        </section>
+        <section class="pvp-mode-grid" aria-label="PVP 模式">
+          ${this.pvpModeCardHtml({
+            title: "1v1 匹配",
+            tag: "公平竞技",
+            desc: "先进入匹配队列，匹配成功后自动开战。战斗自动推进并自动选择 3 张升级卡。",
+            rank: duelRankLabel,
+            rankProgress: duelProgressText,
+            progress: duelProgress,
+            action: "startPvp",
+            disabled: !canStart,
+            status: matching ? "匹配中" : "可匹配",
+            buttonText: matching ? "匹配中" : "开始匹配",
+            rewards: ["胜利 +24分", "失败 -12分", "竞技商店"],
+          })}
+          ${this.pvpModeCardHtml({
+            title: "吃鸡模式",
+            tag: "大逃杀",
+            desc: "多人同局搜打撤，击败或避开其他玩家，带着高价值战利品撤离。",
+            rank: "新兵 I",
+            rankProgress: "未开放",
+            progress: 0,
+            action: "",
+            disabled: true,
+            status: "开发中",
+            buttonText: "即将开放",
+            rewards: ["撤离徽章", "赛季补给箱", "限定称号"],
+          })}
+        </section>
+        ${match ? this.pvpMatchPanelHtml(match) : ""}
+      </div>
+    `;
+  }
+
+function pvpModeCardHtml(this: any, mode: {
+    title: string;
+    tag: string;
+    desc: string;
+    rank: string;
+    rankProgress?: string;
+    progress?: number;
+    action: string;
+    disabled: boolean;
+    status: string;
+    buttonText?: string;
+    rewards: string[];
+  }) {
+    const locked = mode.disabled && !mode.action;
+    return `
+      <article class="pvp-mode-card ${locked ? "locked" : "ready"}">
+        <div class="pvp-mode-head">
+          <div>
+            <span>${mode.tag}</span>
+            <strong>${mode.title}</strong>
+          </div>
+          <em>${mode.status}</em>
+        </div>
+        <p>${mode.desc}</p>
+        <div class="pvp-rank-row">
+          <div><span>当前段位</span><strong>${mode.rank}</strong></div>
+          <div><span>段位分</span><strong>${mode.rankProgress || mode.rewards[0] || "赛季奖励"}</strong></div>
+        </div>
+        <div class="pvp-level-bar" aria-label="段位进度">
+          <span style="width:${clamp(Math.floor(mode.progress || 0), 0, 100)}%"></span>
+        </div>
+        <div class="pvp-reward-list">
+          ${mode.rewards.map((reward) => `<span>${reward}</span>`).join("")}
+        </div>
+        <button class="${locked ? "secondary-button" : "primary-button"} pvp-mode-action" type="button" ${
+          mode.action ? `data-action="${mode.action}"` : ""
+        } ${mode.disabled ? "disabled" : ""}>
+          ${mode.buttonText || (locked ? "即将开放" : "开始匹配")}
+        </button>
+      </article>
+    `;
+  }
+
+function pvpMatchPanelHtml(this: any, match: any) {
+    const waitMs = Math.max(0, Number(match.waitMs) || 0);
+    const timeoutMs = Math.max(1, Number(match.timeoutMs) || 5000);
+    const progress = clamp(waitMs / timeoutMs, 0, 1);
+    const title = match.status === "failed" ? "匹配异常" : match.status === "cancelled" ? "匹配已取消" : "1v1 匹配中";
+    const status = match.status === "starting" ? "准备匹配" : match.status === "queued" ? "寻找对手" : match.status === "failed" ? "请重试" : "已取消";
+    return `
+      <section class="pvp-match-panel" aria-label="PVP 匹配状态">
+        <div class="pvp-match-head">
+          <strong>${title}</strong>
+          <span>${status}</span>
+        </div>
+        <div class="pvp-match-progress" aria-label="匹配进度">
+          <span style="width:${Math.round(progress * 100)}%"></span>
+        </div>
+        <div class="pvp-match-time">
+          <span>匹配时间</span>
+          <strong>${Math.floor(waitMs / 1000)}s</strong>
+        </div>
+        <p>${this.escapeText(match.message || "正在匹配对手。")}</p>
+        <button class="secondary-button pvp-match-cancel" type="button" data-action="cancelPvpMatch">
+          ${match.status === "failed" || match.status === "cancelled" ? "关闭" : "取消匹配"}
+        </button>
       </section>
     `;
   }
@@ -1075,8 +1449,22 @@ export const gameUiShellMethods = {
   accountAvatarImageHtml,
   escapeText,
   menuPageHtml,
+  rankingPageHtml,
+  leaderboardTabsHtml,
+  leaderboardMineHtml,
+  leaderboardBodyHtml,
+  leaderboardEntryHtml,
+  localRankingFallbackHtml,
+  leaderboardRecordText,
+  leaderboardMetric,
+  leaderboardUpdatedText,
+  leaderboardSeasonMeta,
   settingsAudioCardHtml,
+  settingsCosmeticEffectHtml,
   redeemCodeHtml,
+  pvpPageHtml,
+  pvpModeCardHtml,
+  pvpMatchPanelHtml,
   menuPageTitleHtml,
   menuNavHtml,
   menuNavButton,

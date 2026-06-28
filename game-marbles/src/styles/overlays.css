@@ -232,6 +232,186 @@
   font-size: 16px;
 }
 
+.pvp-rank-result {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(97, 230, 168, 0.28);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(97, 230, 168, 0.12), rgba(84, 199, 255, 0.07)),
+    rgba(5, 13, 22, 0.72);
+}
+
+.pvp-rank-result div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pvp-rank-result span,
+.pvp-rank-result strong,
+.pvp-rank-result em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pvp-rank-result span {
+  color: #61e6a8;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.pvp-rank-result strong {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.pvp-rank-result em {
+  color: rgba(238, 244, 255, 0.72);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.pvp-rank-result p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.pvp-rank-result b {
+  padding: 5px 7px;
+  border: 1px solid rgba(190, 213, 255, 0.14);
+  border-radius: 8px;
+  color: rgba(238, 244, 255, 0.86);
+  background: rgba(3, 8, 16, 0.34);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.pvp-result-panel {
+  gap: 14px;
+  justify-content: center;
+  padding: 20px;
+}
+
+.pvp-result-hero {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  padding: 18px 14px 16px;
+  border: 1px solid rgba(190, 213, 255, 0.16);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(97, 230, 168, 0.24), transparent 46%),
+    linear-gradient(180deg, rgba(16, 28, 44, 0.92), rgba(7, 12, 22, 0.82));
+  text-align: center;
+}
+
+.pvp-result-panel.lose .pvp-result-hero {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 108, 126, 0.22), transparent 46%),
+    linear-gradient(180deg, rgba(26, 18, 31, 0.94), rgba(7, 12, 22, 0.84));
+}
+
+.pvp-result-hero span {
+  color: #61e6a8;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.pvp-result-panel.lose .pvp-result-hero span {
+  color: #ff8a98;
+}
+
+.pvp-result-hero h2 {
+  margin: 0;
+  color: #f6c95f;
+  font-size: 42px;
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+.pvp-result-panel.lose .pvp-result-hero h2 {
+  color: #ff8a98;
+}
+
+.pvp-result-hero p {
+  max-width: 420px;
+  margin: 0;
+  color: rgba(238, 244, 255, 0.78);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.pvp-result-keygrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pvp-result-keygrid div {
+  display: grid;
+  gap: 5px;
+  min-height: 66px;
+  align-content: center;
+  padding: 10px;
+  border: 1px solid rgba(190, 213, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.pvp-result-keygrid span {
+  color: rgba(159, 180, 217, 0.9);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.pvp-result-keygrid strong {
+  color: #eef4ff;
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.pvp-rematch-control {
+  display: flex;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.pvp-rematch-control label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid rgba(97, 230, 168, 0.28);
+  border-radius: 10px;
+  background: rgba(97, 230, 168, 0.08);
+  color: #dfffee;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.pvp-rematch-control input {
+  width: 16px;
+  height: 16px;
+  accent-color: #61e6a8;
+}
+
+.pvp-result-actions {
+  margin-top: 6px;
+}
+
 .result-actions {
   display: grid;
   flex: 0 0 auto;

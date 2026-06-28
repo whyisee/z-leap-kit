@@ -4,6 +4,7 @@ export const shopCategories: Array<{ id: ShopCategory; label: string; hint: stri
   { id: "recommended", label: "推荐", hint: "今日精选" },
   { id: "daily", label: "日常", hint: "每日补给" },
   { id: "growth", label: "成长", hint: "碎片宝石" },
+  { id: "arena", label: "竞技", hint: "竞技币兑换" },
   { id: "crystal", label: "晶体", hint: "高级解锁" },
   { id: "bundles", label: "礼包", hint: "限购整备" },
 ];
@@ -170,6 +171,76 @@ export const gemShopItems: ShopItemConfig[] = [
   },
 ];
 
+export const arenaShopItems: ShopItemConfig[] = [
+  {
+    id: "arena_daily_cache",
+    category: "arena",
+    name: "竞技补给箱",
+    desc: "每日竞技基础补给",
+    price: { currency: "pvpCoins", amount: 180 },
+    stock: 1,
+    refresh: "daily",
+    rewards: [
+      { type: "randomMarbleShard", amount: 18 },
+      { type: "ticket", ticketId: "refresh", amount: 1 },
+    ],
+  },
+  {
+    id: "arena_precision_shards",
+    category: "arena",
+    name: "精准弹珠箱",
+    desc: "竞技常用弹珠材料",
+    price: { currency: "pvpCoins", amount: 260 },
+    stock: 2,
+    refresh: "daily",
+    unlock: { type: "pvpRank", mode: "duel", tier: "silver", division: 3, desc: "达到白银 III 解锁" },
+    rewards: [
+      { type: "marbleShard", marbleId: "lightning", amount: 10 },
+      { type: "marbleShard", marbleId: "slow", amount: 10 },
+    ],
+  },
+  {
+    id: "arena_guard_core",
+    category: "arena",
+    name: "防线宝石箱",
+    desc: "适合自动对战的稳定宝石",
+    price: { currency: "pvpCoins", amount: 420 },
+    stock: 1,
+    refresh: "weekly",
+    unlock: { type: "pvpRank", mode: "duel", tier: "silver", division: 1, desc: "达到白银 I 解锁" },
+    rewards: [
+      { type: "gem", gemType: "guard", level: 1, amount: 1 },
+      { type: "gem", gemType: "focus", level: 1, amount: 1 },
+    ],
+  },
+  {
+    id: "arena_insurance_bundle",
+    category: "arena",
+    name: "竞技保险券组",
+    desc: "用于搜打撤保护高价值掉落",
+    price: { currency: "pvpCoins", amount: 320 },
+    stock: 2,
+    refresh: "weekly",
+    unlock: { type: "pvpRank", mode: "duel", tier: "silver", division: 2, desc: "达到白银 II 解锁" },
+    rewards: [{ type: "ticket", ticketId: "insurance", amount: 2 }],
+  },
+  {
+    id: "arena_elite_cache",
+    category: "arena",
+    name: "精英竞技箱",
+    desc: "高段位周限购成长材料",
+    price: { currency: "pvpCoins", amount: 760 },
+    stock: 1,
+    refresh: "weekly",
+    unlock: { type: "pvpRank", mode: "duel", tier: "gold", division: 3, desc: "达到黄金 III 解锁" },
+    rewards: [
+      { type: "randomMarbleShard", amount: 36 },
+      { type: "gem", gemType: "rupture", level: 1, amount: 1 },
+      { type: "ticket", ticketId: "scan", amount: 2 },
+    ],
+  },
+];
+
 export const crystalShopItems: ShopItemConfig[] = [
   {
     id: "unlock_frostseer",
@@ -268,4 +339,4 @@ export const bundleShopItems: ShopItemConfig[] = [
   },
 ];
 
-export const shopItems = [...dailyShopItems, ...shardShopItems, ...gemShopItems, ...crystalShopItems, ...bundleShopItems];
+export const shopItems = [...dailyShopItems, ...shardShopItems, ...gemShopItems, ...arenaShopItems, ...crystalShopItems, ...bundleShopItems];

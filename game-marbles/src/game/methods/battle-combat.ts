@@ -428,6 +428,11 @@ function enemyBreakthrough(this: any, enemy: Enemy) {
       return;
     }
 
+    if (session.baseHp <= 0 && session.mode === "pvp" && this.finishPvpByServer) {
+      this.finishPvpByServer("lose", "PVP 防线被对手突破");
+      return;
+    }
+
     if (session.baseHp <= 0) {
       this.endGame("lose", `${enemy.name}突破了底线`, "failed");
     }
@@ -508,7 +513,7 @@ function handleMarbleHit(this: any, marble: Marble, enemy: Enemy) {
     const connectedSlowTargets = marble.marbleId === "slow" ? this.connectedEnemies(enemy) : null;
     this.damageEnemy(enemy, this.marbleDamage(marble, enemy), marble.marbleId, marble, true);
     this.sound.play("hit", 55, marbleIdSoundVariant(marble.marbleId));
-    this.addParticle(marble.x, marble.y, marbleConfigs[marble.marbleId].color, 4);
+    this.addParticle(marble.x, marble.y, this.marbleVisualColor?.(marble.marbleId) || marbleConfigs[marble.marbleId].color, 4);
 
     if (marble.marbleId === "split" && marble.hitCount >= 3 && !marble.splitDone) {
       marble.splitDone = true;
@@ -703,6 +708,7 @@ function killEnemy(this: any, enemy: Enemy, source: string, marble: Marble | nul
     if (enemy.dead) return;
     enemy.dead = true;
     session.kills += 1;
+    this.addPvpPressureForKill?.(enemy);
     session.xp += enemy.exp * session.modifiers.expMul;
     session.coins += enemy.coins * session.modifiers.coinMul;
     if (enemy.burnTimer > 0 && session.characters.some((character) => character.id === "alchemist" && this.passiveUnlocked(character.id, "alchemist_salvage"))) {

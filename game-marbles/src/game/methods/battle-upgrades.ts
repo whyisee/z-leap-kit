@@ -180,7 +180,7 @@ import {
 
 function updateAutoBattle(this: any) {
     const session = this.session;
-    if (!session || !this.autoBattleEnabled || !this.autoSkillEnabled || this.phase !== "playing") return;
+    if (!session || (!this.autoBattleEnabled && session.mode !== "pvp") || !this.autoSkillEnabled || this.phase !== "playing") return;
     if (session.enemies.length === 0) return;
 
     for (const character of session.characters) {
@@ -239,6 +239,10 @@ function castSkill(this: any, id: string) {
     const character = session.characters.find((char) => char.id === id);
     if (!character || character.skillTimer > 0) return;
     const skillBonus = this.characterSkillBonus(id);
+    const visual = this.characterVisualConfig?.(id);
+    const visualColor = visual?.color || character.color;
+    const visualAccent = visual?.accentColor || visualColor;
+    const blastColor = visual?.cosmetic ? visualAccent : "#f6c95f";
 
     character.skillTimer = this.skillCooldownFor(character);
     this.sound.play("skill", 120);
@@ -247,9 +251,9 @@ function castSkill(this: any, id: string) {
       const fieldLevel = this.characterRouteLevel("engineer", "engineer_field");
       const duration = 6 + fieldLevel * 0.4 + skillBonus * 0.35;
       character.skillActive = duration;
-      this.addEffect("engineer-field", character.x, character.y, duration, 72, 270, character.color);
-      this.addBurst(character.x, character.y, character.color, 28, 95, 0.55);
-      this.addFloatingText(character.x, character.y - 40, "折返板", character.color);
+      this.addEffect("engineer-field", character.x, character.y, duration, 72, 270, visualColor);
+      this.addBurst(character.x, character.y, visualAccent, 28, 95, 0.55);
+      this.addFloatingText(character.x, character.y - 40, "折返板", visualAccent);
     }
 
     if (id === "bomber") {
@@ -263,9 +267,9 @@ function castSkill(this: any, id: string) {
         0.75,
         32,
         235 * session.modifiers.blastRadiusMul * (1 + blastLevel * 0.03) * skillScale,
-        "#f6c95f",
+        blastColor,
       );
-      this.addBurst(center.x, center.y, "#f6c95f", 48, 230, 0.82);
+      this.addBurst(center.x, center.y, blastColor, 48, 230, 0.82);
       this.explode(center.x, center.y, 146 * session.modifiers.blastRadiusMul * (1 + blastLevel * 0.03) * skillScale, 110 * (1 + blastLevel * 0.05) * skillScale, {
         id: -1,
         marbleId: "blast",
@@ -286,7 +290,7 @@ function castSkill(this: any, id: string) {
         trail: [],
         small: false,
       });
-      this.addFloatingText(center.x, center.y - 70, "高爆弹", character.color);
+      this.addFloatingText(center.x, center.y - 70, "高爆弹", visualAccent);
     }
 
     if (id === "magnetist") {
@@ -295,9 +299,9 @@ function castSkill(this: any, id: string) {
       const duration = 7 + bonus + focusLevel * 0.45 + skillBonus * 0.35 + (this.passiveUnlocked(id, "magnetist_resonance") ? 1.2 : 0);
       session.modifiers.magnetic = duration;
       character.skillActive = duration;
-      this.addEffect("magnet-field", character.x, character.y - 245, duration, 120, 360, character.color);
-      this.addBurst(character.x, character.y, character.color, 34, 130, 0.7);
-      this.addFloatingText(character.x, character.y - 40, "磁场展开", character.color);
+      this.addEffect("magnet-field", character.x, character.y - 245, duration, 120, 360, visualColor);
+      this.addBurst(character.x, character.y, visualAccent, 34, 130, 0.7);
+      this.addFloatingText(character.x, character.y - 40, "磁场展开", visualAccent);
     }
 
     if (id === "sentinel") {
@@ -315,9 +319,9 @@ function castSkill(this: any, id: string) {
           }
         }
       }
-      this.addEffect("engineer-field", WIDTH / 2, FIELD_BOTTOM - 80, 1.2, 140, 360, character.color);
-      this.addBurst(character.x, character.y, character.color, 38, 160, 0.72);
-      this.addFloatingText(character.x, character.y - 42, `修复 +${heal}`, character.color);
+      this.addEffect("engineer-field", WIDTH / 2, FIELD_BOTTOM - 80, 1.2, 140, 360, visualColor);
+      this.addBurst(character.x, character.y, visualAccent, 38, 160, 0.72);
+      this.addFloatingText(character.x, character.y - 42, `修复 +${heal}`, visualAccent);
     }
 
     if (id === "prism") {
@@ -328,9 +332,9 @@ function castSkill(this: any, id: string) {
         const offset = (i - (shots - 1) / 2) * 0.24;
         this.fireMarble(character, i % 2 === 0 ? "lightning" : "split", offset);
       }
-      this.addEffect("magnet-field", character.x, character.y - 180, 1.1, 80, 250, character.color);
-      this.addBurst(character.x, character.y, character.color, 42, 180, 0.62);
-      this.addFloatingText(character.x, character.y - 42, "棱镜齐射", character.color);
+      this.addEffect("magnet-field", character.x, character.y - 180, 1.1, 80, 250, visualColor);
+      this.addBurst(character.x, character.y, visualAccent, 42, 180, 0.62);
+      this.addFloatingText(character.x, character.y - 42, "棱镜齐射", visualAccent);
     }
 
     if (id === "alchemist") {
@@ -351,8 +355,8 @@ function castSkill(this: any, id: string) {
       const bonusCoins = affected > 0 ? Math.min(32, affected * (1 + goldLevel) + skillBonus) : 0;
       session.coins += bonusCoins;
       character.skillActive = 3;
-      this.addEffect("blast-wave", center.x, center.y, 0.85, 32, radius * 1.55, character.color);
-      this.addBurst(center.x, center.y, character.color, 44, radius, 0.78);
+      this.addEffect("blast-wave", center.x, center.y, 0.85, 32, radius * 1.55, visualColor);
+      this.addBurst(center.x, center.y, visualAccent, 44, radius, 0.78);
       this.explode(center.x, center.y, radius, 78 * (1 + skillBonus * 0.05 + reactorLevel * 0.05), {
         id: -2,
         marbleId: "blast",
@@ -373,7 +377,7 @@ function castSkill(this: any, id: string) {
         trail: [],
         small: false,
       });
-      this.addFloatingText(center.x, center.y - 66, bonusCoins ? `热核 +${bonusCoins}` : "热核反应", character.color);
+      this.addFloatingText(center.x, center.y - 66, bonusCoins ? `热核 +${bonusCoins}` : "热核反应", visualAccent);
     }
 
     if (id === "frostseer") {
@@ -396,9 +400,9 @@ function castSkill(this: any, id: string) {
         }
       }
       character.skillActive = 3.2 + skillBonus * 0.08 + stasisLevel * 0.18;
-      this.addEffect("magnet-field", center.x, center.y, 1.2, 70, radius * 1.7, character.color);
-      this.addBurst(center.x, center.y, character.color, 42, radius, 0.68);
-      this.addFloatingText(center.x, center.y - 66, affected ? `冰环 ×${affected}` : "冰环静滞", character.color);
+      this.addEffect("magnet-field", center.x, center.y, 1.2, 70, radius * 1.7, visualColor);
+      this.addBurst(center.x, center.y, visualAccent, 42, radius, 0.68);
+      this.addFloatingText(center.x, center.y - 66, affected ? `冰环 ×${affected}` : "冰环静滞", visualAccent);
     }
 
     if (id === "voidbinder") {
@@ -422,10 +426,10 @@ function castSkill(this: any, id: string) {
         }
       }
       character.skillActive = 3;
-      this.addEffect("magnet-field", center.x, center.y, 1.25, 56, radius * 1.8, character.color);
-      this.addBurst(center.x, center.y, character.color, 50, radius, 0.82);
+      this.addEffect("magnet-field", center.x, center.y, 1.25, 56, radius * 1.8, visualColor);
+      this.addBurst(center.x, center.y, visualAccent, 50, radius, 0.82);
       this.explode(center.x, center.y, radius, 86 * (1 + skillBonus * 0.06 + coreLevel * 0.05), this.createSkillMarble(id, "blast", center.x, center.y, 86));
-      this.addFloatingText(center.x, center.y - 70, affected ? `坍缩 ×${affected}` : "虚空坍缩", character.color);
+      this.addFloatingText(center.x, center.y - 70, affected ? `坍缩 ×${affected}` : "虚空坍缩", visualAccent);
     }
 
     if (id === "treasurer") {
@@ -439,9 +443,9 @@ function castSkill(this: any, id: string) {
         const offset = (i - (shots - 1) / 2) * 0.18;
         this.fireMarble(character, i % 3 === 0 ? "burn" : "basic", offset);
       }
-      this.addEffect("engineer-field", character.x, character.y - 64, 0.85, 48, 150, character.color);
-      this.addBurst(character.x, character.y, character.color, 36, 130, 0.58);
-      this.addFloatingText(character.x, character.y - 44, `点金 +${bonusCoins}`, character.color);
+      this.addEffect("engineer-field", character.x, character.y - 64, 0.85, 48, 150, visualColor);
+      this.addBurst(character.x, character.y, visualAccent, 36, 130, 0.58);
+      this.addFloatingText(character.x, character.y - 44, `点金 +${bonusCoins}`, visualAccent);
     }
   }
 
@@ -467,6 +471,7 @@ function handleCanvasPointer(this: any, event: PointerEvent) {
     const rect = this.canvas.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * WIDTH;
     const y = ((event.clientY - rect.top) / rect.height) * HEIGHT;
+    if (this.handlePvpCanvasPointer?.(x, y)) return;
     const target = session.characters.find((character) => Math.abs(character.x - x) <= 58 && Math.abs(character.y - y) <= 58);
     if (!target) return;
 
@@ -478,13 +483,20 @@ function openUpgrade(this: any) {
     session.level += 1;
     session.xp -= session.xpNeed;
     session.xpNeed = xpNeedForLevel(session.level);
+
+    if (session.mode === "pvp") {
+      const choices = this.generateChoices();
+      this.applyPvpAutoUpgradeChoices(choices);
+      return;
+    }
+
     session.pendingChoices = this.generateChoices();
     this.phase = "upgrade";
     session.phase = "upgrade";
     this.sound.play("levelUp");
     this.renderUpgradeScreen();
 
-    if (this.autoBattleEnabled) {
+    if (this.autoBattleEnabled || session.mode === "pvp") {
       this.autoPickUpgrade();
     }
   }
@@ -576,6 +588,7 @@ function pickUpgrade(this: any, index: number) {
     const appliedMultiplier = this.applyUpgradeCard(card);
     session.modifiers.cardStacks[card.id] = (session.modifiers.cardStacks[card.id] || 0) + 1;
     session.selectedUpgradeIds.push(card.id);
+    this.notePvpAutoUpgrade?.(card);
     session.pendingChoices = [];
     this.phase = "playing";
     session.phase = "playing";
@@ -628,6 +641,27 @@ function autoPickUpgrade(this: any) {
       if (!current || current.id !== best.card.id) return;
       this.pickUpgrade(best.index);
     }, 260);
+  }
+
+function applyPvpAutoUpgradeChoices(this: any, choices: UpgradeCard[]) {
+    const session = this.requireSession();
+    if (session.mode !== "pvp" || choices.length === 0) return;
+
+    const applied = choices.slice(0, 3).map((card) => {
+      const multiplier = this.applyUpgradeCard(card);
+      session.modifiers.cardStacks[card.id] = (session.modifiers.cardStacks[card.id] || 0) + 1;
+      session.selectedUpgradeIds.push(card.id);
+      return { card, multiplier };
+    });
+
+    session.pendingChoices = [];
+    this.phase = "playing";
+    session.phase = "playing";
+    this.upgradeScreen.classList.add("hidden");
+    this.updateTacticPanel();
+    this.notePvpAutoUpgradeBatch?.(applied);
+    this.addFloatingText(WIDTH / 2, FIELD.y + 42, `自动升级 ×${applied.length}`, "#d58cff");
+    this.sound.play("upgrade");
   }
 
 function autoUpgradeScore(this: any, card: UpgradeCard, index: number) {
@@ -768,6 +802,7 @@ export const gameBattleUpgradeMethods = {
   pickUpgrade,
   applyUpgradeCard,
   autoPickUpgrade,
+  applyPvpAutoUpgradeChoices,
   autoUpgradeScore,
   shouldAutoRefreshUpgrade,
   autoUpgradeTagScore,
