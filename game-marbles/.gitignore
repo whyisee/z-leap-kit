@@ -1,0 +1,5 @@
+node_modules/
+dist/
+tmp/backend/
+.env*
+!.env.example

@@ -1,0 +1,68 @@
+import type { MetaUpgrade } from "../core/types";
+
+export const metaUpgrades: MetaUpgrade[] = [
+  {
+    id: "teamDamage",
+    name: "全队火力",
+    desc: "全队伤害 +3% / 级",
+    max: 20,
+    baseCost: 80,
+    growth: 1.42,
+  },
+  {
+    id: "fireRate",
+    name: "发射校准",
+    desc: "全队发射频率 +2% / 级",
+    max: 20,
+    baseCost: 90,
+    growth: 1.44,
+  },
+  {
+    id: "baseHealth",
+    name: "基地装甲",
+    desc: "每 3 级基地生命 +1",
+    max: 15,
+    baseCost: 100,
+    growth: 1.5,
+  },
+  {
+    id: "coinGain",
+    name: "回收协议",
+    desc: "结算金币 +3% / 级",
+    max: 20,
+    baseCost: 120,
+    growth: 1.46,
+  },
+  {
+    id: "luckyCards",
+    name: "战术筛选",
+    desc: "稀有升级出现率提高",
+    max: 10,
+    baseCost: 160,
+    growth: 1.58,
+  },
+  {
+    id: "initialXp",
+    name: "预热训练",
+    desc: "开局获得额外经验",
+    max: 10,
+    baseCost: 110,
+    growth: 1.45,
+  },
+  {
+    id: "critCore",
+    name: "暴击核心",
+    desc: "暴击率 +0.8% / 级",
+    max: 15,
+    baseCost: 140,
+    growth: 1.52,
+  },
+  {
+    id: "skillHaste",
+    name: "技能回路",
+    desc: "主动技能冷却 -2% / 级",
+    max: 15,
+    baseCost: 130,
+    growth: 1.48,
+  },
+];

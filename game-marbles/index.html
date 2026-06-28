@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#101522" />
+    <title>弹珠打撤 H5 原型</title>
+  </head>
+  <body>
+    <div id="app">
+      <main id="gameFrame" class="game-frame" aria-label="弹珠打撤游戏">
+        <div id="gameSurface" class="game-surface">
+          <canvas id="gameCanvas" width="720" height="1280"></canvas>
+
+          <section id="battleHud" class="battle-hud hidden" aria-label="战斗信息">
+            <div class="hud-top">
+              <div>
+                <span class="hud-kicker">生命</span>
+                <strong id="baseText">10 / 10</strong>
+              </div>
+              <div>
+                <span class="hud-kicker">波次</span>
+                <strong id="waveText">1 / 20</strong>
+              </div>
+              <div>
+                <span class="hud-kicker">等级</span>
+                <strong id="levelText">Lv.1</strong>
+              </div>
+              <div>
+                <span class="hud-kicker">金币</span>
+                <strong id="coinText">0</strong>
+              </div>
+              <div>
+                <span class="hud-kicker">货值</span>
+                <strong id="lootValueText">0</strong>
+              </div>
+              <div>
+                <span class="hud-kicker">热度</span>
+                <strong id="heatText">0</strong>
+              </div>
+              <button id="speedButton" class="icon-button" type="button" title="切换速度">1x</button>
+              <button id="autoButton" class="icon-button auto-button" type="button" title="自动战斗设置">自动关</button>
+              <button id="pauseButton" class="icon-button" type="button" title="暂停">II</button>
+            </div>
+            <div id="autoPanel" class="auto-panel hidden" aria-label="自动战斗设置">
+              <div class="auto-panel-head">
+                <strong>自动战斗</strong>
+                <button type="button" data-auto-close aria-label="关闭">×</button>
+              </div>
+              <button class="auto-toggle-row" type="button" data-auto-toggle>
+                <span>开关</span>
+                <strong id="autoStateText">OFF</strong>
+              </button>
+              <div class="auto-panel-label">战术升级优先</div>
+              <div class="auto-mode-grid">
+                <button type="button" data-auto-mode="rarity">高稀度</button>
+                <button type="button" data-auto-mode="attack">进攻</button>
+                <button type="button" data-auto-mode="defense">防御</button>
+                <button type="button" data-auto-mode="income">收益</button>
+              </div>
+              <div class="auto-panel-label">撤离窗口策略</div>
+              <div class="auto-mode-grid">
+                <button type="button" data-auto-extraction="safe">5波撤离</button>
+                <button type="button" data-auto-extraction="balanced">10波撤离</button>
+                <button type="button" data-auto-extraction="deep">15波撤离</button>
+                <button type="button" data-auto-extraction="clear">冲通关</button>
+              </div>
+              <div class="auto-panel-label">局后策略</div>
+              <div class="auto-mode-grid">
+                <button type="button" data-auto-run="manual">手动</button>
+                <button type="button" data-auto-run="advance">自动闯关</button>
+                <button type="button" data-auto-run="repeat">重复挑战</button>
+              </div>
+              <button class="auto-toggle-row" type="button" data-auto-skill>
+                <span>自动释放技能</span>
+                <strong id="autoSkillText">ON</strong>
+              </button>
+            </div>
+            <aside id="tacticPanel" class="tactic-panel collapsed hidden" aria-label="已选择战术升级">
+              <button
+                id="tacticToggle"
+                class="tactic-toggle"
+                type="button"
+                data-tactic-toggle
+                aria-expanded="false"
+                aria-label="展开已选择战术升级"
+              >
+                <span>战术</span>
+                <strong id="tacticCountText">0</strong>
+              </button>
+              <div class="tactic-panel-body">
+                <div id="tacticList" class="tactic-list">
+                  <span class="tactic-empty">暂无升级</span>
+                </div>
+              </div>
+            </aside>
+          </section>
+          <section id="bottomHud" class="bottom-hud hidden" aria-label="经验信息">
+            <div class="xp-track" aria-label="经验条">
+              <div id="xpFill"></div>
+            </div>
+            <span id="xpText">经验 0 / 20</span>
+          </section>
+          <button id="lootBag" class="loot-bag hidden" type="button" aria-label="查看本局掉落">
+            <span class="loot-bag-icon" aria-hidden="true"></span>
+            <strong id="lootCountText">0</strong>
+          </button>
+
+          <section id="menuScreen" class="screen menu-screen"></section>
+          <section id="upgradeScreen" class="screen hidden"></section>
+          <section id="extractionScreen" class="screen hidden"></section>
+          <section id="resultScreen" class="screen hidden"></section>
+          <section id="pauseScreen" class="screen hidden"></section>
+          <section id="lootScreen" class="loot-screen hidden"></section>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

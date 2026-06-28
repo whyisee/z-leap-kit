@@ -1,0 +1,27 @@
+@media (min-width: 840px) and (min-height: 720px) {
+  .choice-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .choice-card {
+    min-height: 190px;
+  }
+}
+
+@media (max-height: 760px) {
+  h1 {
+    font-size: 28px;
+  }
+
+  .subcopy {
+    font-size: 13px;
+  }
+
+  .main-panel {
+    padding: 14px;
+  }
+
+  .upgrade-list {
+    gap: 6px;
+  }
+}

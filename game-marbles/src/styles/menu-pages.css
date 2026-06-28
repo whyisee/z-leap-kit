@@ -1,0 +1,120 @@
+.menu-page {
+  width: 100%;
+  max-height: calc(100% - 96px);
+  margin-bottom: 88px;
+  overflow-y: auto;
+}
+
+.compact-menu-page {
+  align-self: center;
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+.menu-page-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.menu-page-meta {
+  flex: 0 0 auto;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.challenge-modal {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--play-inset);
+  background: rgba(4, 8, 16, 0.54);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.challenge-panel {
+  width: 100%;
+  padding: 18px;
+  border: 1px solid rgba(84, 199, 255, 0.42);
+  border-radius: 8px;
+  background:
+    linear-gradient(145deg, rgba(84, 199, 255, 0.12), transparent 52%, rgba(182, 140, 255, 0.1)),
+    rgba(12, 19, 33, 0.94);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 24px 60px rgba(0, 0, 0, 0.4);
+}
+
+.challenge-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.challenge-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.challenge-summary div {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(190, 213, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(6, 12, 22, 0.46);
+}
+
+.challenge-summary span,
+.challenge-summary strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.challenge-summary span {
+  color: rgba(238, 244, 255, 0.62);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.challenge-summary strong {
+  margin-top: 2px;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.challenge-list button {
+  min-height: 82px;
+  padding: 14px;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.challenge-list strong,
+.challenge-list span {
+  display: block;
+}
+
+.challenge-list strong {
+  color: #fff;
+  font-size: 20px;
+}
+
+.challenge-list span {
+  margin-top: 6px;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.menu-upgrade-list {
+  padding-bottom: 4px;
+}

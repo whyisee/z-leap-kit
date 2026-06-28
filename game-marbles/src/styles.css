@@ -1,0 +1,11 @@
+@import "./styles/base.css";
+@import "./styles/home.css";
+@import "./styles/menu-pages.css";
+@import "./styles/heroes.css";
+@import "./styles/settings-pages.css";
+@import "./styles/inventory.css";
+@import "./styles/shop.css";
+@import "./styles/collection.css";
+@import "./styles/battle.css";
+@import "./styles/overlays.css";
+@import "./styles/responsive.css";
