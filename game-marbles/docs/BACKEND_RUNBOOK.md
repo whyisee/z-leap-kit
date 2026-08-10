@@ -4,7 +4,7 @@
 
 ## 服务说明
 
-- 前端开发服务：通常是 `http://localhost:5174/`
+- 前端开发服务：通常是 `http://localhost:5173/`
 - 后端 API 服务：默认是 `http://localhost:4325/api`
 - 健康检查：`http://localhost:4325/api/health`
 - 运行时文件：
@@ -56,6 +56,42 @@ createdb -U postgres game_marbles
 
 ## 启停命令
 
+同时启动前后端：
+
+```bash
+npm run services:start
+```
+
+同时停止前后端：
+
+```bash
+npm run services:stop
+```
+
+同时重启前后端：
+
+```bash
+npm run services:restart
+```
+
+查看前后端状态：
+
+```bash
+npm run services:status
+```
+
+查看前后端日志：
+
+```bash
+npm run services:logs
+```
+
+持续跟随前后端日志：
+
+```bash
+./scripts/services.sh logs -f
+```
+
 启动后端：
 
 ```bash
@@ -94,6 +130,14 @@ npm run backend:logs
 
 ## 日常开发启动顺序
 
+推荐直接一键启动：
+
+```bash
+npm run services:start
+```
+
+如果需要分开排查，再按下面顺序手动启动。
+
 1. 先启动后端：
 
 ```bash
@@ -103,7 +147,7 @@ npm run backend:start
 2. 再启动前端：
 
 ```bash
-npm run dev -- --port 5174
+npm run dev -- --port 5173
 ```
 
 如果刚刚修改了 `.env` 里的 `VITE_API_URL`，需要重启前端开发服务，因为 Vite 只在启动时读取环境变量。

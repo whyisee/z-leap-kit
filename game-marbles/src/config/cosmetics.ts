@@ -83,7 +83,7 @@ const marbleSkinSeeds: Array<{
   { marbleId: "slow", rarity: "legendary", name: "寒镜星核", theme: "霜蓝季", color: "#a9f0ff", accentColor: "#b68cff", label: "镜", shape: "crystal", trailStyle: "frost", trailColor: "#38e8ff", trailAccentColor: "#8b6cff", trailHighlightColor: "#e8fbff", trailLength: 0.62, trailWidth: 1.62, trailAnimation: "pulse", trailDensity: 1.25, hitEffect: "frost", defeatEffect: "crystal" },
 ];
 
-export const cosmeticConfigs: Record<string, CosmeticConfig> = Object.fromEntries([
+const seededCosmeticConfigs = Object.fromEntries([
   ...characterSkinSeeds.map((skin) => {
     const character = characters.find((item) => item.id === skin.characterId);
     return [
@@ -135,7 +135,9 @@ export const cosmeticConfigs: Record<string, CosmeticConfig> = Object.fromEntrie
       } satisfies CosmeticConfig,
     ];
   }),
-]);
+]) as Record<string, CosmeticConfig>;
+
+export const cosmeticConfigs: Record<string, CosmeticConfig> = { ...seededCosmeticConfigs };
 
 export const cosmeticPools: Record<CosmeticPoolId, CosmeticGachaPool> = {
   character: {
@@ -163,6 +165,114 @@ export const cosmeticPools: Record<CosmeticPoolId, CosmeticGachaPool> = {
       .map((item) => item.id),
   },
 };
+
+const cosmeticRarities: CosmeticRarity[] = ["rare", "epic", "legendary"];
+
+function rebuildCosmeticPoolItems() {
+  cosmeticPools.character.itemIds = Object.values(cosmeticConfigs)
+    .filter((item) => item.type === "character")
+    .map((item) => item.id);
+  cosmeticPools.marble.itemIds = Object.values(cosmeticConfigs)
+    .filter((item) => item.type === "marble")
+    .map((item) => item.id);
+}
+
+function textValue(value: unknown, fallback: string, maxLength = 120) {
+  const text = String(value ?? "").trim();
+  return (text || fallback).slice(0, maxLength);
+}
+
+function optionalNumber(value: unknown, min: number, max: number) {
+  if (value === undefined || value === null || value === "") return undefined;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return undefined;
+  return Math.max(min, Math.min(max, number));
+}
+
+function stringList(value: unknown, maxItems = 12) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function normalizeRuntimeCosmeticConfig(value: unknown): CosmeticConfig | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const id = textValue(raw.id, "", 96);
+  const type = raw.type === "character" || raw.type === "marble" ? raw.type : null;
+  if (!id || !type) return null;
+  const targetId = textValue(raw.targetId, "", 64);
+  if (type === "character" && !characters.some((item) => item.id === targetId)) return null;
+  if (type === "marble" && !(targetId in marbleConfigs)) return null;
+  const rarity = cosmeticRarities.includes(raw.rarity as CosmeticRarity) ? (raw.rarity as CosmeticRarity) : "rare";
+  const color = textValue(raw.color, type === "marble" ? "#54c7ff" : "#61e6a8", 24);
+  const accentColor = textValue(raw.accentColor, color, 24);
+  const config: CosmeticConfig = {
+    ...raw,
+    id,
+    type,
+    targetId,
+    rarity,
+    name: textValue(raw.name, id, 80),
+    desc: textValue(raw.desc, type === "marble" ? "后台发布的弹珠幻化。" : "后台发布的角色幻化。", 180),
+    theme: textValue(raw.theme, "后台发布", 40),
+    color,
+    accentColor,
+    visualLabel: textValue(raw.visualLabel, type === "marble" ? "弹" : "衣", 4),
+    assetKeys: stringList(raw.assetKeys),
+    effectKeys: stringList(raw.effectKeys),
+  } as CosmeticConfig;
+
+  if (type === "marble") {
+    config.marbleShape = textValue(raw.marbleShape, "orb", 48) as CosmeticConfig["marbleShape"];
+    config.marbleTrailStyle = textValue(raw.marbleTrailStyle, "soft", 48) as CosmeticConfig["marbleTrailStyle"];
+    config.marbleTrailColor = textValue(raw.marbleTrailColor, color, 24);
+    config.marbleTrailAccentColor = textValue(raw.marbleTrailAccentColor, accentColor, 24);
+    config.marbleTrailHighlightColor = textValue(raw.marbleTrailHighlightColor, config.marbleTrailAccentColor, 24);
+    config.marbleTrailLength = optionalNumber(raw.marbleTrailLength, 0.2, 4);
+    config.marbleTrailWidth = optionalNumber(raw.marbleTrailWidth, 0.2, 3);
+    config.marbleTrailAnimation = textValue(raw.marbleTrailAnimation, "steady", 48) as CosmeticConfig["marbleTrailAnimation"];
+    config.marbleTrailDensity = optionalNumber(raw.marbleTrailDensity, 0.2, 3);
+    config.marbleHitEffect = textValue(raw.marbleHitEffect, "", 48) as CosmeticConfig["marbleHitEffect"];
+    config.marbleDefeatEffect = textValue(raw.marbleDefeatEffect, "", 48) as CosmeticConfig["marbleDefeatEffect"];
+  }
+
+  return config;
+}
+
+export function applyRuntimeCosmeticConfigs(items: unknown[]) {
+  let applied = 0;
+  for (const item of items) {
+    const config = normalizeRuntimeCosmeticConfig(item);
+    if (!config) continue;
+    cosmeticConfigs[config.id] = config;
+    applied += 1;
+  }
+  if (applied > 0) rebuildCosmeticPoolItems();
+  return applied;
+}
+
+export function applyRuntimeContentConfig(bundle: unknown) {
+  if (!bundle || typeof bundle !== "object") {
+    return { appliedCosmetics: 0, configVersion: "" };
+  }
+  const payload = bundle as Record<string, any>;
+  const modules = payload.modules && typeof payload.modules === "object" ? payload.modules : {};
+  const cosmetics: unknown[] = [];
+  for (const moduleId of ["marble", "character"]) {
+    const items = Array.isArray(modules[moduleId]?.items) ? modules[moduleId].items : [];
+    for (const item of items) {
+      if (item?.config) cosmetics.push(item.config);
+      else if (item) cosmetics.push(item);
+    }
+  }
+  return {
+    appliedCosmetics: applyRuntimeCosmeticConfigs(cosmetics),
+    configVersion: textValue(payload.configVersion, "", 96),
+  };
+}
 
 export function cosmeticById(id: string) {
   return cosmeticConfigs[id] || null;

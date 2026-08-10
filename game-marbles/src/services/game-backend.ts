@@ -9,6 +9,7 @@ import type {
   SaveData,
   ShopReward,
 } from "../core/types";
+import { applyRuntimeContentConfig } from "../config/cosmetics";
 import { normalizeSave } from "../state/save";
 import type { PvpRankApplyResult, PvpRankResultContext } from "../systems/pvp/rank";
 
@@ -26,6 +27,7 @@ type BootstrapResponse = {
   playerRevision: number;
   playerState: SaveData;
   configVersion: string;
+  contentConfig?: unknown;
   activities: unknown[];
 };
 
@@ -231,6 +233,7 @@ export class GameBackend {
       }
 
       const bootstrap = await this.request<BootstrapResponse>("/bootstrap");
+      const runtimeConfig = applyRuntimeContentConfig(bootstrap.contentConfig);
       this.applyProfile(bootstrap.user);
       this.playerRevision = bootstrap.playerRevision;
       this.online = true;
@@ -238,7 +241,10 @@ export class GameBackend {
       return {
         online: true,
         save: normalizeSave(bootstrap.playerState),
-        notice: `已同步远程存档 · ${bootstrap.configVersion}`,
+        notice:
+          runtimeConfig.appliedCosmetics > 0
+            ? `已同步远程存档 · ${bootstrap.configVersion} · 幻化配置 ${runtimeConfig.appliedCosmetics} 项`
+            : `已同步远程存档 · ${bootstrap.configVersion}`,
         requiresLogin: false,
       };
     } catch (error) {
@@ -269,6 +275,8 @@ export class GameBackend {
       accessToken: string;
       playerRevision: number;
       playerState: SaveData;
+      configVersion?: string;
+      contentConfig?: unknown;
     }>("/auth/login", {
       method: "POST",
       auth: false,
@@ -288,6 +296,8 @@ export class GameBackend {
       accessToken: string;
       playerRevision: number;
       playerState: SaveData;
+      configVersion?: string;
+      contentConfig?: unknown;
     }>("/auth/register", {
       method: "POST",
       auth: false,
@@ -696,9 +706,12 @@ export class GameBackend {
       accessToken: string;
       playerRevision: number;
       playerState: SaveData;
+      configVersion?: string;
+      contentConfig?: unknown;
     },
     notice: string,
   ) {
+    const runtimeConfig = applyRuntimeContentConfig(auth.contentConfig);
     this.auth = {
       ...this.auth,
       userId: auth.userId,
@@ -710,7 +723,10 @@ export class GameBackend {
     this.online = true;
     return {
       save: normalizeSave(auth.playerState),
-      notice,
+      notice:
+        runtimeConfig.appliedCosmetics > 0 && auth.configVersion
+          ? `${notice} · 幻化配置 ${runtimeConfig.appliedCosmetics} 项`
+          : notice,
     };
   }
 }

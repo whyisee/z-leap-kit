@@ -13,6 +13,7 @@ import {
   marbleConfigs,
   rarityColor,
   rarityName,
+  updateCoreProgressForCard,
   upgradeCardTypeLabel,
   upgradeCards,
   upgradeLevel,
@@ -114,6 +115,7 @@ function applyTestUpgradeCard(this: any, card: UpgradeCard, announce = true) {
   const multiplier = this.applyUpgradeCard(card);
   session.modifiers.cardStacks[card.id] = (session.modifiers.cardStacks[card.id] || 0) + 1;
   session.selectedUpgradeIds.push(card.id);
+  updateCoreProgressForCard(session, card);
   session.pendingChoices = [];
   this.tacticPanelSignature = "";
   this.updateTacticPanel();

@@ -575,6 +575,14 @@
   text-shadow: none;
 }
 
+.cosmetic-icon.marble-preview-icon .marble-shape-art {
+  position: absolute;
+  z-index: 5;
+  width: 74%;
+  height: 74%;
+  object-fit: contain;
+}
+
 .cosmetic-icon.marble-preview-icon b,
 .cosmetic-icon.marble-preview-icon em {
   display: block;

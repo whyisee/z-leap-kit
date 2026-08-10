@@ -1,0 +1,87 @@
+npm warn Unknown env config "sentrycli-cdnurl". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown env config "entrycli-cdnurl". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown user config "ENTRYCLI_CDNURL". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown user config "sentrycli_cdnurl". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> game-marbles@0.1.0 dev
+> vite --host 0.0.0.0 --host 0.0.0.0 --port 5173 --strictPort
+
+
+  VITE v5.4.21  ready in 121 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.1.13:5173/
+7:56:53 AM [vite] page reload src/admin/admin-app.ts
+7:57:34 AM [vite] page reload src/admin/admin-app.ts
+7:58:57 AM [vite] hmr update /src/styles.css
+7:59:00 AM [vite] page reload src/state/save.ts
+7:59:33 AM [vite] page reload src/game/methods/ui-shell.ts
+7:59:33 AM [vite] hmr update /src/styles.css
+7:59:46 AM [vite] hmr update /src/styles.css
+7:59:47 AM [vite] page reload src/game/methods/ui-heroes.ts
+8:00:00 AM [vite] page reload src/game/methods/ui-cosmetics.ts
+8:00:17 AM [vite] hmr update /src/styles.css
+8:00:57 AM [vite] page reload src/game/methods/ui-heroes.ts
+8:01:16 AM [vite] page reload src/game/methods/ui-heroes.ts
+8:01:17 AM [vite] hmr update /src/styles.css
+8:01:17 AM [vite] hmr update /src/styles.css
+8:01:31 AM [vite] page reload src/main.ts
+8:01:53 AM [vite] page reload src/main.ts
+8:02:33 AM [vite] page reload src/main.ts
+8:02:52 AM [vite] page reload src/core/marble-shape-assets.ts
+8:03:09 AM [vite] page reload src/admin/admin-app.ts
+8:03:37 AM [vite] hmr update /src/styles.css
+8:04:49 AM [vite] page reload src/game/methods/battle-render.ts
+8:05:24 AM [vite] page reload src/main.ts
+8:05:32 AM [vite] page reload src/core/marble-shape-assets.ts
+8:08:08 AM [vite] hmr update /src/styles.css
+8:08:28 AM [vite] hmr update /src/styles.css
+8:20:15 AM [vite] page reload src/game/methods/ui-heroes.ts
+8:20:29 AM [vite] page reload src/main.ts
+8:20:47 AM [vite] page reload src/main.ts
+8:21:16 AM [vite] hmr update /src/styles.css
+8:37:00 AM [vite] page reload src/main.ts
+8:37:40 AM [vite] page reload src/game/methods/ui-heroes.ts
+8:38:19 AM [vite] hmr update /src/styles.css
+8:45:41 AM [vite] page reload src/game/methods/ui-heroes.ts
+8:46:08 AM [vite] page reload src/main.ts
+8:50:17 AM [vite] page reload src/game/methods/ui-heroes.ts
+8:50:42 AM [vite] page reload src/config/cosmetics.ts
+8:50:58 AM [vite] hmr update /src/styles.css
+8:51:47 AM [vite] page reload src/config/cosmetics.ts
+8:52:46 AM [vite] page reload src/services/game-backend.ts
+8:53:03 AM [vite] page reload src/admin/admin-app.ts
+8:53:27 AM [vite] page reload src/admin/admin-app.ts
+8:53:38 AM [vite] page reload src/admin/admin-app.ts
+8:53:50 AM [vite] page reload src/admin/admin-app.ts
+8:54:05 AM [vite] page reload src/admin/admin-app.ts
+8:55:03 AM [vite] page reload src/services/game-backend.ts
+8:57:28 AM [vite] page reload src/game/methods/ui-heroes.ts
+8:57:51 AM [vite] hmr update /src/styles.css
+9:12:59 AM [vite] page reload src/main.ts
+9:13:54 AM [vite] page reload src/game/methods/ui-heroes.ts
+9:14:34 AM [vite] hmr update /src/styles.css
+9:15:01 AM [vite] hmr update /src/styles.css
+9:15:39 AM [vite] hmr update /src/styles.css
+12:33:06 PM [vite] page reload src/game/methods/ui-heroes.ts
+12:34:41 PM [vite] page reload src/main.ts
+12:35:13 PM [vite] page reload src/main.ts
+12:35:39 PM [vite] page reload src/main.ts
+12:35:56 PM [vite] page reload src/main.ts
+12:36:12 PM [vite] page reload src/game/methods/ui-heroes.ts
+12:36:30 PM [vite] hmr update /src/styles.css
+12:36:54 PM [vite] page reload src/game/methods/ui-heroes.ts
+10:45:18 PM [vite] page reload src/main.ts
+10:45:41 PM [vite] page reload src/game/methods/ui-shell.ts
+10:45:55 PM [vite] page reload src/game/methods/ui-shell.ts
+10:46:24 PM [vite] hmr update /src/styles.css
+10:53:19 PM [vite] page reload src/admin/admin-app.ts
+10:53:47 PM [vite] hmr update /src/styles.css
+10:54:24 PM [vite] page reload src/game/methods/ui-shell.ts
+10:54:36 PM [vite] page reload src/main.ts
+10:54:52 PM [vite] hmr update /src/styles.css
+11:01:35 PM [vite] page reload src/game/methods/battle-upgrades.ts
+11:01:52 PM [vite] page reload src/game/methods/battle-upgrades.ts
+11:02:10 PM [vite] page reload src/game/methods/battle-upgrades.ts
+11:02:30 PM [vite] page reload src/game/methods/battle-upgrades.ts
+6:47:08 PM [vite] page reload src/admin/admin-app.ts

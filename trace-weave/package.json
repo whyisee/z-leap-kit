@@ -1,0 +1,30 @@
+{
+  "name": "trace-weave-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n backend,frontend -c blue,green \"npm run dev --workspace @trace-weave/backend\" \"npm run dev --workspace @trace-weave/frontend\"",
+    "dev:backend": "npm run dev --workspace @trace-weave/backend",
+    "dev:frontend": "npm run dev --workspace @trace-weave/frontend",
+    "restart": "bash scripts/restart.sh",
+    "services:start": "bash scripts/restart.sh start",
+    "services:stop": "bash scripts/restart.sh stop",
+    "services:status": "bash scripts/restart.sh status",
+    "services:logs": "bash scripts/restart.sh logs",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "db:migrate": "npm run db:migrate --workspace @trace-weave/backend",
+    "db:seed": "npm run db:seed --workspace @trace-weave/backend",
+    "db:seed:graph-demo": "npm run db:seed:graph-demo --workspace @trace-weave/backend --",
+    "backup": "bash scripts/backup.sh",
+    "backup:verify": "bash scripts/verify-backup.sh",
+    "load:smoke": "node scripts/load-smoke.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "latest"
+  }
+}

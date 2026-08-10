@@ -198,6 +198,33 @@
   transform: rotate(-18deg);
 }
 
+.marble-shape-symbol {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  width: 58%;
+  height: 58%;
+  place-items: center;
+  color: rgba(7, 16, 27, 0.78);
+  font-size: 0.68em;
+  font-weight: 1000;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.26);
+}
+
+.marble-shape-art {
+  position: absolute;
+  z-index: 5;
+  width: 74%;
+  height: 74%;
+  object-fit: contain;
+  pointer-events: none;
+  filter:
+    drop-shadow(0 4px 7px rgba(0, 0, 0, 0.36))
+    drop-shadow(0 0 8px color-mix(in srgb, var(--marble-accent, var(--marble-color)) 24%, transparent));
+}
+
 .marble-impact-electric em {
   inset: 22%;
   border: 0;
@@ -296,6 +323,210 @@
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.78) 0 18%, transparent 18% 38%, rgba(255, 255, 255, 0.7) 38% 54%, transparent 54%),
     linear-gradient(145deg, color-mix(in srgb, var(--marble-color) 88%, #fff), color-mix(in srgb, var(--marble-color) 74%, #061019));
+}
+
+.marble-shape-triangle i {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 100% 92%, 0% 92%);
+}
+
+.marble-shape-square i,
+.marble-shape-brick i,
+.marble-shape-toast i {
+  border-radius: 18%;
+}
+
+.marble-shape-hexagon i {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+}
+
+.marble-shape-heart i {
+  border-radius: 0;
+  clip-path: polygon(50% 92%, 15% 58%, 4% 34%, 12% 12%, 34% 6%, 50% 22%, 66% 6%, 88% 12%, 96% 34%, 85% 58%);
+}
+
+.marble-shape-diamond i {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+.marble-shape-capsule i,
+.marble-shape-staff i,
+.marble-shape-finger i {
+  inset: 5px 14px;
+  border-radius: 999px;
+}
+
+.marble-shape-drop i {
+  border-radius: 56% 44% 62% 38%;
+  clip-path: polygon(50% 0%, 84% 46%, 76% 84%, 50% 100%, 24% 84%, 16% 46%);
+}
+
+.marble-shape-moon i {
+  border-radius: 50%;
+  clip-path: circle(50% at 42% 50%);
+}
+
+.marble-shape-shield i,
+.marble-shape-shield_weapon i {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 92% 22%, 82% 68%, 50% 100%, 18% 68%, 8% 22%);
+}
+
+.marble-shape-gear i {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 60% 18%, 80% 10%, 82% 32%, 100% 42%, 84% 56%, 90% 78%, 68% 78%, 50% 100%, 38% 82%, 16% 90%, 18% 66%, 0% 54%, 18% 42%, 12% 20%, 34% 22%);
+}
+
+.marble-shape-cross i {
+  border-radius: 0;
+  clip-path: polygon(36% 0%, 64% 0%, 64% 36%, 100% 36%, 100% 64%, 64% 64%, 64% 100%, 36% 100%, 36% 64%, 0% 64%, 0% 36%, 36% 36%);
+}
+
+.marble-shape-egg i {
+  border-radius: 48% 48% 54% 54%;
+  transform: scaleY(1.12);
+}
+
+.marble-shape-cat i,
+.marble-shape-dog i,
+.marble-shape-rabbit i,
+.marble-shape-hamster i,
+.marble-shape-panda i,
+.marble-shape-fox i,
+.marble-shape-bear i,
+.marble-shape-frog i,
+.marble-shape-dinosaur i {
+  border-radius: 45% 45% 52% 52%;
+}
+
+.marble-shape-cat i,
+.marble-shape-fox i {
+  clip-path: polygon(8% 36%, 20% 0%, 38% 25%, 62% 25%, 80% 0%, 92% 36%, 82% 90%, 50% 100%, 18% 90%);
+}
+
+.marble-shape-rabbit i {
+  clip-path: polygon(22% 2%, 38% 2%, 44% 35%, 56% 35%, 62% 2%, 78% 2%, 82% 42%, 94% 58%, 78% 100%, 22% 100%, 6% 58%, 18% 42%);
+}
+
+.marble-shape-alpaca i {
+  border-radius: 42% 42% 48% 48%;
+  transform: scaleY(1.12);
+}
+
+.marble-shape-duck i,
+.marble-shape-rubber_duck i,
+.marble-shape-chick i,
+.marble-shape-whale i,
+.marble-shape-seal i,
+.marble-shape-penguin i,
+.marble-shape-roach i,
+.marble-shape-slime i {
+  border-radius: 54% 46% 48% 52%;
+  transform: scaleX(1.12);
+}
+
+.marble-shape-jellyfish i {
+  border-radius: 52% 52% 20% 20%;
+  clip-path: polygon(8% 50%, 16% 20%, 50% 0%, 84% 20%, 92% 50%, 82% 62%, 70% 54%, 58% 66%, 46% 54%, 34% 66%, 22% 54%);
+}
+
+.marble-shape-sword i,
+.marble-shape-dagger i,
+.marble-shape-katana i,
+.marble-shape-spear i,
+.marble-shape-arrow i,
+.marble-shape-scythe i {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 66% 48%, 86% 48%, 86% 62%, 60% 62%, 60% 100%, 40% 100%, 40% 62%, 14% 62%, 14% 48%, 34% 48%);
+}
+
+.marble-shape-blade i {
+  border-radius: 68% 18% 56% 26%;
+  clip-path: polygon(40% 0%, 88% 34%, 66% 90%, 44% 100%, 22% 52%);
+}
+
+.marble-shape-axe i,
+.marble-shape-hammer i {
+  border-radius: 0;
+  clip-path: polygon(42% 0%, 58% 0%, 58% 35%, 92% 35%, 92% 58%, 58% 58%, 58% 100%, 42% 100%, 42% 58%, 8% 58%, 8% 35%, 42% 35%);
+}
+
+.marble-shape-bow i {
+  border-radius: 50% 10% 10% 50%;
+  clip-path: polygon(78% 0%, 22% 50%, 78% 100%, 62% 50%);
+}
+
+.marble-shape-fist i,
+.marble-shape-palm i {
+  border-radius: 38% 38% 48% 48%;
+}
+
+.marble-shape-fan i {
+  border-radius: 0;
+  clip-path: polygon(50% 100%, 0% 22%, 22% 4%, 50% 0%, 78% 4%, 100% 22%);
+}
+
+.marble-shape-claw i {
+  border-radius: 0;
+  clip-path: polygon(18% 0%, 32% 100%, 46% 8%, 58% 100%, 76% 0%, 88% 100%, 2% 100%);
+}
+
+.marble-shape-shuriken i {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0% 50%, 38% 38%);
+}
+
+.marble-shape-snake i,
+.marble-shape-banana i {
+  border-radius: 70% 30% 70% 30%;
+  transform: rotate(-24deg) scaleX(1.18);
+}
+
+.marble-shape-poop i {
+  border-radius: 50% 50% 42% 42%;
+  clip-path: polygon(50% 0%, 70% 22%, 62% 38%, 84% 52%, 74% 100%, 26% 100%, 16% 52%, 38% 38%, 30% 22%);
+}
+
+.marble-shape-eggplant i {
+  border-radius: 56% 44% 60% 40%;
+  transform: rotate(-28deg) scaleY(1.12);
+}
+
+.marble-shape-mushroom i {
+  border-radius: 50% 50% 24% 24%;
+  clip-path: polygon(4% 42%, 20% 12%, 50% 0%, 80% 12%, 96% 42%, 72% 56%, 64% 100%, 36% 100%, 28% 56%);
+}
+
+.marble-shape-ufo i {
+  border-radius: 50%;
+  transform: scaleX(1.34) scaleY(0.62);
+}
+
+.marble-shape-ghost i {
+  border-radius: 48% 48% 24% 24%;
+  clip-path: polygon(8% 100%, 8% 34%, 20% 8%, 50% 0%, 80% 8%, 92% 34%, 92% 100%, 72% 82%, 50% 100%, 28% 82%);
+}
+
+.marble-shape-mask i {
+  border-radius: 48% 52% 48% 52%;
+  transform: scaleX(1.2) scaleY(0.82);
+}
+
+.marble-shape-sock i {
+  border-radius: 18% 18% 52% 34%;
+  clip-path: polygon(28% 0%, 62% 0%, 62% 54%, 98% 62%, 82% 100%, 24% 84%);
+}
+
+.marble-shape-fishbone i {
+  border-radius: 0;
+  clip-path: polygon(0% 50%, 18% 24%, 26% 42%, 74% 42%, 100% 20%, 88% 50%, 100% 80%, 74% 58%, 26% 58%, 18% 76%);
+}
+
+.marble-shape-toilet_plunger i {
+  border-radius: 0;
+  clip-path: polygon(44% 0%, 56% 0%, 56% 66%, 86% 66%, 100% 100%, 0% 100%, 14% 66%, 44% 66%);
 }
 
 .marble-trail-electric b {
@@ -1361,6 +1592,21 @@
   margin-top: 10px;
 }
 
+.gem-fuse-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(58px, 0.72fr);
+  gap: 6px;
+  min-width: 0;
+}
+
+.gem-batch-fuse-button {
+  color: #fff7dc;
+  border-color: color-mix(in srgb, var(--gem-color) 42%, rgba(246, 201, 95, 0.52));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--gem-color) 18%, rgba(246, 201, 95, 0.18)), rgba(246, 201, 95, 0.08)),
+    rgba(9, 17, 29, 0.82);
+}
+
 .gem-replace-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1634,6 +1880,10 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.warehouse-detail-actions.gem-detail-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .warehouse-detail-actions .primary-button,

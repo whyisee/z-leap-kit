@@ -181,6 +181,7 @@ import {
   type WarehouseTab,
   type WaveConfig,
 } from "./shared";
+import { marbleShapeLabel as marbleShapeDisplayLabel } from "../../core/marble-shapes";
 
 function shopPageHtml(this: any) {
     this.shop();
@@ -538,21 +539,7 @@ function marbleEffectText(this: any, marble: MarbleConfig) {
   }
 
 function marbleShapeLabel(this: any, shape: string) {
-    const labels: Record<string, string> = {
-      orb: "圆珠",
-      candy: "糖芯",
-      star: "星形",
-      leaf: "叶片",
-      crystal: "晶体",
-      bomb: "爆弹",
-      flame: "火焰",
-      bolt: "电弧",
-      snowflake: "雪晶",
-      ring: "星环",
-      flower: "花瓣",
-      comet: "彗星",
-    };
-    return labels[shape] || "圆珠";
+    return marbleShapeDisplayLabel(shape);
   }
 
 function marbleTrailStyleLabel(this: any, style: string) {
@@ -973,9 +960,14 @@ function protocolGemInventoryHtml(this: any) {
                 </div>
                 <div class="gem-card-actions">
                   ${this.gemEquipActionsHtml(key)}
-                  <button class="small-button" type="button" data-gem-fuse="${key}" ${canFuse ? "" : "disabled"}>
-                    合成 ${gem.level >= GEM_MAX_LEVEL ? "满级" : `${fuseChance}%`}
-                  </button>
+                  <div class="gem-fuse-actions" aria-label="宝石合成">
+                    <button class="small-button" type="button" data-gem-fuse="${key}" ${canFuse ? "" : "disabled"}>
+                      合成 ${gem.level >= GEM_MAX_LEVEL ? "满级" : `${fuseChance}%`}
+                    </button>
+                    <button class="small-button gem-batch-fuse-button" type="button" data-gem-fuse-batch="${key}" ${canFuse ? "" : "disabled"}>
+                      批量
+                    </button>
+                  </div>
                 </div>
               </article>
             `;
@@ -1074,10 +1066,13 @@ function warehouseItemDetailModalHtml(this: any) {
               <div><span>类型</span><strong>${config.stat}</strong></div>
               <div><span>合成</span><strong>${gem.level >= GEM_MAX_LEVEL ? "满级" : `${fuseChance}%`}</strong></div>
             </div>
-            <div class="warehouse-detail-actions">
+            <div class="warehouse-detail-actions gem-detail-actions">
               <button class="primary-button" type="button" data-menu="protocols">去基地中枢</button>
               <button class="secondary-button" type="button" data-gem-fuse="${detail.key}" ${canFuse ? "" : "disabled"}>
                 ${gem.level >= GEM_MAX_LEVEL ? "已满级" : "合成"}
+              </button>
+              <button class="secondary-button" type="button" data-gem-fuse-batch="${detail.key}" ${canFuse ? "" : "disabled"}>
+                批量合成
               </button>
             </div>
           </section>

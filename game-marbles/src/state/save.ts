@@ -3,12 +3,14 @@ import { cosmeticConfigs, cosmeticPools } from "../config/cosmetics";
 import { collectibleConfigs } from "../config/loot";
 import { marbleConfigs } from "../config/marbles";
 import { getStageById, getStageByIndex, stages } from "../config/stages";
+import { upgradeCards } from "../config/upgrades";
 import { BASE_GEM_SLOTS, CHARACTER_SKILL_MAX_LEVEL, HERO_MAX_LEVEL, MARBLE_MAX_LEVEL, STORAGE_KEY } from "../core/constants";
 import { clamp } from "../core/math";
 import type {
   AutoExtractionMode,
   AutoRunMode,
   AutoUpgradeMode,
+  BattleLoadoutPreset,
   CharacterConfig,
   CharacterMarbleLoadout,
   CharacterProgress,
@@ -16,6 +18,7 @@ import type {
   CosmeticEffectIntensity,
   CosmeticSaveState,
   CosmeticTicketId,
+  FormationId,
   GamePreferences,
   InventoryData,
   MarbleId,
@@ -24,7 +27,11 @@ import type {
   Speed,
   StageProgress,
   ShopState,
+  TacticalDeckConfig,
+  TacticalDeckId,
 } from "../core/types";
+import { formationById } from "../config/formations";
+import { tacticalDeckById } from "../config/tactical-decks";
 import { parseGemKey } from "../systems/loot/gems";
 import { defaultPvpRanks, normalizePvpRanks } from "../systems/pvp/rank";
 
@@ -45,12 +52,15 @@ export function defaultSave(): SaveData {
     upgrades: {},
     characters: defaultCharacterProgressMap(),
     lineup: defaultLineup(),
+    activeBattleLoadoutId: "loadout_1",
+    battleLoadouts: defaultBattleLoadoutPresets(),
     inventory: defaultInventory(),
     marbleLevels: defaultMarbleLevels(),
     characterMarbles: defaultCharacterMarbles(),
     baseGems: Array.from({ length: BASE_GEM_SLOTS }, () => null),
     tickets: defaultTickets(),
     preferences: defaultPreferences(),
+    customTacticalDeck: defaultCustomTacticalDeck(),
     shop: defaultShopState(),
     collectionRewards: {},
     cosmetics: defaultCosmetics(),
@@ -91,6 +101,11 @@ export function normalizeSave(save: SaveData): SaveData {
       ...defaults.characters,
       ...(save.characters || {}),
     },
+    activeBattleLoadoutId:
+      typeof save.activeBattleLoadoutId === "string" && save.activeBattleLoadoutId.trim().length > 0
+        ? save.activeBattleLoadoutId.trim()
+        : defaults.activeBattleLoadoutId,
+    battleLoadouts: [],
     inventory: normalizeInventory(save.inventory || defaults.inventory),
     marbleLevels: {
       ...defaults.marbleLevels,
@@ -101,6 +116,7 @@ export function normalizeSave(save: SaveData): SaveData {
     tickets: normalizeTickets(save.tickets || defaults.tickets),
     lineup: normalizeLineup(save.lineup || defaults.lineup, save.characters || defaults.characters),
     preferences: normalizePreferences(save.preferences || defaults.preferences),
+    customTacticalDeck: normalizeCustomTacticalDeck(save.customTacticalDeck || defaults.customTacticalDeck),
     shop: normalizeShopState(save.shop || defaults.shop),
     collectionRewards: normalizeCollectionRewards(save.collectionRewards || defaults.collectionRewards),
     cosmetics: normalizeCosmetics(save.cosmetics || defaults.cosmetics),
@@ -127,6 +143,11 @@ export function normalizeSave(save: SaveData): SaveData {
   normalized.marbleLevels = normalizeMarbleLevels(normalized.marbleLevels);
   normalized.characterMarbles = normalizeCharacterMarbles(normalized.characterMarbles);
   normalized.baseGems = normalizeBaseGems(normalized.baseGems);
+  normalized.battleLoadouts = normalizeBattleLoadouts(save.battleLoadouts || defaults.battleLoadouts, normalized);
+  if (!normalized.battleLoadouts.some((preset) => preset.id === normalized.activeBattleLoadoutId)) {
+    normalized.activeBattleLoadoutId = normalized.battleLoadouts[0]?.id || "loadout_1";
+  }
+  syncActiveBattleLoadoutPreset(normalized, false);
   return normalized;
 }
 
@@ -301,7 +322,223 @@ export function defaultPreferences(): GamePreferences {
     battleSpeed: 1,
     characterSortMode: "power",
     cosmeticEffectIntensity: "medium",
+    formationId: "rebound",
+    tacticalDeckId: "auto",
   };
+}
+
+export function defaultCustomTacticalDeck(): TacticalDeckConfig {
+  const base = tacticalDeckById("rebound");
+  return {
+    id: "custom",
+    name: "自定义卡组",
+    desc: "由玩家配置的战术升级抽取池。",
+    formationHint: "rebound",
+    tagHints: [...base.tagHints],
+    cardIds: base.cardIds.slice(0, 18),
+  };
+}
+
+export function normalizeCustomTacticalDeck(deck: Partial<TacticalDeckConfig> = {}): TacticalDeckConfig {
+  const defaults = defaultCustomTacticalDeck();
+  const knownCards = new Set(upgradeCards.map((card) => card.id));
+  const ids = Array.isArray(deck.cardIds) ? deck.cardIds : defaults.cardIds;
+  const cardIds = ids.filter((id, index) => knownCards.has(id) && ids.indexOf(id) === index).slice(0, 24);
+  const tagHints = (Array.isArray(deck.tagHints) ? deck.tagHints : defaults.tagHints)
+    .filter((tag) => typeof tag === "string" && tag.trim().length > 0)
+    .map((tag) => tag.trim())
+    .slice(0, 5);
+  const formationHint = formationById(deck.formationHint).id as FormationId;
+
+  return {
+    id: "custom",
+    name: "自定义卡组",
+    desc: "由玩家配置的战术升级抽取池。",
+    formationHint,
+    tagHints: tagHints.length > 0 ? tagHints : defaults.tagHints,
+    cardIds: cardIds.length > 0 ? cardIds : defaults.cardIds,
+  };
+}
+
+export function defaultBattleLoadoutPresets(): BattleLoadoutPreset[] {
+  const preferences = defaultPreferences();
+  const presets: BattleLoadoutPreset[] = [
+    {
+      id: "loadout_1",
+      name: "方案一",
+      lineup: defaultLineup(),
+      formationId: preferences.formationId,
+      tacticalDeckId: preferences.tacticalDeckId,
+      customTacticalDeck: defaultCustomTacticalDeck(),
+      updatedAt: Date.now(),
+    },
+  ];
+  for (let index = 1; index < 10; index += 1) {
+    presets.push(emptyBattleLoadoutPreset(`loadout_${index + 1}`, index));
+  }
+  return presets;
+}
+
+export function syncActiveBattleLoadoutPreset(save: SaveData, touch = true) {
+  save.battleLoadouts = normalizeBattleLoadouts(save.battleLoadouts, save);
+  if (!save.battleLoadouts.some((preset) => preset.id === save.activeBattleLoadoutId)) {
+    save.activeBattleLoadoutId = save.battleLoadouts[0]?.id || "loadout_1";
+  }
+
+  const index = save.battleLoadouts.findIndex((preset) => preset.id === save.activeBattleLoadoutId);
+  if (index < 0) return;
+
+  const current = battleLoadoutFromSave(save, save.battleLoadouts[index]);
+  const previous = save.battleLoadouts[index];
+  const changed =
+    previous.name !== current.name ||
+    previous.formationId !== current.formationId ||
+    previous.tacticalDeckId !== current.tacticalDeckId ||
+    previous.lineup.join("|") !== current.lineup.join("|") ||
+    previous.customTacticalDeck.formationHint !== current.customTacticalDeck.formationHint ||
+    previous.customTacticalDeck.cardIds.join("|") !== current.customTacticalDeck.cardIds.join("|") ||
+    previous.customTacticalDeck.tagHints.join("|") !== current.customTacticalDeck.tagHints.join("|");
+
+  save.battleLoadouts[index] = {
+    ...current,
+    updatedAt: changed && touch ? Date.now() : previous.updatedAt || current.updatedAt,
+  };
+}
+
+export function saveCurrentBattleLoadoutPreset(save: SaveData, presetId: string) {
+  save.battleLoadouts = normalizeBattleLoadouts(save.battleLoadouts, save);
+  const safeId = safeBattleLoadoutId(presetId) || "loadout_1";
+  const existingIndex = save.battleLoadouts.findIndex((preset) => preset.id === safeId);
+  const existing = existingIndex >= 0 ? save.battleLoadouts[existingIndex] : emptyBattleLoadoutPreset(safeId, save.battleLoadouts.length);
+  const preset = {
+    ...battleLoadoutFromSave(save, existing),
+    updatedAt: Date.now(),
+  };
+
+  if (existingIndex >= 0) save.battleLoadouts[existingIndex] = preset;
+  else save.battleLoadouts.push(preset);
+  save.activeBattleLoadoutId = safeId;
+  save.battleLoadouts = normalizeBattleLoadouts(save.battleLoadouts, save);
+}
+
+export function applyBattleLoadoutPreset(save: SaveData, presetId: string) {
+  save.battleLoadouts = normalizeBattleLoadouts(save.battleLoadouts, save);
+  const preset = save.battleLoadouts.find((item) => item.id === presetId);
+  if (!preset || preset.lineup.length <= 0) return false;
+
+  save.activeBattleLoadoutId = preset.id;
+  save.lineup = normalizeLineup(preset.lineup, save.characters);
+  save.preferences = {
+    ...normalizePreferences(save.preferences),
+    formationId: formationById(preset.formationId).id as FormationId,
+    tacticalDeckId: tacticalDeckById(preset.tacticalDeckId).id as TacticalDeckId,
+  };
+  save.customTacticalDeck = normalizeCustomTacticalDeck(preset.customTacticalDeck);
+  syncActiveBattleLoadoutPreset(save, false);
+  return true;
+}
+
+export function clearBattleLoadoutPreset(save: SaveData, presetId: string) {
+  if (save.activeBattleLoadoutId === presetId) return false;
+  save.battleLoadouts = normalizeBattleLoadouts(save.battleLoadouts, save).map((preset, index) =>
+    preset.id === presetId ? emptyBattleLoadoutPreset(preset.id, index) : preset,
+  );
+  return true;
+}
+
+export function normalizeBattleLoadouts(presets: Partial<BattleLoadoutPreset>[] = [], save: Pick<SaveData, "characters" | "lineup" | "preferences" | "customTacticalDeck" | "activeBattleLoadoutId">): BattleLoadoutPreset[] {
+  const slots = new Map<string, BattleLoadoutPreset>();
+  const rawPresets = Array.isArray(presets) ? presets : [];
+
+  for (const preset of rawPresets) {
+    const id = safeBattleLoadoutId(preset.id);
+    if (!id || slots.has(id)) continue;
+    slots.set(id, normalizeBattleLoadoutPreset(preset, save, slots.size));
+    if (slots.size >= 10) break;
+  }
+
+  for (let index = 0; index < 10; index += 1) {
+    const id = `loadout_${index + 1}`;
+    if (!slots.has(id)) slots.set(id, index === 0 ? battleLoadoutFromSave(save, emptyBattleLoadoutPreset(id, index)) : emptyBattleLoadoutPreset(id, index));
+  }
+
+  return [...slots.values()]
+    .sort((a, b) => battleLoadoutSortIndex(a.id) - battleLoadoutSortIndex(b.id))
+    .slice(0, 10);
+}
+
+function normalizeBattleLoadoutPreset(
+  preset: Partial<BattleLoadoutPreset>,
+  save: Pick<SaveData, "characters" | "lineup" | "preferences" | "customTacticalDeck" | "activeBattleLoadoutId">,
+  index: number,
+): BattleLoadoutPreset {
+  const id = safeBattleLoadoutId(preset.id) || `loadout_${index + 1}`;
+  const lineup = normalizePresetLineup(preset.lineup, save.characters);
+  return {
+    id,
+    name: typeof preset.name === "string" && preset.name.trim() ? preset.name.trim().slice(0, 12) : battleLoadoutSlotName(index),
+    lineup,
+    formationId: formationById(preset.formationId).id as FormationId,
+    tacticalDeckId: tacticalDeckById(preset.tacticalDeckId).id as TacticalDeckId,
+    customTacticalDeck: normalizeCustomTacticalDeck(preset.customTacticalDeck || save.customTacticalDeck),
+    updatedAt: Math.max(0, Math.floor(Number(preset.updatedAt || 0))),
+  };
+}
+
+function battleLoadoutFromSave(
+  save: Pick<SaveData, "characters" | "lineup" | "preferences" | "customTacticalDeck" | "activeBattleLoadoutId">,
+  existing: BattleLoadoutPreset,
+): BattleLoadoutPreset {
+  const preferences = normalizePreferences(save.preferences);
+  return {
+    id: existing.id,
+    name: existing.name || battleLoadoutSlotName(battleLoadoutSortIndex(existing.id)),
+    lineup: normalizeLineup(save.lineup, save.characters).slice(0, 3),
+    formationId: formationById(preferences.formationId).id as FormationId,
+    tacticalDeckId: tacticalDeckById(preferences.tacticalDeckId).id as TacticalDeckId,
+    customTacticalDeck: normalizeCustomTacticalDeck(save.customTacticalDeck),
+    updatedAt: existing.updatedAt || Date.now(),
+  };
+}
+
+function emptyBattleLoadoutPreset(id: string, index: number): BattleLoadoutPreset {
+  const preferences = defaultPreferences();
+  return {
+    id,
+    name: battleLoadoutSlotName(index),
+    lineup: [],
+    formationId: preferences.formationId,
+    tacticalDeckId: preferences.tacticalDeckId,
+    customTacticalDeck: defaultCustomTacticalDeck(),
+    updatedAt: 0,
+  };
+}
+
+function normalizePresetLineup(lineup: unknown, characterProgress: Record<string, CharacterProgress>) {
+  if (!Array.isArray(lineup)) return [];
+  const known = new Set(characters.map((character) => character.id));
+  const selected: string[] = [];
+  for (const id of lineup) {
+    if (typeof id !== "string" || !known.has(id) || selected.includes(id)) continue;
+    if (!characterProgress[id]?.owned) continue;
+    selected.push(id);
+    if (selected.length >= 3) break;
+  }
+  return selected;
+}
+
+function safeBattleLoadoutId(id: unknown) {
+  return typeof id === "string" && /^loadout_[a-zA-Z0-9_-]+$/.test(id) ? id : "";
+}
+
+function battleLoadoutSlotName(index: number) {
+  return `方案${["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"][Math.max(0, Math.min(9, index))] || index + 1}`;
+}
+
+function battleLoadoutSortIndex(id: string) {
+  const match = id.match(/^loadout_(\d+)$/);
+  if (match) return Number(match[1]) - 1;
+  return 100;
 }
 
 export function normalizePreferences(preferences: Partial<GamePreferences> = {}): GamePreferences {
@@ -312,6 +549,8 @@ export function normalizePreferences(preferences: Partial<GamePreferences> = {})
   const characterSortModes: CharacterSortMode[] = ["level", "rarity", "power", "attack"];
   const cosmeticEffectIntensities: CosmeticEffectIntensity[] = ["low", "medium", "high"];
   const speeds: Speed[] = [1, 2, 4];
+  const formationId = formationById(preferences.formationId).id as FormationId;
+  const tacticalDeckId = tacticalDeckById(preferences.tacticalDeckId).id as TacticalDeckId;
 
   return {
     autoBattleEnabled: Boolean(preferences.autoBattleEnabled ?? defaults.autoBattleEnabled),
@@ -329,6 +568,8 @@ export function normalizePreferences(preferences: Partial<GamePreferences> = {})
     cosmeticEffectIntensity: cosmeticEffectIntensities.includes(preferences.cosmeticEffectIntensity as CosmeticEffectIntensity)
       ? (preferences.cosmeticEffectIntensity as CosmeticEffectIntensity)
       : defaults.cosmeticEffectIntensity,
+    formationId,
+    tacticalDeckId,
   };
 }
 

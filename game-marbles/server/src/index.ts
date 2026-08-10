@@ -1,10 +1,10 @@
 import http from "node:http";
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { cosmeticConfigs, cosmeticPools } from "../../src/config/cosmetics";
+import { applyRuntimeContentConfig, cosmeticConfigs, cosmeticPools } from "../../src/config/cosmetics";
 import { defaultSave, normalizeSave } from "../../src/state/save";
 import type { PvpRankMode, SaveData, ShopReward } from "../../src/core/types";
-import { applyPvpRankResult } from "../../src/systems/pvp/rank";
+import { applyPvpRankResult, pvpRankDisplayLabel, pvpRankRecordText } from "../../src/systems/pvp/rank";
 import { pool, q, withTransaction } from "./db";
 import { env } from "./env";
 import {
@@ -88,6 +88,19 @@ const CHARACTER_LABELS = {
   voidbinder: "虚空使",
   treasurer: "财宝猎人",
 } as const;
+const CONFIG_RELEASE_ENVS = new Set(["test", "gray", "production"]);
+const CONFIG_RELEASE_STATUSES = new Set(["published", "scheduled", "archived"]);
+const CONFIG_MODULE_LABELS: Record<string, string> = {
+  marble: "弹珠幻化",
+  character: "角色服装",
+  hero: "角色设计",
+  skill: "技能设计",
+  tactic: "战术设计",
+  enemy: "怪物设计",
+  stage: "关卡设计",
+  gacha: "抽卡池",
+  shop: "商店投放",
+};
 const TICKET_LABELS = {
   insurance: "保险券",
   scan: "扫描券",
@@ -149,6 +162,28 @@ function sanitizeRedeemCode(value: unknown) {
     throw createApiError("INVALID_REDEEM_CODE", "兑换码格式不正确。", 400);
   }
   return code;
+}
+
+function sanitizeConfigEnvironment(value: unknown) {
+  const environment = String(value || "test").trim().toLowerCase();
+  return CONFIG_RELEASE_ENVS.has(environment) ? environment : "test";
+}
+
+function sanitizeConfigReleaseStatus(value: unknown) {
+  const status = String(value || "published").trim().toLowerCase();
+  return CONFIG_RELEASE_STATUSES.has(status) ? status : "published";
+}
+
+function cleanConfigText(value: unknown, fallback: string, maxLength: number) {
+  const text = String(value ?? "").trim().replace(/\s+/g, " ");
+  return (text || fallback).slice(0, maxLength);
+}
+
+function isoDate(value: unknown) {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  const time = new Date(String(value)).getTime();
+  return Number.isFinite(time) ? new Date(time).toISOString() : null;
 }
 
 function rewardAmount(value: unknown, max = 100_000) {
@@ -450,6 +485,455 @@ async function getUserProfile(userId: string): Promise<UserProfile> {
   return rowToProfile(result.rows[0]);
 }
 
+function clampInteger(value: unknown, min: number, max: number, fallback: number) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
+}
+
+function sanitizeAdminUserStatus(value: unknown) {
+  const status = String(value || "active").trim().toLowerCase();
+  if (status === "active" || status === "banned" || status === "disabled") return status;
+  throw createApiError("INVALID_USER_STATUS", "用户状态不正确。", 400);
+}
+
+function sanitizeRedeemCodeStatus(value: unknown) {
+  const status = String(value || "active").trim().toLowerCase();
+  if (status === "active" || status === "draft" || status === "paused" || status === "disabled") return status;
+  throw createApiError("INVALID_REDEEM_CODE_STATUS", "兑换码状态不正确。", 400);
+}
+
+function sanitizeOptionalDate(value: unknown, field: string) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) throw createApiError("INVALID_DATE", `${field} 时间格式不正确。`, 400);
+  return date.toISOString();
+}
+
+function assertUuid(value: string, code = "INVALID_USER_ID") {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+    throw createApiError(code, "用户 ID 格式不正确。", 400);
+  }
+  return value;
+}
+
+function adminUserRuntimeStatus(row: any) {
+  const bannedUntil = row.banned_until ? new Date(row.banned_until).getTime() : 0;
+  if (row.status === "disabled") return "disabled";
+  if (row.status === "banned" || bannedUntil > Date.now()) return "banned";
+  return "active";
+}
+
+function adminSaveSummary(snapshot: unknown) {
+  const save = normalizeIncomingSave(snapshot || defaultSave());
+  const ownedCharacters = Object.values(save.characters || {}).filter((item: any) => Boolean(item?.owned)).length;
+  const ownedCosmetics = Object.values(save.cosmetics?.owned || {}).filter((count) => Number(count) > 0).length;
+  const clearedStages = Object.values(save.progress?.clearedStages || {}).filter((stage: any) => Boolean(stage?.cleared)).length;
+  const duelRank = save.pvpRanks?.duel;
+  const battleRoyaleRank = save.pvpRanks?.battle_royale;
+
+  return {
+    coins: Math.max(0, Math.floor(Number(save.coins) || 0)),
+    energyCrystals: Math.max(0, Math.floor(Number(save.energyCrystals) || 0)),
+    pvpCoins: Math.max(0, Math.floor(Number(save.pvpCoins) || 0)),
+    runs: Math.max(0, Math.floor(Number(save.runs) || 0)),
+    wins: Math.max(0, Math.floor(Number(save.wins) || 0)),
+    bestWave: Math.max(0, Math.floor(Number(save.bestWave) || 0)),
+    bestEndlessWave: Math.max(0, Math.floor(Number(save.bestEndlessWave) || 0)),
+    selectedStage: save.selectedStage,
+    clearedStages,
+    unlockedStage: Math.max(1, Math.floor(Number(save.progress?.unlockedStage) || 1)),
+    ownedCharacters,
+    ownedCosmetics,
+    duelRank: duelRank ? pvpRankDisplayLabel(duelRank) : "未定级",
+    duelRecord: duelRank ? pvpRankRecordText(duelRank) : "0胜 0负",
+    battleRoyaleRank: battleRoyaleRank ? pvpRankDisplayLabel(battleRoyaleRank) : "未定级",
+  };
+}
+
+function rowToAdminManagedUser(row: any) {
+  return {
+    userId: row.id,
+    username: row.username || "",
+    guestId: row.guest_id || "",
+    nickname: row.nickname || defaultNickname(row.id),
+    avatar: row.avatar || "avatar_green",
+    isGuest: !row.username,
+    status: adminUserRuntimeStatus(row),
+    rawStatus: row.status || "active",
+    bannedUntil: row.banned_until || null,
+    createdAt: row.created_at || null,
+    lastLoginAt: row.last_login_at || null,
+    lastSeenAt: row.last_seen_at || null,
+    activeSessions: Number(row.active_sessions || 0),
+    playerRevision: Number(row.revision || 0),
+    playerUpdatedAt: row.state_updated_at || null,
+    summary: adminSaveSummary(row.snapshot),
+  };
+}
+
+function redeemRewardLabel(reward: ShopReward) {
+  if (reward.type === "coins") return `金币 ${reward.amount}`;
+  if (reward.type === "pvpCoins") return `竞技币 ${reward.amount}`;
+  if (reward.type === "energyCrystals") return `能源晶体 ${reward.amount}`;
+  if (reward.type === "marbleShard") return `${MARBLE_LABELS[reward.marbleId]}碎片 ${reward.amount}`;
+  if (reward.type === "randomMarbleShard") return `随机弹珠碎片 ${reward.amount}`;
+  if (reward.type === "gem") return `${GEM_LABELS[reward.gemType]} Lv.${reward.level} x${reward.amount}`;
+  if (reward.type === "collectible") return `${COLLECTIBLE_LABELS[reward.collectibleId]} ${reward.amount}`;
+  if (reward.type === "characterUnlock") return `${CHARACTER_LABELS[reward.characterId as keyof typeof CHARACTER_LABELS]} 解锁`;
+  if (reward.type === "ticket") return `${TICKET_LABELS[reward.ticketId]} ${reward.amount}`;
+  if (reward.type === "allMarbleCosmetics") return "弹珠幻化全套";
+  return "奖励";
+}
+
+function rowToAdminRedeemCode(row: any) {
+  const rewards = normalizeRedeemRewards(row.rewards);
+  const maxUses = row.max_uses === null || row.max_uses === undefined ? null : Number(row.max_uses);
+  const usedCount = Number(row.used_count || 0);
+  return {
+    code: row.code,
+    id: row.code,
+    title: row.title || row.code,
+    status: row.status || "draft",
+    startsAt: row.starts_at || null,
+    endsAt: row.ends_at || null,
+    maxUses,
+    usedCount,
+    remaining: maxUses === null ? null : Math.max(0, maxUses - usedCount),
+    rewards,
+    rewardLabels: rewards.map(redeemRewardLabel),
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+  };
+}
+
+function adminRedeemWhereClause(searchParams: URLSearchParams) {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  const status = String(searchParams.get("status") || "all").trim().toLowerCase();
+  const query = String(searchParams.get("query") || "").trim().toUpperCase().slice(0, 64);
+
+  if (query) {
+    params.push(`%${query}%`);
+    const index = params.length;
+    where.push(`(upper(code) like $${index} or upper(title) like $${index})`);
+  }
+
+  if (status === "active" || status === "draft" || status === "paused" || status === "disabled") {
+    params.push(status);
+    where.push(`status = $${params.length}`);
+  } else if (status === "expired") {
+    where.push(`ends_at is not null and ends_at <= now()`);
+  } else if (status !== "all") {
+    throw createApiError("INVALID_REDEEM_CODE_STATUS_FILTER", "兑换码状态筛选不正确。", 400);
+  }
+
+  return {
+    whereSql: where.length ? `where ${where.join(" and ")}` : "",
+    params,
+    status,
+    query,
+  };
+}
+
+async function handleAdminRedeemCodesList(searchParams: URLSearchParams) {
+  const limit = clampInteger(searchParams.get("limit"), 10, 100, 50);
+  const offset = clampInteger(searchParams.get("offset"), 0, 100_000, 0);
+  const filter = adminRedeemWhereClause(searchParams);
+  const count = await pool.query(`select count(*)::int as count from ${q("gm_redeem_codes")} ${filter.whereSql}`, filter.params);
+  const params = [...filter.params, limit, offset];
+  const result = await pool.query(
+    `
+      select
+        c.code,
+        c.title,
+        c.status,
+        c.starts_at,
+        c.ends_at,
+        c.max_uses,
+        c.rewards,
+        c.created_at,
+        c.updated_at,
+        coalesce(r.used_count, 0)::int as used_count
+      from ${q("gm_redeem_codes")} c
+      left join lateral (
+        select count(*)::int as used_count
+        from ${q("gm_redeem_redemptions")}
+        where code = c.code
+      ) r on true
+      ${filter.whereSql}
+      order by c.updated_at desc, c.created_at desc, c.code asc
+      limit $${params.length - 1}
+      offset $${params.length}
+    `,
+    params,
+  );
+
+  return {
+    codes: result.rows.map(rowToAdminRedeemCode),
+    total: Number(count.rows[0]?.count || 0),
+    limit,
+    offset,
+    query: filter.query,
+    status: filter.status,
+    serverTime: Date.now(),
+  };
+}
+
+async function handleAdminRedeemCodeDetail(codeValue: string) {
+  const code = sanitizeRedeemCode(codeValue);
+  const result = await pool.query(
+    `
+      select
+        c.code,
+        c.title,
+        c.status,
+        c.starts_at,
+        c.ends_at,
+        c.max_uses,
+        c.rewards,
+        c.created_at,
+        c.updated_at,
+        coalesce(r.used_count, 0)::int as used_count
+      from ${q("gm_redeem_codes")} c
+      left join lateral (
+        select count(*)::int as used_count
+        from ${q("gm_redeem_redemptions")}
+        where code = c.code
+      ) r on true
+      where c.code = $1
+    `,
+    [code],
+  );
+  if (!result.rowCount) throw createApiError("REDEEM_CODE_NOT_FOUND", "兑换码不存在。", 404);
+  const redemptions = await pool.query(
+    `
+      select
+        r.user_id,
+        r.reward_labels,
+        r.redeemed_at,
+        u.username,
+        u.nickname,
+        u.guest_id
+      from ${q("gm_redeem_redemptions")} r
+      left join ${q("gm_users")} u on u.id = r.user_id
+      where r.code = $1
+      order by r.redeemed_at desc
+      limit 30
+    `,
+    [code],
+  );
+
+  return {
+    code: rowToAdminRedeemCode(result.rows[0]),
+    redemptions: redemptions.rows.map((row) => ({
+      userId: row.user_id,
+      username: row.username || "",
+      guestId: row.guest_id || "",
+      nickname: row.nickname || defaultNickname(String(row.user_id || "")),
+      rewardLabels: Array.isArray(row.reward_labels) ? row.reward_labels : [],
+      redeemedAt: row.redeemed_at || null,
+    })),
+    serverTime: Date.now(),
+  };
+}
+
+async function handleAdminSaveRedeemCode(pathCode: string | null, body: any) {
+  const code = sanitizeRedeemCode(pathCode || body.code);
+  if (pathCode && body.code && sanitizeRedeemCode(body.code) !== code) {
+    throw createApiError("REDEEM_CODE_IMMUTABLE", "兑换码创建后不能改码，请新建兑换码。", 400);
+  }
+  const title = String(body.title || "").trim().slice(0, 48);
+  if (!title) throw createApiError("INVALID_REDEEM_TITLE", "请输入兑换码标题。", 400);
+  const status = sanitizeRedeemCodeStatus(body.status);
+  const startsAt = sanitizeOptionalDate(body.startsAt ?? body.starts_at, "开始");
+  const endsAt = sanitizeOptionalDate(body.endsAt ?? body.ends_at, "结束");
+  if (startsAt && endsAt && new Date(startsAt).getTime() >= new Date(endsAt).getTime()) {
+    throw createApiError("INVALID_REDEEM_TIME_RANGE", "结束时间必须晚于开始时间。", 400);
+  }
+  const maxUsesRaw = body.maxUses ?? body.max_uses;
+  const maxUses =
+    maxUsesRaw === null || maxUsesRaw === undefined || String(maxUsesRaw).trim() === ""
+      ? null
+      : Math.max(1, Math.min(1_000_000, Math.floor(Number(maxUsesRaw) || 0)));
+  const rewards = normalizeRedeemRewards(body.rewards);
+  if (rewards.length <= 0) throw createApiError("REDEEM_CODE_EMPTY", "至少配置 1 个有效奖励。", 400);
+
+  await pool.query(
+    `
+      insert into ${q("gm_redeem_codes")} (code, title, status, starts_at, ends_at, max_uses, rewards, updated_at)
+      values ($1, $2, $3, $4, $5, $6, $7::jsonb, now())
+      on conflict (code) do update
+      set title = excluded.title,
+          status = excluded.status,
+          starts_at = excluded.starts_at,
+          ends_at = excluded.ends_at,
+          max_uses = excluded.max_uses,
+          rewards = excluded.rewards,
+          updated_at = now()
+    `,
+    [code, title, status, startsAt, endsAt, maxUses, JSON.stringify(rewards)],
+  );
+
+  return handleAdminRedeemCodeDetail(code);
+}
+
+function adminUserWhereClause(searchParams: URLSearchParams) {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  const status = String(searchParams.get("status") || "all").trim().toLowerCase();
+  const query = String(searchParams.get("query") || "").trim().toLowerCase().slice(0, 64);
+
+  if (query) {
+    params.push(`%${query}%`);
+    const index = params.length;
+    where.push(
+      `(lower(coalesce(u.username, '')) like $${index} or lower(coalesce(u.nickname, '')) like $${index} or lower(coalesce(u.guest_id, '')) like $${index} or u.id::text like $${index})`,
+    );
+  }
+
+  if (status === "active") {
+    where.push(`u.status = 'active' and (u.banned_until is null or u.banned_until <= now())`);
+  } else if (status === "banned") {
+    where.push(`(u.status = 'banned' or u.banned_until > now())`);
+  } else if (status === "disabled") {
+    where.push(`u.status = 'disabled'`);
+  } else if (status !== "all") {
+    throw createApiError("INVALID_USER_STATUS_FILTER", "用户状态筛选不正确。", 400);
+  }
+
+  return {
+    whereSql: where.length ? `where ${where.join(" and ")}` : "",
+    params,
+    status,
+    query,
+  };
+}
+
+async function handleAdminUsersList(searchParams: URLSearchParams) {
+  const limit = clampInteger(searchParams.get("limit"), 10, 80, 40);
+  const offset = clampInteger(searchParams.get("offset"), 0, 100_000, 0);
+  const filter = adminUserWhereClause(searchParams);
+  const count = await pool.query(`select count(*)::int as count from ${q("gm_users")} u ${filter.whereSql}`, filter.params);
+  const params = [...filter.params, limit, offset];
+  const result = await pool.query(
+    `
+      select
+        u.id,
+        u.username,
+        u.guest_id,
+        u.nickname,
+        u.avatar,
+        u.status,
+        u.banned_until,
+        u.created_at,
+        u.last_login_at,
+        ps.revision,
+        ps.updated_at as state_updated_at,
+        ps.snapshot,
+        sess.last_seen_at,
+        sess.active_sessions
+      from ${q("gm_users")} u
+      left join ${q("gm_player_states")} ps on ps.user_id = u.id
+      left join lateral (
+        select max(last_seen_at) as last_seen_at, count(*)::int as active_sessions
+        from ${q("gm_auth_sessions")}
+        where user_id = u.id and expires_at > now()
+      ) sess on true
+      ${filter.whereSql}
+      order by u.last_login_at desc nulls last, u.created_at desc
+      limit $${params.length - 1}
+      offset $${params.length}
+    `,
+    params,
+  );
+
+  return {
+    users: result.rows.map(rowToAdminManagedUser),
+    total: Number(count.rows[0]?.count || 0),
+    limit,
+    offset,
+    query: filter.query,
+    status: filter.status,
+    serverTime: Date.now(),
+  };
+}
+
+async function handleAdminUserDetail(userId: string) {
+  assertUuid(userId);
+  const result = await pool.query(
+    `
+      select
+        u.id,
+        u.username,
+        u.guest_id,
+        u.nickname,
+        u.avatar,
+        u.status,
+        u.banned_until,
+        u.created_at,
+        u.last_login_at,
+        ps.revision,
+        ps.updated_at as state_updated_at,
+        ps.snapshot,
+        sess.last_seen_at,
+        sess.active_sessions
+      from ${q("gm_users")} u
+      left join ${q("gm_player_states")} ps on ps.user_id = u.id
+      left join lateral (
+        select max(last_seen_at) as last_seen_at, count(*)::int as active_sessions
+        from ${q("gm_auth_sessions")}
+        where user_id = u.id and expires_at > now()
+      ) sess on true
+      where u.id = $1
+    `,
+    [userId],
+  );
+  if (!result.rowCount) throw createApiError("USER_NOT_FOUND", "用户不存在。", 404);
+  return { user: rowToAdminManagedUser(result.rows[0]), serverTime: Date.now() };
+}
+
+async function handleAdminUpdateUserProfile(userId: string, body: any) {
+  assertUuid(userId);
+  const nickname = sanitizeNickname(body.nickname, userId);
+  const avatar = sanitizeAvatar(body.avatar);
+  const result = await pool.query(
+    `
+      update ${q("gm_users")}
+      set nickname = $2,
+          avatar = $3
+      where id = $1
+      returning id
+    `,
+    [userId, nickname, avatar],
+  );
+  if (!result.rowCount) throw createApiError("USER_NOT_FOUND", "用户不存在。", 404);
+  return handleAdminUserDetail(userId);
+}
+
+async function handleAdminUpdateUserStatus(userId: string, body: any) {
+  assertUuid(userId);
+  const status = sanitizeAdminUserStatus(body.status);
+  const banHours = clampInteger(body.banHours, 1, 24 * 365, 24);
+  const bannedUntil = status === "banned" ? new Date(Date.now() + banHours * 60 * 60 * 1000).toISOString() : null;
+  const result = await pool.query(
+    `
+      update ${q("gm_users")}
+      set status = $2,
+          banned_until = $3
+      where id = $1
+      returning id
+    `,
+    [userId, status, bannedUntil],
+  );
+  if (!result.rowCount) throw createApiError("USER_NOT_FOUND", "用户不存在。", 404);
+  if (status !== "active") {
+    await pool.query(`delete from ${q("gm_auth_sessions")} where user_id = $1`, [userId]);
+  }
+  return handleAdminUserDetail(userId);
+}
+
 async function createAuthSession(userId: string, deviceId: string) {
   const token = createToken();
   await pool.query(
@@ -483,6 +967,7 @@ async function getAdminProfile(adminId: string) {
 }
 
 async function savePlayerState(userId: string, state: SaveData) {
+  await loadRuntimeContentConfig(env.configEnvironment);
   const normalized = normalizeIncomingSave(state);
   const result = await pool.query(
     `
@@ -532,6 +1017,7 @@ async function handleAuthRegister(body: any) {
   const username = sanitizeUsername(body.username);
   const password = sanitizePassword(body.password);
   const deviceId = String(body.deviceId || randomUUID()).slice(0, 160);
+  const contentConfig = await loadRuntimeContentConfig(env.configEnvironment);
   const userId = randomUUID();
   const { salt, hash } = hashPassword(password);
   const localSave = body.localSave ? normalizeIncomingSave(body.localSave) : undefined;
@@ -555,6 +1041,8 @@ async function handleAuthRegister(body: any) {
     accessToken: token,
     playerRevision: player.revision,
     playerState: player.snapshot,
+    configVersion: contentConfig?.configVersion || CONFIG_VERSION,
+    contentConfig,
   };
 }
 
@@ -562,6 +1050,7 @@ async function handleAuthLogin(body: any) {
   const username = sanitizeUsername(body.username);
   const password = sanitizePassword(body.password);
   const deviceId = String(body.deviceId || randomUUID()).slice(0, 160);
+  const contentConfig = await loadRuntimeContentConfig(env.configEnvironment);
   const result = await pool.query(
     `
       select id, guest_id, username, nickname, avatar, password_hash, password_salt
@@ -586,6 +1075,8 @@ async function handleAuthLogin(body: any) {
     accessToken: token,
     playerRevision: player.revision,
     playerState: player.snapshot,
+    configVersion: contentConfig?.configVersion || CONFIG_VERSION,
+    contentConfig,
   };
 }
 
@@ -616,8 +1107,221 @@ async function handleAdminLogin(body: any) {
   };
 }
 
+function normalizeConfigReleaseBundle(value: unknown) {
+  if (!value || typeof value !== "object") {
+    throw createApiError("INVALID_CONFIG_BUNDLE", "配置包格式不正确。", 400);
+  }
+  const raw = value as Record<string, any>;
+  const configVersion = cleanConfigText(raw.configVersion, `content-${Date.now()}`, 96);
+  const title = cleanConfigText(raw.title, "内容配置发布", 80);
+  const environment = sanitizeConfigEnvironment(raw.environment);
+  const mode = raw.mode === "scheduled" ? "scheduled" : "now";
+  const scheduledAt = mode === "scheduled" ? isoDate(raw.scheduledAt) || new Date(Date.now() + 60 * 60 * 1000).toISOString() : null;
+  const modules = raw.modules && typeof raw.modules === "object" ? raw.modules : {};
+  const totalItems = Object.values(modules).reduce((sum, module: any) => sum + (Array.isArray(module?.items) ? module.items.length : 0), 0);
+  if (totalItems <= 0) {
+    throw createApiError("EMPTY_CONFIG_BUNDLE", "没有可发布的配置项。", 400);
+  }
+
+  return {
+    ...raw,
+    configVersion,
+    title,
+    environment,
+    mode,
+    scheduledAt,
+    createdAt: isoDate(raw.createdAt) || new Date().toISOString(),
+    summary: {
+      modules: Object.keys(modules).length,
+      totalItems,
+      byModule:
+        raw.summary?.byModule && typeof raw.summary.byModule === "object"
+          ? raw.summary.byModule
+          : Object.fromEntries(Object.entries(modules).map(([moduleId, module]) => [moduleId, Array.isArray((module as any)?.items) ? (module as any).items.length : 0])),
+    },
+    modules,
+  };
+}
+
+function rowToAdminConfigRelease(row: any) {
+  return {
+    id: row.id,
+    kind: "release",
+    title: row.title,
+    configVersion: row.config_version,
+    environment: row.environment,
+    status: row.status,
+    createdAt: isoDate(row.created_at),
+    publishedAt: isoDate(row.published_at),
+    author: row.author_username || row.author_nickname || "",
+    bundle: row.bundle && typeof row.bundle === "object" ? row.bundle : {},
+  };
+}
+
+async function handleAdminConfigReleasesList(searchParams: URLSearchParams) {
+  const limit = Math.max(1, Math.min(60, Number(searchParams.get("limit")) || 30));
+  const environment = searchParams.get("environment") ? sanitizeConfigEnvironment(searchParams.get("environment")) : "";
+  const rawStatus = String(searchParams.get("status") || "").trim().toLowerCase();
+  const status = rawStatus && rawStatus !== "all" ? sanitizeConfigReleaseStatus(rawStatus) : "";
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (environment) {
+    params.push(environment);
+    where.push(`r.environment = $${params.length}`);
+  }
+  if (status && status !== "all") {
+    params.push(status);
+    where.push(`r.status = $${params.length}`);
+  }
+  const whereSql = where.length ? `where ${where.join(" and ")}` : "";
+  params.push(limit);
+
+  const result = await pool.query(
+    `
+      select
+        r.id,
+        r.config_version,
+        r.title,
+        r.environment,
+        r.status,
+        r.bundle,
+        r.created_at,
+        r.published_at,
+        a.username as author_username,
+        a.nickname as author_nickname
+      from ${q("gm_config_releases")} r
+      left join ${q("gm_admin_users")} a on a.id = r.created_by
+      ${whereSql}
+      order by r.created_at desc
+      limit $${params.length}
+    `,
+    params,
+  );
+
+  return {
+    releases: result.rows.map(rowToAdminConfigRelease),
+    total: result.rows.length,
+    serverTime: Date.now(),
+  };
+}
+
+async function handleAdminConfigReleaseDetail(id: string) {
+  const releaseId = cleanConfigText(id, "", 96).replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!releaseId) throw createApiError("INVALID_RELEASE_ID", "发布版本 ID 不正确。", 400);
+  const result = await pool.query(
+    `
+      select
+        r.id,
+        r.config_version,
+        r.title,
+        r.environment,
+        r.status,
+        r.bundle,
+        r.created_at,
+        r.published_at,
+        a.username as author_username,
+        a.nickname as author_nickname
+      from ${q("gm_config_releases")} r
+      left join ${q("gm_admin_users")} a on a.id = r.created_by
+      where r.id = $1
+    `,
+    [releaseId],
+  );
+  if (!result.rowCount) throw createApiError("CONFIG_RELEASE_NOT_FOUND", "发布版本不存在。", 404);
+  return { release: rowToAdminConfigRelease(result.rows[0]), serverTime: Date.now() };
+}
+
+async function handleAdminCreateConfigRelease(auth: AdminAuthContext, body: any) {
+  const bundle = normalizeConfigReleaseBundle(body.bundle || body);
+  const id = `release_${Date.now()}_${randomUUID().slice(0, 8)}`;
+  const status = bundle.mode === "scheduled" ? "scheduled" : "published";
+  const publishedAt = bundle.mode === "scheduled" ? bundle.scheduledAt : new Date().toISOString();
+
+  const result = await pool.query(
+    `
+      insert into ${q("gm_config_releases")}
+        (id, config_version, title, environment, status, bundle, created_by, published_at)
+      values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+      returning id, config_version, title, environment, status, bundle, created_at, published_at
+    `,
+    [id, bundle.configVersion, bundle.title, bundle.environment, status, JSON.stringify(bundle), auth.adminId, publishedAt],
+  );
+
+  return {
+    release: rowToAdminConfigRelease({ ...result.rows[0], author_username: "" }),
+    serverTime: Date.now(),
+  };
+}
+
+function mergeRuntimeContentConfig(rows: any[], environment: string) {
+  if (!rows.length) return null;
+  const moduleMaps = new Map<string, Map<string, any>>();
+  for (const row of rows) {
+    const bundle = row.bundle && typeof row.bundle === "object" ? row.bundle : {};
+    const modules = bundle.modules && typeof bundle.modules === "object" ? bundle.modules : {};
+    for (const [moduleId, modulePayload] of Object.entries(modules)) {
+      const items = Array.isArray((modulePayload as any)?.items) ? (modulePayload as any).items : [];
+      if (!moduleMaps.has(moduleId)) moduleMaps.set(moduleId, new Map());
+      const itemMap = moduleMaps.get(moduleId)!;
+      for (const item of items) {
+        const id = cleanConfigText(item?.id || item?.config?.id, "", 96);
+        if (!id) continue;
+        itemMap.set(id, {
+          id,
+          config: item?.config || item,
+        });
+      }
+    }
+  }
+
+  const latest = rows[rows.length - 1];
+  const modules = Object.fromEntries(
+    Array.from(moduleMaps.entries()).map(([moduleId, itemMap]) => [
+      moduleId,
+      {
+        label: CONFIG_MODULE_LABELS[moduleId] || moduleId,
+        items: Array.from(itemMap.values()),
+      },
+    ]),
+  );
+  const totalItems = Object.values(modules).reduce((sum, module: any) => sum + (Array.isArray(module.items) ? module.items.length : 0), 0);
+
+  return {
+    configVersion: latest.config_version || CONFIG_VERSION,
+    title: latest.title || "内容配置",
+    environment,
+    mode: "compiled",
+    createdAt: isoDate(latest.created_at),
+    publishedAt: isoDate(latest.published_at),
+    summary: {
+      modules: Object.keys(modules).length,
+      totalItems,
+      byModule: Object.fromEntries(Object.entries(modules).map(([moduleId, module]: any) => [moduleId, module.items.length])),
+    },
+    modules,
+  };
+}
+
+async function loadRuntimeContentConfig(environment: string) {
+  const result = await pool.query(
+    `
+      select id, config_version, title, environment, status, bundle, created_at, published_at
+      from ${q("gm_config_releases")}
+      where environment = $1
+        and status in ('published', 'scheduled')
+        and (published_at is null or published_at <= now())
+      order by coalesce(published_at, created_at) asc, created_at asc
+    `,
+    [sanitizeConfigEnvironment(environment)],
+  );
+  const contentConfig = mergeRuntimeContentConfig(result.rows, sanitizeConfigEnvironment(environment));
+  if (contentConfig) applyRuntimeContentConfig(contentConfig);
+  return contentConfig;
+}
+
 async function handleAuthGuest(body: any) {
   const deviceId = String(body.deviceId || body.guestId || randomUUID()).slice(0, 160);
+  const contentConfig = await loadRuntimeContentConfig(env.configEnvironment);
   const guestId = `guest:${deviceId}`;
   const userId = randomUUID();
   const localSave = body.localSave ? normalizeIncomingSave(body.localSave) : undefined;
@@ -642,10 +1346,13 @@ async function handleAuthGuest(body: any) {
     isNewUser: Boolean(result.rows[0].inserted),
     playerRevision: player.revision,
     playerState: player.snapshot,
+    configVersion: contentConfig?.configVersion || CONFIG_VERSION,
+    contentConfig,
   };
 }
 
 async function handleBootstrap(auth: AuthContext) {
+  const contentConfig = await loadRuntimeContentConfig(env.configEnvironment);
   const player = await ensurePlayerState(auth.userId);
   const profile = await getUserProfile(auth.userId);
   const activities = await pool.query(
@@ -664,7 +1371,9 @@ async function handleBootstrap(auth: AuthContext) {
     user: profile,
     playerRevision: player.revision,
     playerState: player.snapshot,
-    configVersion: CONFIG_VERSION,
+    configVersion: contentConfig?.configVersion || CONFIG_VERSION,
+    baseConfigVersion: CONFIG_VERSION,
+    contentConfig,
     activities: activities.rows,
     featureFlags: {},
     notices: [],
@@ -692,6 +1401,7 @@ async function handleProfileUpdate(auth: AuthContext, body: any) {
 }
 
 async function handleSaveState(auth: AuthContext, body: any) {
+  await loadRuntimeContentConfig(env.configEnvironment);
   const state = normalizeIncomingSave(body.state);
   const saved = await savePlayerState(auth.userId, state);
   return {
@@ -702,6 +1412,7 @@ async function handleSaveState(auth: AuthContext, body: any) {
 }
 
 async function handleRedeemCode(auth: AuthContext, body: any) {
+  await loadRuntimeContentConfig(env.configEnvironment);
   const code = sanitizeRedeemCode(body.code);
 
   return withTransaction(async (client) => {
@@ -943,6 +1654,7 @@ function pvpCoinRewardForRankSummary(summary: ReturnType<typeof sanitizePvpRankS
 }
 
 async function handlePvpRankFinish(auth: AuthContext, body: any) {
+  await loadRuntimeContentConfig(env.configEnvironment);
   const mode = sanitizePvpRankMode(body.mode);
   const result = body.result === "lose" ? "lose" : "win";
   const summary = sanitizePvpRankSummary(body.summary);
@@ -1056,6 +1768,60 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     const adminAuth = await requireAdminAuth(req);
     if (req.method === "GET" && path === "/api/admin/session") {
       sendJson(req, res, 200, { admin: await getAdminProfile(adminAuth.adminId), serverTime: Date.now() });
+      return;
+    }
+    if (req.method === "GET" && path === "/api/admin/config-releases") {
+      sendJson(req, res, 200, await handleAdminConfigReleasesList(url.searchParams));
+      return;
+    }
+    if (req.method === "POST" && path === "/api/admin/config-releases") {
+      const body = await readJson(req);
+      sendJson(req, res, 200, await handleAdminCreateConfigRelease(adminAuth, body));
+      return;
+    }
+    const adminConfigReleaseMatch = /^\/api\/admin\/config-releases\/([^/]+)$/i.exec(path);
+    if (req.method === "GET" && adminConfigReleaseMatch) {
+      sendJson(req, res, 200, await handleAdminConfigReleaseDetail(decodeURIComponent(adminConfigReleaseMatch[1])));
+      return;
+    }
+    if (req.method === "GET" && path === "/api/admin/users") {
+      sendJson(req, res, 200, await handleAdminUsersList(url.searchParams));
+      return;
+    }
+    if (req.method === "GET" && path === "/api/admin/redeem-codes") {
+      sendJson(req, res, 200, await handleAdminRedeemCodesList(url.searchParams));
+      return;
+    }
+    if (req.method === "POST" && path === "/api/admin/redeem-codes") {
+      const body = await readJson(req);
+      sendJson(req, res, 200, await handleAdminSaveRedeemCode(null, body));
+      return;
+    }
+    const adminRedeemCodeMatch = /^\/api\/admin\/redeem-codes\/([^/]+)$/i.exec(path);
+    if (req.method === "GET" && adminRedeemCodeMatch) {
+      sendJson(req, res, 200, await handleAdminRedeemCodeDetail(decodeURIComponent(adminRedeemCodeMatch[1])));
+      return;
+    }
+    if (req.method === "POST" && adminRedeemCodeMatch) {
+      const body = await readJson(req);
+      sendJson(req, res, 200, await handleAdminSaveRedeemCode(decodeURIComponent(adminRedeemCodeMatch[1]), body));
+      return;
+    }
+    const adminUserMatch = /^\/api\/admin\/users\/([0-9a-f-]{36})$/i.exec(path);
+    if (req.method === "GET" && adminUserMatch) {
+      sendJson(req, res, 200, await handleAdminUserDetail(adminUserMatch[1]));
+      return;
+    }
+    const adminUserProfileMatch = /^\/api\/admin\/users\/([0-9a-f-]{36})\/profile$/i.exec(path);
+    if (req.method === "POST" && adminUserProfileMatch) {
+      const body = await readJson(req);
+      sendJson(req, res, 200, await handleAdminUpdateUserProfile(adminUserProfileMatch[1], body));
+      return;
+    }
+    const adminUserStatusMatch = /^\/api\/admin\/users\/([0-9a-f-]{36})\/status$/i.exec(path);
+    if (req.method === "POST" && adminUserStatusMatch) {
+      const body = await readJson(req);
+      sendJson(req, res, 200, await handleAdminUpdateUserStatus(adminUserStatusMatch[1], body));
       return;
     }
     sendJson(req, res, 404, { code: "NOT_FOUND", message: `No admin route for ${req.method} ${path}` });

@@ -35,6 +35,7 @@ import type {
   Enemy,
   EnemyType,
   ExtractionResult,
+  FormationId,
   GemType,
   InventoryData,
   LeaderboardBoardId,
@@ -54,6 +55,7 @@ import type {
   ShopItemConfig,
   Speed,
   StageConfig,
+  TacticalDeckId,
   UpgradeCard,
   VisualEffect,
   WaveConfig,
@@ -66,6 +68,8 @@ import { metaUpgrades } from "./config/meta-upgrades";
 import { shopCategories } from "./config/shop";
 import { getStageById, getStageByIndex, stages } from "./config/stages";
 import { upgradeCards } from "./config/upgrades";
+import { formationById } from "./config/formations";
+import { tacticalDeckById } from "./config/tactical-decks";
 import { byId } from "./app/dom";
 import { formatTime } from "./core/format";
 import { clamp, easeInOutCubic, easeOutCubic, lerp, rotate, roundRect } from "./core/math";
@@ -75,11 +79,16 @@ import {
   defaultCharacterProgress,
   defaultInventory,
   defaultSave,
+  applyBattleLoadoutPreset,
+  clearBattleLoadoutPreset,
   loadSave,
   normalizeBaseGems,
   normalizeCharacterMarbles,
+  normalizeCustomTacticalDeck,
   normalizeLineup,
+  saveCurrentBattleLoadoutPreset,
   saveGame,
+  syncActiveBattleLoadoutPreset,
   syncCharacterUnlocks,
 } from "./state/save";
 import { normalizeVelocity, reflectVelocity } from "./systems/battle/physics";
@@ -137,6 +146,7 @@ import {
   upgradeCardTierLabel,
   upgradeCardTypeLabel,
 } from "./systems/progression/tactical-upgrades";
+import { applyBattleBuildStart, createBattleBuild } from "./systems/progression/combat-build";
 import { xpNeedForLevel } from "./systems/progression/xp";
 import { pvpRankDisplayLabel, pvpRankMatchScore } from "./systems/pvp/rank";
 import {
@@ -350,6 +360,12 @@ class MarblesGame {
   private heroLineupPickerOpen = false;
   private heroMarbleSlot = 0;
   private heroMarblePickerOpen = false;
+  private loadoutConfigOpen = false;
+  private loadoutEditorPresetId = this.save.activeBattleLoadoutId;
+  private loadoutEditorSlot = 0;
+  private loadoutSidebarMode: "loadouts" | "decks" = "loadouts";
+  private loadoutDeckCardRarityFilter: "all" | Rarity = "all";
+  private loadoutDeckCardTagFilter = "all";
   private marbleDetailId: MarbleId | null = null;
   private menuNotice = "";
   private accountBusy = this.backend.hasStoredSession;
@@ -747,6 +763,9 @@ class MarblesGame {
       const shopTab = target.closest<HTMLElement>("[data-shop-tab]")?.dataset.shopTab as ShopCategory | undefined;
       const shopBuy = target.closest<HTMLElement>("[data-shop-buy]")?.dataset.shopBuy;
       const stageSelect = target.closest<HTMLElement>("[data-stage-select]")?.dataset.stageSelect;
+      const formationSelect = target.closest<HTMLElement>("[data-formation-select]")?.dataset.formationSelect as FormationId | undefined;
+      const deckSelect = target.closest<HTMLElement>("[data-tactical-deck-select]")?.dataset.tacticalDeckSelect as TacticalDeckId | undefined;
+      const deckCardToggle = target.closest<HTMLElement>("[data-deck-card-toggle]")?.dataset.deckCardToggle;
       const upgradeId = target.closest<HTMLElement>("[data-buy]")?.dataset.buy;
       const heroSelect = target.closest<HTMLElement>("[data-hero-select]")?.dataset.heroSelect;
       const heroCosmetic = target.closest<HTMLElement>("[data-hero-cosmetic]")?.dataset.heroCosmetic;
@@ -755,6 +774,28 @@ class MarblesGame {
       const heroLineupPicker = target.closest<HTMLElement>("[data-hero-lineup-picker]")?.dataset.heroLineupPicker;
       const heroLineupSlotButton = target.closest<HTMLElement>("[data-hero-lineup-slot]");
       const heroLineupRemove = target.closest<HTMLElement>("[data-hero-lineup-remove]")?.dataset.heroLineupRemove;
+      const loadoutConfigOpen = target.closest("[data-loadout-config-open]");
+      const loadoutConfigClose = target.closest("[data-loadout-config-close]");
+      const loadoutApply = target.closest<HTMLElement>("[data-loadout-apply]")?.dataset.loadoutApply;
+      const loadoutSave = target.closest<HTMLElement>("[data-loadout-save]")?.dataset.loadoutSave;
+      const loadoutClear = target.closest<HTMLElement>("[data-loadout-clear]")?.dataset.loadoutClear;
+      const loadoutEditSelect = target.closest<HTMLElement>("[data-loadout-edit-select]")?.dataset.loadoutEditSelect;
+      const battleLoadoutSelect = target.closest<HTMLElement>("[data-battle-loadout-select]")?.dataset.battleLoadoutSelect;
+      const loadoutSidebarMode = target.closest<HTMLElement>("[data-loadout-sidebar-mode]")?.dataset.loadoutSidebarMode as
+        | "loadouts"
+        | "decks"
+        | undefined;
+      const loadoutSlotSelect = target.closest<HTMLElement>("[data-loadout-slot-select]")?.dataset.loadoutSlotSelect;
+      const loadoutCharacter = target.closest<HTMLElement>("[data-loadout-character]")?.dataset.loadoutCharacter;
+      const loadoutFormation = target.closest<HTMLElement>("[data-loadout-formation]")?.dataset.loadoutFormation as FormationId | undefined;
+      const loadoutDeck = target.closest<HTMLElement>("[data-loadout-deck]")?.dataset.loadoutDeck as TacticalDeckId | undefined;
+      const loadoutDeckCard = target.closest<HTMLElement>("[data-loadout-deck-card]")?.dataset.loadoutDeckCard;
+      const loadoutDeckCardRarityFilter = target.closest<HTMLElement>("[data-loadout-deck-card-rarity-filter]")?.dataset.loadoutDeckCardRarityFilter as
+        | "all"
+        | Rarity
+        | undefined;
+      const loadoutDeckCardTagFilter = target.closest<HTMLElement>("[data-loadout-deck-card-tag-filter]")?.dataset.loadoutDeckCardTagFilter;
+      const loadoutCopyDeckToCustom = target.closest("[data-loadout-copy-deck-to-custom]");
       const heroSort = target.closest<HTMLElement>("[data-hero-sort]")?.dataset.heroSort as CharacterSortMode | undefined;
       const heroDetailTab = target.closest<HTMLElement>("[data-hero-detail-tab]")?.dataset.heroDetailTab as
         | HeroDetailTab
@@ -772,9 +813,14 @@ class MarblesGame {
         | undefined;
       const equipGemButton = target.closest<HTMLElement>("[data-gem-equip]");
       const unequipGem = target.closest<HTMLElement>("[data-gem-unequip]")?.dataset.gemUnequip;
+      const fuseGemBatch = target.closest<HTMLElement>("[data-gem-fuse-batch]")?.dataset.gemFuseBatch;
       const fuseGem = target.closest<HTMLElement>("[data-gem-fuse]")?.dataset.gemFuse;
       if (target.closest("[data-hero-modal-close]")) {
         this.closeHeroModal();
+        return;
+      }
+      if (target.dataset.loadoutConfigBackdrop !== undefined || loadoutConfigClose) {
+        this.closeLoadoutConfig();
         return;
       }
       if (target.dataset.battleTerminalBackdrop !== undefined) {
@@ -844,6 +890,66 @@ class MarblesGame {
       }
       if (heroSort) {
         this.setCharacterSortMode(heroSort);
+        return;
+      }
+      if (loadoutConfigOpen) {
+        this.openLoadoutConfig();
+        return;
+      }
+      if (loadoutApply) {
+        this.applyLoadoutPreset(loadoutApply);
+        return;
+      }
+      if (loadoutSave) {
+        this.saveLoadoutPreset(loadoutSave);
+        return;
+      }
+      if (loadoutClear) {
+        this.clearLoadoutPreset(loadoutClear);
+        return;
+      }
+      if (loadoutEditSelect) {
+        this.selectLoadoutPresetForEdit(loadoutEditSelect);
+        return;
+      }
+      if (battleLoadoutSelect) {
+        this.selectBattleLoadoutForStart(battleLoadoutSelect);
+        return;
+      }
+      if (loadoutSidebarMode) {
+        this.setLoadoutSidebarMode(loadoutSidebarMode);
+        return;
+      }
+      if (loadoutSlotSelect !== undefined) {
+        this.selectLoadoutSlot(Number(loadoutSlotSelect));
+        return;
+      }
+      if (loadoutCharacter) {
+        this.toggleLoadoutCharacter(loadoutCharacter);
+        return;
+      }
+      if (loadoutFormation) {
+        this.setLoadoutFormation(loadoutFormation);
+        return;
+      }
+      if (loadoutDeck) {
+        this.setLoadoutDeck(loadoutDeck);
+        return;
+      }
+      if (loadoutCopyDeckToCustom) {
+        this.copyLoadoutDeckToCustom();
+        return;
+      }
+      if (loadoutDeckCardRarityFilter) {
+        this.setLoadoutDeckCardRarityFilter(loadoutDeckCardRarityFilter);
+        return;
+      }
+      if (loadoutDeckCardTagFilter) {
+        this.setLoadoutDeckCardTagFilter(loadoutDeckCardTagFilter);
+        return;
+      }
+      if (loadoutDeckCard) {
+        this.toggleLoadoutDeckCard(loadoutDeckCard);
         return;
       }
       if (heroCosmetic) {
@@ -938,6 +1044,10 @@ class MarblesGame {
         this.unequipGem(Number(unequipGem));
         return;
       }
+      if (fuseGemBatch) {
+        this.fuseGemBatch(fuseGemBatch);
+        return;
+      }
       if (fuseGem) {
         this.fuseGem(fuseGem);
         return;
@@ -1007,6 +1117,22 @@ class MarblesGame {
         this.selectStage(stageSelect);
         return;
       }
+      if (formationSelect) {
+        this.save.preferences.formationId = formationById(formationSelect).id;
+        this.persistSave("formation-select");
+        this.renderMenu("home");
+        return;
+      }
+      if (deckSelect) {
+        this.save.preferences.tacticalDeckId = tacticalDeckById(deckSelect).id;
+        this.persistSave("tactical-deck-select");
+        this.renderMenu("home");
+        return;
+      }
+      if (deckCardToggle) {
+        this.toggleCustomDeckCard(deckCardToggle);
+        return;
+      }
       if (warehouseTab) {
         this.warehouseTab = warehouseTab;
         this.warehouseDetail = null;
@@ -1059,6 +1185,14 @@ class MarblesGame {
       if (action === "closeBattleTerminal") {
         this.battleTerminalOpen = false;
         this.renderMenu("home");
+        return;
+      }
+      if (action === "copyDeckToCustom") {
+        this.copyCurrentDeckToCustom();
+        return;
+      }
+      if (action === "resetCustomDeck") {
+        this.resetCustomTacticalDeck();
         return;
       }
       if (action === "openPvpShop") {
@@ -1127,6 +1261,22 @@ class MarblesGame {
       if (upgradeId) this.buyMetaUpgrade(upgradeId);
     });
 
+    this.menuScreen.addEventListener("dragstart", (event) => {
+      this.handleLoadoutDeckDragStart(event);
+    });
+    this.menuScreen.addEventListener("dragover", (event) => {
+      this.handleLoadoutDeckDragOver(event);
+    });
+    this.menuScreen.addEventListener("dragleave", (event) => {
+      this.handleLoadoutDeckDragLeave(event);
+    });
+    this.menuScreen.addEventListener("drop", (event) => {
+      this.handleLoadoutDeckDrop(event);
+    });
+    this.menuScreen.addEventListener("dragend", () => {
+      this.clearLoadoutDeckDragState();
+    });
+
     this.menuScreen.addEventListener("input", (event) => {
       const input = event.target as HTMLInputElement;
       if (input.dataset.sfxVolume !== undefined) {
@@ -1147,6 +1297,25 @@ class MarblesGame {
 
     this.upgradeScreen.addEventListener("click", (event) => {
       const target = event.target as HTMLElement;
+      const lockIndex = target.closest<HTMLElement>("[data-upgrade-lock]")?.dataset.upgradeLock;
+      if (lockIndex !== undefined) {
+        if (this.lockUpgradeChoice(Number(lockIndex))) this.sound.play("confirm");
+        return;
+      }
+      if (target.closest("[data-upgrade-lock-clear]")) {
+        if (this.clearLockedUpgradeChoice()) this.sound.play("ui");
+        return;
+      }
+      const banTag = target.closest<HTMLElement>("[data-upgrade-ban-tag]")?.dataset.upgradeBanTag;
+      if (banTag) {
+        if (this.banUpgradeTag(banTag)) this.sound.play("ui");
+        return;
+      }
+      const focusTag = target.closest<HTMLElement>("[data-upgrade-focus-tag]")?.dataset.upgradeFocusTag;
+      if (focusTag) {
+        if (this.focusUpgradeTag(focusTag)) this.sound.play("confirm");
+        return;
+      }
       const refresh = target.closest<HTMLElement>("[data-upgrade-refresh]");
       if (refresh) {
         if (this.refreshUpgradeChoices()) this.sound.play("ui");
@@ -1586,7 +1755,9 @@ class MarblesGame {
       this.autoUpgradeMode = "attack";
     }
     this.battleTerminalOpen = false;
+    this.menuScreen.querySelector(".battle-start-modal")?.remove();
 
+    const battleBuild = createBattleBuild(this.save, runtimeCharacters);
     const session: Session = {
       phase: "playing",
       mode,
@@ -1630,6 +1801,7 @@ class MarblesGame {
       continueCount: 0,
       continueBonus: 0,
       tacticState: createDefaultTacticalState(),
+      battleBuild,
       pvp: null,
       modifiers: {
         damageMul: (1 + upgradeLevel(upgrades, "teamDamage") * 0.03) * (1 + gemModifiers.damage),
@@ -1654,6 +1826,7 @@ class MarblesGame {
         cardStacks: {},
       },
     };
+    applyBattleBuildStart(session);
 
     if (isPvp) session.pvp = this.createLocalPvpState(pendingPvpMatch);
     this.pvpPendingMatch = null;
@@ -1714,6 +1887,7 @@ class MarblesGame {
   }
 
   private persistSave(reason = "state") {
+    syncActiveBattleLoadoutPreset(this.save);
     saveGame(this.save);
     void this.backend.saveState(this.save, reason);
   }
@@ -1782,6 +1956,8 @@ class MarblesGame {
       battleSpeed: this.session?.speed ?? this.save.preferences.battleSpeed,
       characterSortMode: this.characterSortMode,
       cosmeticEffectIntensity: this.save.preferences.cosmeticEffectIntensity,
+      formationId: this.save.preferences.formationId,
+      tacticalDeckId: this.save.preferences.tacticalDeckId,
     };
     this.persistSave("battle-preferences");
   }
@@ -2098,6 +2274,44 @@ class MarblesGame {
     this.renderMenu(this.menuView === "protocols" ? "protocols" : "inventory");
   }
 
+  private fuseGemBatch(key: string) {
+    const parsed = parseGemKey(key);
+    if (!parsed || parsed.level >= GEM_MAX_LEVEL) return;
+
+    const inventory = this.inventory();
+    if ((inventory.gems[key] || 0) < 2) return;
+
+    let attempts = 0;
+    let successes = 0;
+    let failures = 0;
+    let highestLevel = parsed.level;
+
+    for (let level = parsed.level; level < GEM_MAX_LEVEL; level += 1) {
+      const currentKey = gemKey(parsed.type, level);
+      while ((inventory.gems[currentKey] || 0) >= 2) {
+        inventory.gems[currentKey] -= 2;
+        attempts += 1;
+
+        if (Math.random() < gemFuseChance(level)) {
+          const nextKey = gemKey(parsed.type, level + 1);
+          inventory.gems[nextKey] = (inventory.gems[nextKey] || 0) + 1;
+          successes += 1;
+          highestLevel = Math.max(highestLevel, level + 1);
+        } else {
+          inventory.gems[currentKey] = (inventory.gems[currentKey] || 0) + 1;
+          failures += 1;
+        }
+      }
+    }
+
+    if (attempts <= 0) return;
+
+    this.menuNotice = `批量合成 ${gemConfigs[parsed.type].name}：尝试 ${attempts} 次，成功 ${successes} 次，失败 ${failures} 次，最高 Lv.${highestLevel}`;
+    this.warehouseDetail = null;
+    this.persistSave();
+    this.renderMenu(this.menuView === "protocols" ? "protocols" : "inventory");
+  }
+
   private firstEmptyGemSlot() {
     return this.save.baseGems.findIndex((key) => !key);
   }
@@ -2204,6 +2418,353 @@ class MarblesGame {
     this.heroLineupPickerOpen = false;
     this.heroMarbleSlot = 0;
     this.heroMarblePickerOpen = false;
+    this.renderMenu("heroes");
+  }
+
+  private openLoadoutConfig() {
+    syncActiveBattleLoadoutPreset(this.save);
+    this.battleTerminalOpen = false;
+    this.loadoutConfigOpen = true;
+    this.loadoutEditorPresetId = this.save.activeBattleLoadoutId;
+    this.loadoutEditorSlot = 0;
+    this.loadoutSidebarMode = "loadouts";
+    this.heroLineupPickerOpen = false;
+    this.heroMarblePickerOpen = false;
+    this.renderMenu("heroes");
+  }
+
+  private closeLoadoutConfig() {
+    this.loadoutConfigOpen = false;
+    this.renderMenu("heroes");
+  }
+
+  private saveLoadoutPreset(id: string) {
+    saveCurrentBattleLoadoutPreset(this.save, id);
+    this.loadoutEditorPresetId = id;
+    const preset = this.save.battleLoadouts.find((item) => item.id === id);
+    this.menuNotice = `已保存${preset?.name || "方案"}`;
+    this.sound.play("confirm");
+    this.persistSave("battle-loadout-save");
+    this.renderMenu("heroes");
+  }
+
+  private applyLoadoutPreset(id: string) {
+    const preset = this.save.battleLoadouts.find((item) => item.id === id);
+    if (!applyBattleLoadoutPreset(this.save, id)) {
+      this.menuNotice = "这个方案还没有保存阵容";
+      this.sound.play("lose");
+      this.renderMenu("heroes");
+      return;
+    }
+
+    this.applyBattlePreferences();
+    this.selectedCharacterId = this.save.lineup[0] || this.selectedCharacterId;
+    this.loadoutEditorPresetId = id;
+    this.heroModalCharacterId = null;
+    this.heroLineupPickerOpen = false;
+    this.heroMarblePickerOpen = false;
+    this.menuNotice = `已应用${preset?.name || "方案"}`;
+    this.sound.play("confirm");
+    this.persistSave("battle-loadout-apply");
+    this.renderMenu("heroes");
+  }
+
+  private selectBattleLoadoutForStart(id: string) {
+    const preset = this.save.battleLoadouts.find((item) => item.id === id);
+    if (!applyBattleLoadoutPreset(this.save, id)) {
+      this.menuNotice = "这个方案还没有保存阵容";
+      this.sound.play("lose");
+      this.renderMenu("home");
+      return;
+    }
+
+    this.applyBattlePreferences();
+    this.selectedCharacterId = this.save.lineup[0] || this.selectedCharacterId;
+    this.menuNotice = `已选择${preset?.name || "方案"}`;
+    this.sound.play("confirm", 100);
+    this.persistSave("battle-terminal-loadout-select");
+    this.renderMenu("home");
+  }
+
+  private clearLoadoutPreset(id: string) {
+    const preset = this.save.battleLoadouts.find((item) => item.id === id);
+    if (!clearBattleLoadoutPreset(this.save, id)) {
+      this.menuNotice = "当前使用中的方案不能清空";
+      this.sound.play("lose");
+      this.renderMenu("heroes");
+      return;
+    }
+
+    this.menuNotice = `已清空${preset?.name || "方案"}`;
+    this.sound.play("confirm");
+    this.persistSave("battle-loadout-clear");
+    this.renderMenu("heroes");
+  }
+
+  private selectLoadoutPresetForEdit(id: string) {
+    if (!this.save.battleLoadouts.some((preset) => preset.id === id)) return;
+    this.loadoutEditorPresetId = id;
+    this.loadoutEditorSlot = 0;
+    this.renderMenu("heroes");
+  }
+
+  private setLoadoutSidebarMode(mode: "loadouts" | "decks") {
+    this.loadoutSidebarMode = mode === "decks" ? "decks" : "loadouts";
+    this.renderMenu("heroes");
+  }
+
+  private setLoadoutDeckCardRarityFilter(rarity: "all" | Rarity) {
+    this.loadoutDeckCardRarityFilter = ["all", "common", "rare", "epic", "legendary"].includes(rarity) ? rarity : "all";
+    this.renderMenu("heroes");
+  }
+
+  private setLoadoutDeckCardTagFilter(tag: string) {
+    this.loadoutDeckCardTagFilter = tag || "all";
+    this.renderMenu("heroes");
+  }
+
+  private handleLoadoutDeckDragStart(event: DragEvent) {
+    const target = event.target as HTMLElement;
+    const cardElement = target.closest<HTMLElement>("[data-loadout-deck-drag-card]");
+    if (!cardElement || !this.loadoutConfigOpen) return;
+
+    const preset = this.editingLoadoutPreset();
+    if (!preset || tacticalDeckById(preset.tacticalDeckId).id !== "custom") {
+      event.preventDefault();
+      return;
+    }
+
+    const cardId = cardElement.dataset.loadoutDeckDragCard;
+    if (!cardId) {
+      event.preventDefault();
+      return;
+    }
+
+    const source = cardElement.dataset.loadoutDeckCardSource === "selected" ? "selected" : "library";
+    event.dataTransfer?.setData("application/x-loadout-deck-card", JSON.stringify({ cardId, source }));
+    event.dataTransfer?.setData("text/plain", cardId);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = source === "selected" ? "move" : "copyMove";
+    }
+    cardElement.classList.add("dragging");
+  }
+
+  private handleLoadoutDeckDragOver(event: DragEvent) {
+    const dropZone = (event.target as HTMLElement).closest<HTMLElement>("[data-loadout-deck-drop]");
+    if (!dropZone || !this.loadoutConfigOpen || !this.isEditingCustomLoadoutDeck()) return;
+    event.preventDefault();
+    dropZone.classList.add("drag-over");
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = dropZone.dataset.loadoutDeckDrop === "selected" ? "copy" : "move";
+    }
+  }
+
+  private handleLoadoutDeckDragLeave(event: DragEvent) {
+    const dropZone = (event.target as HTMLElement).closest<HTMLElement>("[data-loadout-deck-drop]");
+    if (!dropZone) return;
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && dropZone.contains(nextTarget)) return;
+    dropZone.classList.remove("drag-over");
+  }
+
+  private handleLoadoutDeckDrop(event: DragEvent) {
+    const dropZone = (event.target as HTMLElement).closest<HTMLElement>("[data-loadout-deck-drop]");
+    if (!dropZone || !this.loadoutConfigOpen || !this.isEditingCustomLoadoutDeck()) return;
+    event.preventDefault();
+
+    const payloadText = event.dataTransfer?.getData("application/x-loadout-deck-card");
+    const fallbackCardId = event.dataTransfer?.getData("text/plain") || "";
+    let payload: { cardId: string; source: "selected" | "library" } = { cardId: fallbackCardId, source: "library" };
+    if (payloadText) {
+      try {
+        payload = JSON.parse(payloadText);
+      } catch {
+        payload.cardId = fallbackCardId;
+      }
+    }
+
+    const targetZone = dropZone.dataset.loadoutDeckDrop;
+    if (payload.cardId && payload.source === "library" && targetZone === "selected") {
+      this.setLoadoutDeckCardSelected(payload.cardId, true);
+    } else if (payload.cardId && payload.source === "selected" && targetZone === "library") {
+      this.setLoadoutDeckCardSelected(payload.cardId, false);
+    }
+    this.clearLoadoutDeckDragState();
+  }
+
+  private clearLoadoutDeckDragState() {
+    this.menuScreen.querySelectorAll(".loadout-card-chip.dragging").forEach((node) => node.classList.remove("dragging"));
+    this.menuScreen.querySelectorAll("[data-loadout-deck-drop].drag-over").forEach((node) => node.classList.remove("drag-over"));
+  }
+
+  private isEditingCustomLoadoutDeck() {
+    const preset = this.editingLoadoutPreset();
+    return Boolean(preset && tacticalDeckById(preset.tacticalDeckId).id === "custom");
+  }
+
+  private selectLoadoutSlot(slot: number) {
+    this.loadoutEditorSlot = clamp(Math.floor(slot), 0, 2);
+    this.renderMenu("heroes");
+  }
+
+  private toggleLoadoutCharacter(characterId: string) {
+    const character = characters.find((item) => item.id === characterId);
+    if (!character || !this.characterProgress(character.id).owned) return;
+
+    const preset = this.editingLoadoutPreset();
+    if (!preset) return;
+
+    const active = preset.id === this.save.activeBattleLoadoutId;
+    const lineup = (Array.isArray(preset.lineup) ? preset.lineup : []).filter((id, index, list) => characters.some((item) => item.id === id) && list.indexOf(id) === index).slice(0, 3);
+    const existingSlot = lineup.indexOf(character.id);
+
+    if (existingSlot >= 0) {
+      if (active && lineup.length <= 1) {
+        this.menuNotice = "当前使用方案至少保留 1 名出战角色";
+        this.sound.play("lose");
+        this.renderMenu("heroes");
+        return;
+      }
+      lineup.splice(existingSlot, 1);
+      this.loadoutEditorSlot = clamp(Math.min(existingSlot, Math.max(0, lineup.length - 1)), 0, 2);
+    } else {
+      const slot = clamp(Math.floor(this.loadoutEditorSlot), 0, 2);
+      if (slot >= lineup.length) lineup.push(character.id);
+      else lineup[slot] = character.id;
+      this.loadoutEditorSlot = clamp(slot + 1, 0, 2);
+    }
+
+    preset.lineup = lineup;
+    preset.updatedAt = Date.now();
+    this.commitLoadoutEdit("battle-loadout-character");
+  }
+
+  private setLoadoutFormation(id: FormationId) {
+    const preset = this.editingLoadoutPreset();
+    if (!preset) return;
+    preset.formationId = formationById(id).id;
+    preset.customTacticalDeck = normalizeCustomTacticalDeck({
+      ...preset.customTacticalDeck,
+      formationHint: preset.formationId,
+    });
+    preset.updatedAt = Date.now();
+    this.commitLoadoutEdit("battle-loadout-formation");
+  }
+
+  private setLoadoutDeck(id: TacticalDeckId) {
+    const preset = this.editingLoadoutPreset();
+    if (!preset) return;
+    preset.tacticalDeckId = tacticalDeckById(id).id;
+    if (preset.tacticalDeckId === "custom") {
+      preset.customTacticalDeck = normalizeCustomTacticalDeck({
+        ...preset.customTacticalDeck,
+        formationHint: preset.formationId,
+      });
+    }
+    preset.updatedAt = Date.now();
+    this.commitLoadoutEdit("battle-loadout-deck");
+  }
+
+  private copyLoadoutDeckToCustom() {
+    const preset = this.editingLoadoutPreset();
+    if (!preset) return;
+
+    const formation = formationById(preset.formationId);
+    const selectedDeck = tacticalDeckById(preset.tacticalDeckId);
+    const sourceDeck =
+      selectedDeck.id === "auto"
+        ? tacticalDeckById(formation.recommendedDeckId)
+        : selectedDeck.id === "custom"
+          ? normalizeCustomTacticalDeck(preset.customTacticalDeck || this.save.customTacticalDeck)
+          : selectedDeck;
+
+    preset.tacticalDeckId = "custom";
+    preset.customTacticalDeck = normalizeCustomTacticalDeck({
+      ...preset.customTacticalDeck,
+      formationHint: sourceDeck.formationHint || formation.id,
+      tagHints: sourceDeck.tagHints,
+      cardIds: sourceDeck.cardIds,
+    });
+    preset.updatedAt = Date.now();
+    this.menuNotice = `已复制「${sourceDeck.name}」到自定义卡组`;
+    this.commitLoadoutEdit("battle-loadout-copy-custom-deck");
+  }
+
+  private toggleLoadoutDeckCard(cardId: string) {
+    const preset = this.editingLoadoutPreset();
+    if (!preset) return;
+    const customDeck = normalizeCustomTacticalDeck(preset.customTacticalDeck || this.save.customTacticalDeck);
+    this.setLoadoutDeckCardSelected(cardId, !new Set(customDeck.cardIds).has(cardId), preset);
+  }
+
+  private setLoadoutDeckCardSelected(cardId: string, shouldSelect: boolean, preset = this.editingLoadoutPreset()) {
+    const card = upgradeCards.find((item) => item.id === cardId);
+    if (!preset || !card || !this.isLoadoutDeckCardConfigurable(card, preset)) return false;
+
+    const customDeck = normalizeCustomTacticalDeck(preset.customTacticalDeck || this.save.customTacticalDeck);
+    const selected = new Set(customDeck.cardIds);
+    if (shouldSelect) {
+      if (selected.has(cardId)) return false;
+      if (selected.size >= 24) {
+        this.menuNotice = "自定义卡组最多选择 24 张卡";
+        this.sound.play("lose");
+        this.renderMenu("heroes");
+        return false;
+      }
+      selected.add(cardId);
+    } else {
+      if (!selected.has(cardId)) return false;
+      if (selected.size <= 8) {
+        this.menuNotice = "自定义卡组至少保留 8 张卡";
+        this.sound.play("lose");
+        this.renderMenu("heroes");
+        return false;
+      }
+      selected.delete(cardId);
+    }
+
+    const cardIds = upgradeCards.filter((item) => selected.has(item.id)).map((item) => item.id);
+    const tagHints = [
+      ...new Set(
+        cardIds
+          .map((id) => upgradeCards.find((item) => item.id === id)?.tag)
+          .filter((tag): tag is string => typeof tag === "string" && tag.length > 0),
+      ),
+    ].slice(0, 5);
+    preset.tacticalDeckId = "custom";
+    preset.customTacticalDeck = normalizeCustomTacticalDeck({
+      ...customDeck,
+      formationHint: preset.formationId,
+      tagHints,
+      cardIds,
+    });
+    preset.updatedAt = Date.now();
+    this.commitLoadoutEdit("battle-loadout-custom-deck");
+    return true;
+  }
+
+  private isLoadoutDeckCardConfigurable(card: UpgradeCard, preset = this.editingLoadoutPreset()) {
+    const lineupIds = new Set((Array.isArray(preset?.lineup) && preset.lineup.length ? preset.lineup : this.save.lineup).filter(Boolean));
+    if (card.unlock?.characters?.length && !card.unlock.characters.some((id) => lineupIds.has(id))) return false;
+    return true;
+  }
+
+  private editingLoadoutPreset() {
+    const id = this.loadoutEditorPresetId || this.save.activeBattleLoadoutId;
+    const preset = this.save.battleLoadouts.find((item) => item.id === id) || this.save.battleLoadouts[0];
+    if (preset) this.loadoutEditorPresetId = preset.id;
+    return preset;
+  }
+
+  private commitLoadoutEdit(reason: string) {
+    const preset = this.editingLoadoutPreset();
+    if (preset?.id === this.save.activeBattleLoadoutId) {
+      applyBattleLoadoutPreset(this.save, preset.id);
+      this.applyBattlePreferences();
+      this.selectedCharacterId = this.save.lineup[0] || this.selectedCharacterId;
+    }
+    this.sound.play("confirm", 120);
+    this.persistSave(reason);
     this.renderMenu("heroes");
   }
 

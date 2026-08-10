@@ -36,6 +36,7 @@ import {
   collectibleConfigs,
   collectibleForRarity,
   combinedRarityBoost,
+  combatBuildSummary,
   compactDropSummaryRows,
   compactSelectedUpgrades,
   consumeRarityBoostUse,
@@ -712,19 +713,45 @@ function updateTacticPanel(this: any) {
     const session = this.session;
     if (!session || this.phase === "menu") return;
 
-    const signature = session.selectedUpgradeIds.join("|");
+    const state = ensureTacticalState(session);
+    const signature = [
+      session.selectedUpgradeIds.join("|"),
+      session.battleBuild?.formationId,
+      session.battleBuild?.deckId,
+      session.battleBuild?.mainCoreId,
+      session.battleBuild?.subCoreIds.join(","),
+      Object.entries(state.coreProgress)
+        .map(([id, value]) => `${id}:${value}:${state.coreReady[id] ? 1 : 0}`)
+        .join(","),
+    ].join("::");
     if (this.tacticPanelSignature === signature) return;
     this.tacticPanelSignature = signature;
 
     this.tacticCountText.textContent = String(session.selectedUpgradeIds.length);
+    const build = combatBuildSummary(session.battleBuild);
+    const coreRows = this.tacticCoreRowsHtml(session);
+    const bondRows =
+      build.bondNames.length > 0
+        ? build.bondNames.map((name) => `<span>${this.escapeText(name)}</span>`).join("")
+        : `<em>暂无羁绊</em>`;
+    const buildHtml = `
+      <div class="tactic-build-card" style="--formation-color:${build.formation.color}">
+        <div><span>阵法</span><strong>${this.escapeText(build.formation.name)}</strong></div>
+        <div><span>卡组</span><strong>${this.escapeText(build.deck.name)}</strong></div>
+      </div>
+      <div class="tactic-bond-row">${bondRows}</div>
+      ${coreRows}
+    `;
 
     if (session.selectedUpgradeIds.length === 0) {
-      this.tacticList.innerHTML = `<span class="tactic-empty">暂无升级</span>`;
+      this.tacticList.innerHTML = `${buildHtml}<span class="tactic-empty">暂无升级</span>`;
       return;
     }
 
     const ordered = compactSelectedUpgrades(session.selectedUpgradeIds);
-    this.tacticList.innerHTML = ordered
+    this.tacticList.innerHTML =
+      buildHtml +
+      ordered
       .map(({ card, count }) => {
         const countText = count > 1 ? `<em>×${count}</em>` : "";
         return `
@@ -735,6 +762,43 @@ function updateTacticPanel(this: any) {
         `;
       })
       .join("");
+  }
+
+function tacticCoreRowsHtml(this: any, session: Session) {
+    const state = ensureTacticalState(session);
+    const coreLabels: Record<string, string> = {
+      rebound_fracture: "回环裂变",
+      pyro_chain_core: "灼爆链核",
+      static_frost_core: "静电冰环",
+      swarm_growth: "弹幕增殖",
+      boss_hunter_core: "猎核协议",
+      last_line_core: "底线火网",
+    };
+    const thresholds: Record<string, number> = {
+      rebound_fracture: 4,
+      pyro_chain_core: 4,
+      static_frost_core: 4,
+      swarm_growth: 3,
+      boss_hunter_core: 3,
+      last_line_core: 3,
+    };
+    const rows = Object.entries(coreLabels)
+      .filter(([id]) => (state.coreProgress[id] || 0) > 0 || state.coreReady[id] || session.battleBuild.mainCoreId === id || session.battleBuild.subCoreIds.includes(id))
+      .map(([id, label]) => {
+        const value = state.coreProgress[id] || 0;
+        const max = thresholds[id] || 3;
+        const ready = state.coreReady[id] || session.battleBuild.mainCoreId === id || session.battleBuild.subCoreIds.includes(id);
+        const pct = Math.min(100, Math.round((value / max) * 100));
+        return `
+          <div class="tactic-core-row ${ready ? "ready" : ""}">
+            <div><span>${this.escapeText(label)}</span><em>${ready ? "可成型" : `${value}/${max}`}</em></div>
+            <i><b style="width:${pct}%"></b></i>
+          </div>
+        `;
+      });
+
+    if (rows.length === 0) return `<div class="tactic-core-row"><div><span>核心进度</span><em>选择同流派卡推进</em></div><i><b style="width:0%"></b></i></div>`;
+    return rows.join("");
   }
 
 function updateTacticPanelState(this: any) {
@@ -764,5 +828,6 @@ export const gameBattleResultLootMethods = {
   updateHud,
   updateQuickExtractionButton,
   updateTacticPanel,
+  tacticCoreRowsHtml,
   updateTacticPanelState,
 } satisfies Record<string, GameMethod>;

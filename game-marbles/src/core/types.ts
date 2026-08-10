@@ -1,3 +1,6 @@
+import type { MarbleVisualShape } from "./marble-shapes";
+export type { MarbleVisualShape };
+
 export type Phase = "menu" | "playing" | "upgrade" | "extraction" | "result" | "paused";
 export type MenuView =
   | "home"
@@ -36,6 +39,18 @@ export type AutoExtractionMode = "safe" | "balanced" | "deep" | "clear";
 export type AutoRunMode = "manual" | "advance" | "repeat";
 export type CharacterSortMode = "level" | "rarity" | "power" | "attack";
 export type CosmeticEffectIntensity = "low" | "medium" | "high";
+export type FormationId = "rebound" | "pyro" | "magnetic" | "hunter" | "guard" | "bounty";
+export type TacticalDeckId = "auto" | "custom" | "rebound" | "pyro" | "magnetic" | "hunter" | "guard" | "bounty";
+export type BondId =
+  | "refraction_workshop"
+  | "molten_charge"
+  | "static_frost_ring"
+  | "bulwark_suppression"
+  | "golden_fuel"
+  | "void_fracture"
+  | "high_frequency_matrix"
+  | "hunt_mark";
+export type TacticalChoiceSource = "deck" | "formation" | "bond" | "core" | "wild";
 export type CurrencyId = "coins" | "energyCrystals" | "pvpCoins";
 export type ShopCategory = "recommended" | "daily" | "growth" | "arena" | "crystal" | "bundles";
 export type ShopRefreshType = "daily" | "weekly" | "once";
@@ -44,7 +59,6 @@ export type CosmeticType = "character" | "marble" | "avatarFrame" | "title" | "b
 export type CosmeticRarity = "rare" | "epic" | "legendary";
 export type CosmeticPoolId = "character" | "marble";
 export type CosmeticTicketId = "characterCosmetic" | "marbleCosmetic";
-export type MarbleVisualShape = "orb" | "candy" | "star" | "leaf" | "crystal" | "bomb" | "flame" | "bolt" | "snowflake" | "ring" | "flower" | "comet";
 export type MarbleTrailStyle = "soft" | "spark" | "stardust" | "leaf" | "ribbon" | "flame" | "electric" | "frost" | "firework" | "petal" | "aurora" | "galaxy";
 export type MarbleTrailAnimation = "steady" | "pulse" | "flicker" | "sparkle" | "flow" | "zigzag" | "orbit";
 export type MarbleImpactStyle = "spark" | "flare" | "electric" | "frost" | "petal" | "crystal" | "ribbon" | "galaxy" | "pulse";
@@ -84,12 +98,15 @@ export type SaveData = {
   upgrades: Record<string, number>;
   characters: Record<string, CharacterProgress>;
   lineup: string[];
+  activeBattleLoadoutId: string;
+  battleLoadouts: BattleLoadoutPreset[];
   inventory: InventoryData;
   marbleLevels: Partial<Record<MarbleId, number>>;
   characterMarbles: Record<string, CharacterMarbleLoadout>;
   baseGems: Array<string | null>;
   tickets: Partial<Record<ShopTicketId, number>>;
   preferences: GamePreferences;
+  customTacticalDeck: TacticalDeckConfig;
   shop: ShopState;
   collectionRewards: Record<string, boolean>;
   cosmetics: CosmeticSaveState;
@@ -105,6 +122,18 @@ export type GamePreferences = {
   battleSpeed: Speed;
   characterSortMode: CharacterSortMode;
   cosmeticEffectIntensity: CosmeticEffectIntensity;
+  formationId: FormationId;
+  tacticalDeckId: TacticalDeckId;
+};
+
+export type BattleLoadoutPreset = {
+  id: string;
+  name: string;
+  lineup: string[];
+  formationId: FormationId;
+  tacticalDeckId: TacticalDeckId;
+  customTacticalDeck: TacticalDeckConfig;
+  updatedAt: number;
 };
 
 export type CosmeticConfig = {
@@ -672,6 +701,13 @@ export type TacticalState = {
   rarityBoosts: TacticalRarityBoost[];
   familyBiases: Record<string, number>;
   tagBiases: Record<string, number>;
+  coreProgress: Record<string, number>;
+  coreReady: Record<string, boolean>;
+  lockedChoiceId: string | null;
+  lockedChoiceSource: TacticalChoiceSource | null;
+  bannedTags: Record<string, number>;
+  focusedTag: string | null;
+  focusCharges: number;
 };
 
 export type UpgradeCard = {
@@ -685,10 +721,67 @@ export type UpgradeCard = {
   familyId?: string;
   tier?: TacticalTier;
   maxStacks?: number | "infinite";
+  source?: "global" | "formation" | "character" | "marble" | "bond" | "stage";
+  core?: {
+    type: "main" | "sub" | "enhance";
+    coreId: string;
+    exclusiveGroup?: string;
+  };
+  choiceSource?: TacticalChoiceSource;
   unlock?: TacticalUnlock;
   weight?: number;
   requires?: (session: Session) => boolean;
   apply: (session: Session) => void;
+};
+
+export type BattleBuild = {
+  formationId: FormationId;
+  deckId: TacticalDeckId;
+  deckCardIds: string[];
+  activeBondIds: BondId[];
+  buildTags: string[];
+  mainCoreId: string | null;
+  subCoreIds: string[];
+};
+
+export type FormationConfig = {
+  id: FormationId;
+  name: string;
+  shortName: string;
+  desc: string;
+  tags: string[];
+  color: string;
+  accentColor: string;
+  unlockText: string;
+  initialRefreshCharges?: number;
+  tagBiases?: Record<string, number>;
+  familyBiases?: Record<string, number>;
+  coreBiases?: Record<string, number>;
+  recommendedDeckId: TacticalDeckId;
+  applyStart?: (session: Session) => void;
+};
+
+export type TacticalDeckConfig = {
+  id: TacticalDeckId;
+  name: string;
+  desc: string;
+  tagHints: string[];
+  formationHint?: FormationId;
+  cardIds: string[];
+};
+
+export type BondConfig = {
+  id: BondId;
+  name: string;
+  desc: string;
+  color: string;
+  requiredCharacters?: string[];
+  requiredMarbles?: MarbleId[];
+  requiredTags?: string[];
+  requiredFormationId?: FormationId;
+  unlockedCardIds?: string[];
+  unlockedCoreIds?: string[];
+  applyStart?: (session: Session) => void;
 };
 
 export type Session = {
@@ -734,6 +827,7 @@ export type Session = {
   continueCount: number;
   continueBonus: number;
   tacticState: TacticalState;
+  battleBuild: BattleBuild;
   pvp: PvpSessionState | null;
   modifiers: Modifiers;
 };

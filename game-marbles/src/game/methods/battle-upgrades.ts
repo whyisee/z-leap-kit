@@ -32,6 +32,8 @@ import {
   characterSortLabels,
   characterSortModes,
   characters,
+  cardsForDeck,
+  cardsForFormation,
   clamp,
   collectibleConfigs,
   collectibleForRarity,
@@ -41,6 +43,7 @@ import {
   consumeRarityBoostUse,
   continuePreviewForSession,
   countInsuredDrops,
+  coreCandidateCards,
   createDefaultTacticalState,
   createWave,
   defaultAccountAvatarId,
@@ -126,6 +129,7 @@ import {
   syncCharacterUnlocks,
   tacticalCardWeight,
   toggleInsuredDropKey,
+  updateCoreProgressForCard,
   upgradeCardHtml,
   upgradeCardTierLabel,
   upgradeCardTypeLabel,
@@ -490,14 +494,15 @@ function openUpgrade(this: any) {
     }
 
     session.pendingChoices = this.generateChoices();
+    if (this.autoBattleEnabled) {
+      this.applyAutoUpgradeInBackground();
+      return;
+    }
+
     this.phase = "upgrade";
     session.phase = "upgrade";
     this.sound.play("levelUp");
     this.renderUpgradeScreen();
-
-    if (this.autoBattleEnabled || session.mode === "pvp") {
-      this.autoPickUpgrade();
-    }
   }
 
 function renderUpgradeScreen(this: any) {
@@ -509,6 +514,13 @@ function renderUpgradeScreen(this: any) {
         : "功能卡可改变后续抽卡";
     const rarityBoostUses = state.rarityBoosts.reduce((sum, boost) => sum + boost.uses, 0);
     const rarityBoostText = rarityBoostUses > 0 ? `高级概率提升 ${rarityBoostUses} 次` : "常规概率";
+    const lockedCard = state.lockedChoiceId ? upgradeCards.find((card) => card.id === state.lockedChoiceId) : null;
+    const choiceTags = [...new Set(session.pendingChoices.map((card) => card.tag))].slice(0, 4);
+    const focusTags = (session.battleBuild?.buildTags || []).filter((tag) => upgradeCards.some((card) => card.tag === tag)).slice(0, 5);
+    const bannedText = Object.entries(state.bannedTags)
+      .filter(([, turns]) => turns > 0)
+      .map(([tag, turns]) => `${tag}×${turns}`)
+      .join(" / ");
     this.upgradeScreen.classList.remove("hidden");
     this.upgradeScreen.classList.add("choice-layout");
     this.upgradeScreen.innerHTML = `
@@ -524,6 +536,27 @@ function renderUpgradeScreen(this: any) {
           <button class="choice-refresh-button" type="button" data-upgrade-refresh ${state.refreshCharges <= 0 ? "disabled" : ""}>
             刷新 ${state.refreshCharges}/${state.refreshChargesMax}
           </button>
+        </div>
+        <div class="choice-control-panel">
+          <div class="choice-control-row">
+            <strong>锁定</strong>
+            <span>${lockedCard ? this.escapeText(lockedCard.name) : "刷新时保留一张当前卡"}</span>
+            ${lockedCard ? `<button type="button" data-upgrade-lock-clear>取消</button>` : ""}
+          </div>
+          <div class="choice-control-row compact">
+            <strong>禁用标签</strong>
+            <div>
+              ${choiceTags.map((tag) => `<button type="button" data-upgrade-ban-tag="${this.escapeText(tag)}">${this.escapeText(tag)}</button>`).join("")}
+            </div>
+            ${bannedText ? `<span>${this.escapeText(bannedText)}</span>` : ""}
+          </div>
+          <div class="choice-control-row compact">
+            <strong>定向检索</strong>
+            <div>
+              ${focusTags.map((tag) => `<button class="${state.focusedTag === tag && state.focusCharges > 0 ? "active" : ""}" type="button" data-upgrade-focus-tag="${this.escapeText(tag)}">${this.escapeText(tag)}</button>`).join("")}
+            </div>
+            ${state.focusedTag && state.focusCharges > 0 ? `<span>${this.escapeText(state.focusedTag)}×${state.focusCharges}</span>` : ""}
+          </div>
         </div>
         <div class="choice-grid">
           ${session.pendingChoices.map((card, index) => upgradeCardHtml(card, index)).join("")}
@@ -547,19 +580,47 @@ function refreshUpgradeChoices(this: any, fromAuto = false) {
 
 function generateChoices(this: any, options: { consumeBoost?: boolean } = {}) {
     const session = this.requireSession();
-    ensureTacticalState(session);
+    const state = ensureTacticalState(session);
     const lucky = upgradeLevel(this.save.upgrades, "luckyCards");
     const rarityBoost = combinedRarityBoost(session);
-    const available = upgradeCards.filter((card) => isUpgradeCardAvailable(card, session));
+    const baseAvailable = upgradeCards.filter((card) => isUpgradeCardAvailable(card, session));
+    const controlledAvailable = baseAvailable.filter((card) => !state.bannedTags[card.tag]);
+    const available = controlledAvailable.length >= 3 ? controlledAvailable : baseAvailable;
 
     const choices: UpgradeCard[] = [];
+    const pushChoice = (pool: UpgradeCard[], source: "deck" | "formation" | "bond" | "core" | "wild") => {
+      const filtered = pool.filter((card) => available.includes(card) && !choices.some((choice) => choice.id === card.id));
+      if (filtered.length === 0) return false;
+      const choice = this.weightedUpgradeChoice(filtered);
+      choices.push({ ...choice, choiceSource: source });
+      return true;
+    };
+
+    if (state.lockedChoiceId) {
+      const locked = baseAvailable.find((card) => card.id === state.lockedChoiceId);
+      if (locked) choices.push({ ...locked, choiceSource: state.lockedChoiceSource || "wild" });
+      else {
+        state.lockedChoiceId = null;
+        state.lockedChoiceSource = null;
+      }
+    }
+
+    const corePool = coreCandidateCards(session);
+    if (corePool.length > 0) pushChoice(corePool, "core");
+    if (state.focusedTag && state.focusCharges > 0) {
+      pushChoice(available.filter((card) => card.tag === state.focusedTag), "formation");
+    }
+    pushChoice(cardsForDeck(session.battleBuild), "deck");
+    pushChoice(cardsForFormation(session.battleBuild), session.battleBuild.activeBondIds.length > 0 ? "bond" : "formation");
+
     while (choices.length < 3 && choices.length < available.length) {
       const rarity = rollRarity(session.wave, lucky, rarityBoost);
-      const pool = available.filter((card) => card.rarity === rarity && !choices.includes(card));
-      const fallback = available.filter((card) => !choices.includes(card));
+      const pool = available.filter((card) => card.rarity === rarity && !choices.some((choice) => choice.id === card.id));
+      const fallback = available.filter((card) => !choices.some((choice) => choice.id === card.id));
       const choicePool = pool.length ? pool : fallback;
       if (choicePool.length === 0) break;
-      choices.push(this.weightedUpgradeChoice(choicePool));
+      const choice = this.weightedUpgradeChoice(choicePool);
+      choices.push({ ...choice, choiceSource: "wild" });
     }
     if (options.consumeBoost !== false) consumeRarityBoostUse(session);
     return choices;
@@ -587,6 +648,8 @@ function pickUpgrade(this: any, index: number) {
     const appliedMultiplier = this.applyUpgradeCard(card);
     session.modifiers.cardStacks[card.id] = (session.modifiers.cardStacks[card.id] || 0) + 1;
     session.selectedUpgradeIds.push(card.id);
+    updateCoreProgressForCard(session, card);
+    this.consumeTacticalControlState();
     this.notePvpAutoUpgrade?.(card);
     session.pendingChoices = [];
     this.phase = "playing";
@@ -595,6 +658,61 @@ function pickUpgrade(this: any, index: number) {
     this.updateTacticPanel();
     this.addFloatingText(WIDTH / 2, FIELD.y + 42, `${card.name}${appliedMultiplier > 1 ? ` ×${appliedMultiplier}` : ""}`, rarityColor(card.rarity));
     this.sound.play("upgrade");
+  }
+
+function lockUpgradeChoice(this: any, index: number) {
+    const session = this.requireSession();
+    if (this.phase !== "upgrade" || session.phase !== "upgrade") return false;
+    const card = session.pendingChoices[index];
+    if (!card) return false;
+    const state = ensureTacticalState(session);
+    state.lockedChoiceId = card.id;
+    state.lockedChoiceSource = card.choiceSource || "wild";
+    this.renderUpgradeScreen();
+    return true;
+  }
+
+function clearLockedUpgradeChoice(this: any) {
+    const session = this.requireSession();
+    const state = ensureTacticalState(session);
+    state.lockedChoiceId = null;
+    state.lockedChoiceSource = null;
+    this.renderUpgradeScreen();
+    return true;
+  }
+
+function banUpgradeTag(this: any, tag: string) {
+    const session = this.requireSession();
+    if (this.phase !== "upgrade" || session.phase !== "upgrade" || !tag) return false;
+    const state = ensureTacticalState(session);
+    state.bannedTags[tag] = Math.max(state.bannedTags[tag] || 0, 2);
+    session.pendingChoices = this.generateChoices({ consumeBoost: false });
+    this.renderUpgradeScreen();
+    return true;
+  }
+
+function focusUpgradeTag(this: any, tag: string) {
+    const session = this.requireSession();
+    if (this.phase !== "upgrade" || session.phase !== "upgrade" || !tag) return false;
+    const state = ensureTacticalState(session);
+    state.focusedTag = tag;
+    state.focusCharges = 2;
+    session.pendingChoices = this.generateChoices({ consumeBoost: false });
+    this.renderUpgradeScreen();
+    return true;
+  }
+
+function consumeTacticalControlState(this: any) {
+    const session = this.requireSession();
+    const state = ensureTacticalState(session);
+    state.lockedChoiceId = null;
+    state.lockedChoiceSource = null;
+    if (state.focusCharges > 0) state.focusCharges -= 1;
+    if (state.focusCharges <= 0) state.focusedTag = null;
+    for (const tag of Object.keys(state.bannedTags)) {
+      state.bannedTags[tag] = Math.max(0, state.bannedTags[tag] - 1);
+      if (state.bannedTags[tag] <= 0) delete state.bannedTags[tag];
+    }
   }
 
 function applyUpgradeCard(this: any, card: UpgradeCard) {
@@ -642,6 +760,42 @@ function autoPickUpgrade(this: any) {
     }, 260);
   }
 
+function applyAutoUpgradeInBackground(this: any) {
+    const session = this.session;
+    if (!session || session.pendingChoices.length === 0) return;
+
+    let refreshAttempts = 0;
+    while (refreshAttempts < 4) {
+      const best = session.pendingChoices
+        .map((card, index) => ({ card, index, score: this.autoUpgradeScore(card, index) }))
+        .sort((a, b) => b.score - a.score || a.index - b.index)[0];
+      if (!best) return;
+
+      if (this.shouldAutoRefreshUpgrade(best.score)) {
+        const state = ensureTacticalState(session);
+        if (state.refreshCharges <= 0) break;
+        state.refreshCharges = Math.max(0, state.refreshCharges - 1);
+        session.pendingChoices = this.generateChoices();
+        refreshAttempts += 1;
+        continue;
+      }
+
+      const multiplier = this.applyUpgradeCard(best.card);
+      session.modifiers.cardStacks[best.card.id] = (session.modifiers.cardStacks[best.card.id] || 0) + 1;
+      session.selectedUpgradeIds.push(best.card.id);
+      updateCoreProgressForCard(session, best.card);
+      this.consumeTacticalControlState();
+      this.notePvpAutoUpgrade?.(best.card);
+      session.pendingChoices = [];
+      this.phase = "playing";
+      session.phase = "playing";
+      this.upgradeScreen.classList.add("hidden");
+      this.updateTacticPanel();
+      void multiplier;
+      return;
+    }
+  }
+
 function applyPvpAutoUpgradeChoices(this: any, choices: UpgradeCard[]) {
     const session = this.requireSession();
     if (session.mode !== "pvp" || choices.length === 0) return;
@@ -650,6 +804,7 @@ function applyPvpAutoUpgradeChoices(this: any, choices: UpgradeCard[]) {
       const multiplier = this.applyUpgradeCard(card);
       session.modifiers.cardStacks[card.id] = (session.modifiers.cardStacks[card.id] || 0) + 1;
       session.selectedUpgradeIds.push(card.id);
+      updateCoreProgressForCard(session, card);
       return { card, multiplier };
     });
 
@@ -799,8 +954,14 @@ export const gameBattleUpgradeMethods = {
   generateChoices,
   weightedUpgradeChoice,
   pickUpgrade,
+  lockUpgradeChoice,
+  clearLockedUpgradeChoice,
+  banUpgradeTag,
+  focusUpgradeTag,
+  consumeTacticalControlState,
   applyUpgradeCard,
   autoPickUpgrade,
+  applyAutoUpgradeInBackground,
   applyPvpAutoUpgradeChoices,
   autoUpgradeScore,
   shouldAutoRefreshUpgrade,

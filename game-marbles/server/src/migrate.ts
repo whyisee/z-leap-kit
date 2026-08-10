@@ -238,6 +238,20 @@ async function migrate() {
     )
   `);
 
+  await pool.query(`
+    create table if not exists ${schema}.gm_config_releases (
+      id text primary key,
+      config_version text not null,
+      title text not null,
+      environment text not null default 'test',
+      status text not null default 'published',
+      bundle jsonb not null default '{}'::jsonb,
+      created_by uuid references ${schema}.gm_admin_users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      published_at timestamptz
+    )
+  `);
+
   for (const item of seedRedeemCodes) {
     await pool.query(
       `
@@ -290,6 +304,10 @@ async function migrate() {
     on ${schema}.gm_leaderboard_entries(user_id, board_id, season_id)
   `);
   await pool.query(`create index if not exists gm_redeem_redemptions_code_idx on ${schema}.gm_redeem_redemptions(code, redeemed_at desc)`);
+  await pool.query(`
+    create index if not exists gm_config_releases_active_idx
+    on ${schema}.gm_config_releases(environment, status, published_at desc, created_at desc)
+  `);
 
   console.log(`Migrated schema ${env.dbSchema}`);
 }

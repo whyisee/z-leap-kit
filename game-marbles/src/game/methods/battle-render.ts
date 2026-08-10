@@ -177,6 +177,10 @@ import {
   type WarehouseTab,
   type WaveConfig,
 } from "./shared";
+import { marbleShapeIconImage } from "../../core/marble-shape-assets";
+import { drawMarbleShapeDetail, drawMarbleShapePath, marbleShapeRotation } from "../../core/marble-shapes";
+
+const legacyMarbleBodyShapes = new Set(["orb", "candy", "star", "leaf", "crystal", "bomb", "flame", "bolt", "snowflake", "ring", "flower", "comet"]);
 
 function draw(this: any) {
     const ctx = this.ctx;
@@ -1215,7 +1219,7 @@ function drawMarbleBody(this: any, ctx: CanvasRenderingContext2D, marble: Marble
       ctx.stroke();
       return;
     }
-    const spin = cosmetic ? session.elapsed * (shape === "ring" || shape === "star" ? 2.4 : 1.1) : 0;
+    const spin = cosmetic ? marbleShapeRotation(shape, session.elapsed) : 0;
     if (!budget.useGradient) {
       ctx.save();
       ctx.translate(marble.x, marble.y);
@@ -1253,6 +1257,30 @@ function drawMarbleBody(this: any, ctx: CanvasRenderingContext2D, marble: Marble
     ctx.fillStyle = fill;
     ctx.strokeStyle = accent;
     ctx.lineWidth = cosmetic ? 2.4 : 1.4;
+
+    if (!legacyMarbleBodyShapes.has(shape)) {
+      drawMarbleShapePath(ctx, shape, radius);
+      ctx.fill();
+      ctx.stroke();
+      if (!drawMarbleShapeIconAsset(ctx, shape, radius, 0.9)) {
+        drawMarbleShapeDetail(ctx, shape, radius, {
+          color,
+          accent,
+          highlight: visual.trailHighlightColor || accent,
+          label: visual.label || "",
+          drawLabel: budget.drawSkinMark,
+        });
+      }
+      if (cosmetic && budget.drawHalo) {
+        ctx.strokeStyle = this.hexToRgba?.(accent, 0.66) || accent;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius * 1.36, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+      return;
+    }
 
     if (shape === "star") {
       drawStarPath(ctx, 0, 0, radius * 1.18, radius * 0.52, 5);
@@ -1398,39 +1426,19 @@ function drawMarbleBody(this: any, ctx: CanvasRenderingContext2D, marble: Marble
   }
 
 function drawFastMarbleShape(this: any, ctx: CanvasRenderingContext2D, shape: string, radius: number) {
-    if (shape === "star" || shape === "flower") {
-      drawStarPath(ctx, 0, 0, radius * 1.04, radius * 0.52, shape === "flower" ? 6 : 5);
-      return;
-    }
-    if (shape === "leaf" || shape === "comet") {
-      ctx.beginPath();
-      ctx.ellipse(0, 0, radius * 1.06, radius * 0.62, 0, 0, Math.PI * 2);
-      return;
-    }
-    if (shape === "crystal" || shape === "snowflake") {
-      polygonPath(ctx, radius * 1.02, shape === "snowflake" ? 8 : 6, -Math.PI / 2);
-      return;
-    }
-    if (shape === "bolt") {
-      ctx.beginPath();
-      ctx.moveTo(-radius * 0.22, -radius);
-      ctx.lineTo(radius * 0.72, -radius * 0.12);
-      ctx.lineTo(radius * 0.18, -radius * 0.02);
-      ctx.lineTo(radius * 0.34, radius);
-      ctx.lineTo(-radius * 0.72, radius * 0.04);
-      ctx.lineTo(-radius * 0.18, -radius * 0.08);
-      ctx.closePath();
-      return;
-    }
-    if (shape === "flame") {
-      ctx.beginPath();
-      ctx.moveTo(radius * 0.9, 0);
-      ctx.quadraticCurveTo(0, -radius * 1.12, -radius * 0.82, radius * 0.18);
-      ctx.quadraticCurveTo(0, radius * 1.02, radius * 0.9, 0);
-      return;
-    }
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    drawMarbleShapePath(ctx, shape, radius);
+  }
+
+function drawMarbleShapeIconAsset(ctx: CanvasRenderingContext2D, shape: string, radius: number, alpha = 0.92) {
+    const image = marbleShapeIconImage(shape);
+    if (!image?.complete || image.naturalWidth <= 0) return false;
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = alpha;
+    ctx.shadowBlur = 0;
+    ctx.drawImage(image, -radius * 1.05, -radius * 1.05, radius * 2.1, radius * 2.1);
+    ctx.restore();
+    return true;
   }
 
 function marbleCosmeticBodyScale(visual: any, budget: any) {
@@ -1468,6 +1476,17 @@ function drawMarbleSkinMark(this: any, ctx: CanvasRenderingContext2D, visual: an
 
     ctx.strokeStyle = accent;
     ctx.lineWidth = Math.max(1.3, radius * 0.18);
+    if (!legacyMarbleBodyShapes.has(shape)) {
+      drawMarbleShapeDetail(ctx, shape, radius, {
+        color: visual.color,
+        accent,
+        highlight: visual.trailHighlightColor || accent,
+        label: visual.label || "",
+        drawLabel: false,
+      });
+      ctx.restore();
+      return;
+    }
     if (shape === "star") {
       drawStarPath(ctx, 0, 0, radius * 0.48, radius * 0.22, 5);
       ctx.stroke();

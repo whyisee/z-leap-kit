@@ -13,6 +13,10 @@ function addMarbleDamage(session: Session, id: MarbleId, amount: number) {
   session.modifiers.marbleDamage[id] = (session.modifiers.marbleDamage[id] || 0) + amount;
 }
 
+function hasChosenCore(coreId: string) {
+  return (session: Session) => session.battleBuild?.mainCoreId === coreId || session.battleBuild?.subCoreIds.includes(coreId);
+}
+
 export const upgradeCards: UpgradeCard[] = [
   {
     id: "damage_up",
@@ -582,6 +586,344 @@ export const upgradeCards: UpgradeCard[] = [
     apply: (s) => {
       s.modifiers.burnMul *= 1.18;
       s.modifiers.coinMul *= 1.14;
+    },
+  },
+  {
+    id: "bond_refraction_workshop",
+    name: "折射工坊",
+    rarity: "rare",
+    tag: "羁绊",
+    desc: "折射工坊羁绊：分裂弹珠伤害 +18%，小弹珠持续时间 +0.4 秒",
+    kind: "character",
+    effectType: "hybrid",
+    source: "bond",
+    maxStacks: 2,
+    requires: (s) => s.battleBuild?.activeBondIds.includes("refraction_workshop"),
+    apply: (s) => {
+      addMarbleDamage(s, "split", 0.18);
+      s.modifiers.cardStacks.splitLife = (s.modifiers.cardStacks.splitLife || 0) + 1;
+    },
+  },
+  {
+    id: "bond_molten_charge",
+    name: "热熔装药",
+    rarity: "rare",
+    tag: "羁绊",
+    desc: "热熔装药羁绊：燃烧伤害 +16%，爆炸范围 +12%",
+    kind: "character",
+    effectType: "hybrid",
+    source: "bond",
+    maxStacks: 2,
+    requires: (s) => s.battleBuild?.activeBondIds.includes("molten_charge"),
+    apply: (s) => {
+      s.modifiers.burnMul *= 1.16;
+      s.modifiers.blastRadiusMul *= 1.12;
+    },
+  },
+  {
+    id: "bond_static_frost_ring",
+    name: "静电冰环",
+    rarity: "rare",
+    tag: "羁绊",
+    desc: "静电冰环羁绊：减速目标受到闪电伤害 +18%，闪电连锁 +1",
+    kind: "character",
+    effectType: "hybrid",
+    source: "bond",
+    maxStacks: 2,
+    requires: (s) => s.battleBuild?.activeBondIds.includes("static_frost_ring"),
+    apply: (s) => {
+      s.modifiers.cardStacks.staticFrostBond = (s.modifiers.cardStacks.staticFrostBond || 0) + 1;
+      s.modifiers.chainBonus += 1;
+    },
+  },
+  {
+    id: "bond_bulwark_suppression",
+    name: "坚壁压制",
+    rarity: "rare",
+    tag: "羁绊",
+    desc: "坚壁压制羁绊：基地生命 +1，控制弹珠伤害 +14%",
+    kind: "character",
+    effectType: "hybrid",
+    source: "bond",
+    maxStacks: 2,
+    requires: (s) => s.battleBuild?.activeBondIds.includes("bulwark_suppression"),
+    apply: (s) => {
+      s.maxBaseHp += 1;
+      s.baseHp = Math.min(s.maxBaseHp, s.baseHp + 1);
+      s.modifiers.tagDamage.control = (s.modifiers.tagDamage.control || 0) + 0.14;
+    },
+  },
+  {
+    id: "bond_golden_fuel",
+    name: "点金燃料",
+    rarity: "rare",
+    tag: "羁绊",
+    desc: "点金燃料羁绊：金币获得 +12%，每 500 金币额外提高燃烧伤害",
+    kind: "character",
+    effectType: "hybrid",
+    source: "bond",
+    maxStacks: 2,
+    requires: (s) => s.battleBuild?.activeBondIds.includes("golden_fuel"),
+    apply: (s) => {
+      s.modifiers.coinMul *= 1.12;
+      s.modifiers.cardStacks.goldenFuel = (s.modifiers.cardStacks.goldenFuel || 0) + 1;
+    },
+  },
+  {
+    id: "bond_void_fracture",
+    name: "虚空裂变",
+    rarity: "epic",
+    tag: "羁绊",
+    desc: "虚空裂变羁绊：分裂弹珠伤害 +20%，爆炸范围 +10%，小弹珠持续更久",
+    kind: "character",
+    effectType: "hybrid",
+    source: "bond",
+    maxStacks: 2,
+    requires: (s) => s.battleBuild?.activeBondIds.includes("void_fracture"),
+    apply: (s) => {
+      addMarbleDamage(s, "split", 0.2);
+      s.modifiers.blastRadiusMul *= 1.1;
+      s.modifiers.cardStacks.splitLife = (s.modifiers.cardStacks.splitLife || 0) + 1;
+    },
+  },
+  {
+    id: "bond_high_frequency_matrix",
+    name: "高频矩阵",
+    rarity: "epic",
+    tag: "羁绊",
+    desc: "高频矩阵羁绊：闪电连锁 +1，分裂弹珠伤害 +16%，发射频率 +6%",
+    kind: "character",
+    effectType: "hybrid",
+    source: "bond",
+    maxStacks: 2,
+    requires: (s) => s.battleBuild?.activeBondIds.includes("high_frequency_matrix"),
+    apply: (s) => {
+      s.modifiers.chainBonus += 1;
+      s.modifiers.fireRateMul *= 1.06;
+      addMarbleDamage(s, "split", 0.16);
+    },
+  },
+  {
+    id: "bond_hunt_mark",
+    name: "猎核标记",
+    rarity: "epic",
+    tag: "羁绊",
+    desc: "猎核标记羁绊：对精英/Boss 伤害提升，暴击时更容易触发技能回充",
+    kind: "character",
+    effectType: "hybrid",
+    source: "bond",
+    maxStacks: 2,
+    requires: (s) => s.battleBuild?.activeBondIds.includes("hunt_mark"),
+    apply: (s) => {
+      s.modifiers.critChance += 0.04;
+      s.modifiers.cardStacks.bossDamage = (s.modifiers.cardStacks.bossDamage || 0) + 1;
+      s.modifiers.cardStacks.huntMark = (s.modifiers.cardStacks.huntMark || 0) + 1;
+    },
+  },
+  {
+    id: "core_rebound_fracture",
+    name: "回环裂变核心",
+    rarity: "legendary",
+    tag: "核心",
+    desc: "主核心：弹珠每第 5 次反弹释放 1 枚小型分裂弹",
+    kind: "unique",
+    effectType: "hybrid",
+    source: "formation",
+    core: { type: "main", coreId: "rebound_fracture", exclusiveGroup: "main_core" },
+    maxStacks: 1,
+    requires: (s) => Boolean(s.tacticState.coreReady.rebound_fracture),
+    apply: (s) => {
+      s.modifiers.cardStacks.coreReboundFracture = 1;
+    },
+  },
+  {
+    id: "core_rebound_fracture_plus",
+    name: "裂变核心·连锁",
+    rarity: "legendary",
+    tag: "核心",
+    desc: "核心强化：回环裂变触发间隔缩短，并额外提高小型分裂弹伤害",
+    kind: "unique",
+    effectType: "hybrid",
+    source: "formation",
+    core: { type: "enhance", coreId: "rebound_fracture" },
+    maxStacks: 1,
+    requires: hasChosenCore("rebound_fracture"),
+    apply: (s) => {
+      s.modifiers.cardStacks.coreReboundFracturePlus = 1;
+      addMarbleDamage(s, "split", 0.18);
+    },
+  },
+  {
+    id: "core_pyro_chain",
+    name: "灼爆链核",
+    rarity: "legendary",
+    tag: "核心",
+    desc: "主核心：燃烧敌人被击败时产生灼爆，并扩散燃烧",
+    kind: "unique",
+    effectType: "hybrid",
+    source: "formation",
+    core: { type: "main", coreId: "pyro_chain_core", exclusiveGroup: "main_core" },
+    maxStacks: 1,
+    requires: (s) => Boolean(s.tacticState.coreReady.pyro_chain_core),
+    apply: (s) => {
+      s.modifiers.cardStacks.corePyroChain = 1;
+      s.modifiers.cardStacks.burnSpread = 1;
+    },
+  },
+  {
+    id: "core_pyro_chain_plus",
+    name: "灼爆链核·坍缩",
+    rarity: "legendary",
+    tag: "核心",
+    desc: "核心强化：灼爆范围扩大，扩散燃烧的伤害更高",
+    kind: "unique",
+    effectType: "hybrid",
+    source: "formation",
+    core: { type: "enhance", coreId: "pyro_chain_core" },
+    maxStacks: 1,
+    requires: hasChosenCore("pyro_chain_core"),
+    apply: (s) => {
+      s.modifiers.cardStacks.corePyroChainPlus = 1;
+      s.modifiers.burnMul *= 1.18;
+      s.modifiers.blastRadiusMul *= 1.1;
+    },
+  },
+  {
+    id: "core_static_frost",
+    name: "静电冰环核心",
+    rarity: "legendary",
+    tag: "核心",
+    desc: "主核心：闪电命中减速目标时额外连锁，并刷新目标减速时间",
+    kind: "unique",
+    effectType: "hybrid",
+    source: "formation",
+    core: { type: "main", coreId: "static_frost_core", exclusiveGroup: "main_core" },
+    maxStacks: 1,
+    requires: (s) => Boolean(s.tacticState.coreReady.static_frost_core),
+    apply: (s) => {
+      s.modifiers.cardStacks.coreStaticFrost = 1;
+      s.modifiers.cardStacks.slowShock = 1;
+    },
+  },
+  {
+    id: "core_static_frost_plus",
+    name: "静电冰环·超导",
+    rarity: "legendary",
+    tag: "核心",
+    desc: "核心强化：减速目标被闪电命中时追加连锁，并延长冰缓控制",
+    kind: "unique",
+    effectType: "hybrid",
+    source: "formation",
+    core: { type: "enhance", coreId: "static_frost_core" },
+    maxStacks: 1,
+    requires: hasChosenCore("static_frost_core"),
+    apply: (s) => {
+      s.modifiers.cardStacks.coreStaticFrostPlus = 1;
+      s.modifiers.chainBonus += 1;
+      s.modifiers.slowBonus += 0.08;
+    },
+  },
+  {
+    id: "core_swarm_growth",
+    name: "弹幕增殖核心",
+    rarity: "epic",
+    tag: "核心",
+    desc: "副核心：场上弹珠越多，小型弹珠持续时间越长且伤害越高",
+    kind: "unique",
+    effectType: "hybrid",
+    source: "formation",
+    core: { type: "sub", coreId: "swarm_growth" },
+    maxStacks: 1,
+    requires: (s) => Boolean(s.tacticState.coreReady.swarm_growth),
+    apply: (s) => {
+      s.modifiers.cardStacks.coreSwarmGrowth = 1;
+      s.modifiers.cardStacks.swarm = 1;
+    },
+  },
+  {
+    id: "core_swarm_growth_plus",
+    name: "弹幕增殖·潮汐",
+    rarity: "epic",
+    tag: "核心",
+    desc: "核心强化：场上弹珠越多，小型弹珠获得更高伤害和持续时间",
+    kind: "unique",
+    effectType: "hybrid",
+    source: "formation",
+    core: { type: "enhance", coreId: "swarm_growth" },
+    maxStacks: 1,
+    requires: hasChosenCore("swarm_growth"),
+    apply: (s) => {
+      s.modifiers.cardStacks.coreSwarmGrowthPlus = 1;
+      s.modifiers.cardStacks.splitLife = (s.modifiers.cardStacks.splitLife || 0) + 1;
+    },
+  },
+  {
+    id: "core_boss_hunter",
+    name: "猎核协议",
+    rarity: "epic",
+    tag: "核心",
+    desc: "副核心：暴击精英或 Boss 时返还最近角色技能冷却",
+    kind: "unique",
+    effectType: "hybrid",
+    source: "formation",
+    core: { type: "sub", coreId: "boss_hunter_core" },
+    maxStacks: 1,
+    requires: (s) => Boolean(s.tacticState.coreReady.boss_hunter_core),
+    apply: (s) => {
+      s.modifiers.cardStacks.coreBossHunter = 1;
+      s.modifiers.cardStacks.bossDamage = (s.modifiers.cardStacks.bossDamage || 0) + 1;
+    },
+  },
+  {
+    id: "core_boss_hunter_plus",
+    name: "猎核协议·追击",
+    rarity: "epic",
+    tag: "核心",
+    desc: "核心强化：猎核回充更强，暴击精英/Boss 时额外提高后续伤害",
+    kind: "unique",
+    effectType: "hybrid",
+    source: "formation",
+    core: { type: "enhance", coreId: "boss_hunter_core" },
+    maxStacks: 1,
+    requires: hasChosenCore("boss_hunter_core"),
+    apply: (s) => {
+      s.modifiers.cardStacks.coreBossHunterPlus = 1;
+      s.modifiers.critDamage += 0.22;
+    },
+  },
+  {
+    id: "core_last_line",
+    name: "底线火网核心",
+    rarity: "epic",
+    tag: "核心",
+    desc: "副核心：敌人越靠近底线受到伤害越高，低血量时额外获得修复",
+    kind: "unique",
+    effectType: "hybrid",
+    source: "formation",
+    core: { type: "sub", coreId: "last_line_core" },
+    maxStacks: 1,
+    requires: (s) => Boolean(s.tacticState.coreReady.last_line_core),
+    apply: (s) => {
+      s.modifiers.cardStacks.coreLastLine = 1;
+      s.modifiers.cardStacks.lastLine = 1;
+      s.modifiers.baseRegen = Math.max(s.modifiers.baseRegen, 1);
+    },
+  },
+  {
+    id: "core_last_line_plus",
+    name: "底线火网·坚决",
+    rarity: "epic",
+    tag: "核心",
+    desc: "核心强化：底线回修效果提高，基地低血量时控制弹珠伤害提升",
+    kind: "unique",
+    effectType: "hybrid",
+    source: "formation",
+    core: { type: "enhance", coreId: "last_line_core" },
+    maxStacks: 1,
+    requires: hasChosenCore("last_line_core"),
+    apply: (s) => {
+      s.modifiers.cardStacks.coreLastLinePlus = 1;
+      s.modifiers.tagDamage.control = (s.modifiers.tagDamage.control || 0) + 0.18;
     },
   },
   {

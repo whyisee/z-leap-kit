@@ -35,6 +35,8 @@ import type {
   Enemy,
   EnemyType,
   ExtractionResult,
+  FormationConfig,
+  FormationId,
   GemType,
   InventoryData,
   Marble,
@@ -61,18 +63,23 @@ import type {
   ShopItemConfig,
   Speed,
   StageConfig,
+  TacticalDeckConfig,
+  TacticalDeckId,
   UpgradeCard,
   VisualEffect,
   WaveConfig,
 } from "../../core/types";
+import { bonds, bondById } from "../../config/bonds";
 import { characters } from "../../config/characters";
 import { cosmeticById, cosmeticConfigs, cosmeticPools, cosmeticsForPool } from "../../config/cosmetics";
+import { formations, formationById } from "../../config/formations";
 import { collectibleConfigs, gemConfigs } from "../../config/loot";
 import { enemyConfigs } from "../../config/enemies";
 import { marbleConfigs } from "../../config/marbles";
 import { metaUpgrades } from "../../config/meta-upgrades";
 import { shopCategories } from "../../config/shop";
 import { getStageById, getStageByIndex, stages } from "../../config/stages";
+import { tacticalDecks, tacticalDeckById } from "../../config/tactical-decks";
 import { upgradeCards } from "../../config/upgrades";
 import { byId } from "../../app/dom";
 import { formatTime } from "../../core/format";
@@ -81,11 +88,13 @@ import { randomChoice, randomRange } from "../../core/random";
 import { rarityAutoScore, rarityColor, rarityName, rollRarity } from "../../core/rarity";
 import {
   defaultCharacterProgress,
+  defaultCustomTacticalDeck,
   defaultInventory,
   defaultSave,
   loadSave,
   normalizeBaseGems,
   normalizeCharacterMarbles,
+  normalizeCustomTacticalDeck,
   normalizeLineup,
   saveGame,
   syncCharacterUnlocks,
@@ -144,6 +153,13 @@ import {
   upgradeCardTierLabel,
   upgradeCardTypeLabel,
 } from "../../systems/progression/tactical-upgrades";
+import {
+  cardsForDeck,
+  cardsForFormation,
+  combatBuildSummary,
+  coreCandidateCards,
+  updateCoreProgressForCard,
+} from "../../systems/progression/combat-build";
 import { xpNeedForLevel } from "../../systems/progression/xp";
 import {
   applyPvpRankResult,
@@ -206,7 +222,10 @@ export const navIconSources: Partial<Record<MenuView, string>> = {
 
 export const homeAssetSources = {
   background: new URL("../../assets/home/home-hub-background.webp", import.meta.url).href,
+  coin: new URL("../../assets/home/resource-coin.png", import.meta.url).href,
+  energyCrystal: new URL("../../assets/home/resource-energy-crystal.png", import.meta.url).href,
   battleTerminal: new URL("../../assets/home/entry-battle-terminal.png", import.meta.url).href,
+  rankingTerminal: new URL("../../assets/home/entry-ranking-terminal.png", import.meta.url).href,
   pvpArena: new URL("../../assets/home/entry-pvp-arena.png", import.meta.url).href,
   heroesBay: new URL("../../assets/home/entry-heroes-bay.png", import.meta.url).href,
   marbleWorkshop: new URL("../../assets/home/entry-marble-workshop.png", import.meta.url).href,
@@ -348,6 +367,8 @@ export {
   battleCoinReward,
   battleShardReward,
   battleWaveBannerText,
+  bondById,
+  bonds,
   boostDropRarityForContinue,
   byId,
   calculateStageStars,
@@ -365,13 +386,18 @@ export {
   combinedRarityBoost,
   compactDropSummaryRows,
   compactSelectedUpgrades,
+  combatBuildSummary,
   consumeRarityBoostUse,
   continuePreviewForSession,
   countInsuredDrops,
+  cardsForDeck,
+  cardsForFormation,
+  coreCandidateCards,
   createDefaultTacticalState,
   createPvpWave,
   createWave,
   defaultCharacterProgress,
+  defaultCustomTacticalDeck,
   defaultInventory,
   defaultSave,
   densestPoint,
@@ -395,6 +421,8 @@ export {
   extractionResultTitleForMode,
   formatSessionWaveText,
   formatTime,
+  formationById,
+  formations,
   gemConfigs,
   gemEffectText,
   gemFuseChance,
@@ -416,6 +444,7 @@ export {
   nearestEnemy,
   normalizeBaseGems,
   normalizeCharacterMarbles,
+  normalizeCustomTacticalDeck,
   normalizeLineup,
   normalizeVelocity,
   parseGemKey,
@@ -459,7 +488,10 @@ export {
   stages,
   syncCharacterUnlocks,
   tacticalCardWeight,
+  tacticalDeckById,
+  tacticalDecks,
   toggleInsuredDropKey,
+  updateCoreProgressForCard,
   upgradeCardHtml,
   upgradeCardTierLabel,
   upgradeCardTypeLabel,
@@ -492,6 +524,8 @@ export type {
   Enemy,
   EnemyType,
   ExtractionResult,
+  FormationConfig,
+  FormationId,
   GemType,
   InventoryData,
   Marble,
@@ -518,6 +552,8 @@ export type {
   ShopItemConfig,
   Speed,
   StageConfig,
+  TacticalDeckConfig,
+  TacticalDeckId,
   UpgradeCard,
   VisualEffect,
   WaveConfig,

@@ -16,6 +16,8 @@ import {
   type GameMethod,
   type MarbleId,
 } from "./shared";
+import { marbleShapeIconUrl } from "../../core/marble-shape-assets";
+import { marbleShapeImpactStyle, marbleShapeSymbol } from "../../core/marble-shapes";
 
 const rarityRank: Record<CosmeticRarity, number> = { rare: 1, epic: 2, legendary: 3 };
 
@@ -589,6 +591,7 @@ function marblePreviewIconHtml(this: any, visual: any, className = "") {
   const trailStyle = visual?.trailStyle || "soft";
   const impactStyle = visual?.hitStyle || visual?.defeatStyle || "spark";
   const rarity = visual?.rarity || "base";
+  const shapeIcon = marbleShapeIconUrl(shape);
   return `
     <span
       class="marble-preview-icon ${className} marble-shape-${shape} marble-trail-${trailStyle} marble-impact-${impactStyle} marble-rarity-${rarity}"
@@ -598,6 +601,11 @@ function marblePreviewIconHtml(this: any, visual: any, className = "") {
       <i></i>
       <b></b>
       <em></em>
+      ${
+        shapeIcon
+          ? `<img class="marble-shape-art" src="${shapeIcon}" alt="" draggable="false" />`
+          : `<span class="marble-shape-symbol">${marbleShapeSymbol(shape)}</span>`
+      }
     </span>
   `;
 }
@@ -884,7 +892,7 @@ function marbleImpactStyleFromVisual(trailStyle: string, shape: string) {
   if (trailStyle === "ribbon") return "ribbon";
   if (trailStyle === "galaxy" || trailStyle === "aurora" || trailStyle === "stardust" || shape === "ring") return "galaxy";
   if (shape === "crystal") return "crystal";
-  return "spark";
+  return marbleShapeImpactStyle(shape);
 }
 
 function hexToRgba(this: any, color: string, alpha = 0.2) {

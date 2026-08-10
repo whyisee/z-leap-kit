@@ -30,6 +30,13 @@ export function createDefaultTacticalState(): TacticalState {
     rarityBoosts: [],
     familyBiases: {},
     tagBiases: {},
+    coreProgress: {},
+    coreReady: {},
+    lockedChoiceId: null,
+    lockedChoiceSource: null,
+    bannedTags: {},
+    focusedTag: null,
+    focusCharges: 0,
   };
 }
 
@@ -42,6 +49,18 @@ export function ensureTacticalState(session: Session) {
   session.tacticState.rarityBoosts = (session.tacticState.rarityBoosts || []).filter((boost) => boost.uses > 0);
   session.tacticState.familyBiases ||= {};
   session.tacticState.tagBiases ||= {};
+  session.tacticState.coreProgress ||= {};
+  session.tacticState.coreReady ||= {};
+  session.tacticState.lockedChoiceId ||= null;
+  session.tacticState.lockedChoiceSource ||= null;
+  session.tacticState.bannedTags ||= {};
+  session.tacticState.focusedTag ||= null;
+  session.tacticState.focusCharges = Math.max(0, Math.floor(session.tacticState.focusCharges || 0));
+  for (const [tag, turns] of Object.entries(session.tacticState.bannedTags)) {
+    const value = Math.max(0, Math.floor(Number(turns) || 0));
+    if (value > 0) session.tacticState.bannedTags[tag] = value;
+    else delete session.tacticState.bannedTags[tag];
+  }
   return session.tacticState;
 }
 
@@ -74,6 +93,7 @@ export function isUpgradeCardAvailable(card: UpgradeCard, session: Session) {
   ensureTacticalState(session);
   if (isStackLimitReached(card, session)) return false;
   if (card.requires && !card.requires(session)) return false;
+  if (card.core?.type === "main" && session.battleBuild?.mainCoreId && session.battleBuild.mainCoreId !== card.core.coreId) return false;
 
   const unlock = card.unlock;
   if (unlock?.characters?.length) {
@@ -109,6 +129,9 @@ export function tacticalCardWeight(card: UpgradeCard, session: Session) {
 
   if (card.kind === "character") weight *= 1.22;
   if (card.kind === "utility") weight *= 0.92;
+  if (card.core) weight *= card.core.type === "main" ? 2.6 : 1.8;
+  if (card.source === "bond") weight *= 1.55;
+  if (state.focusedTag && state.focusCharges > 0 && card.tag === state.focusedTag) weight *= 2.2;
   weight *= 1 + (state.tagBiases[card.tag] || 0);
 
   return Math.max(0.01, weight);

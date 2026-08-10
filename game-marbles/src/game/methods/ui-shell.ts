@@ -22,6 +22,7 @@ import {
   battleCoinReward,
   battleShardReward,
   battleWaveBannerText,
+  bonds,
   boostDropRarityForContinue,
   byId,
   calculateStageStars,
@@ -43,6 +44,7 @@ import {
   continuePreviewForSession,
   countInsuredDrops,
   createDefaultTacticalState,
+  defaultCustomTacticalDeck,
   createWave,
   defaultAccountAvatarId,
   defaultCharacterProgress,
@@ -69,6 +71,8 @@ import {
   extractionResultTitleForMode,
   formatSessionWaveText,
   formatTime,
+  formationById,
+  formations,
   gemConfigs,
   gemEffectText,
   gemFuseChance,
@@ -94,6 +98,7 @@ import {
   nearestEnemy,
   normalizeBaseGems,
   normalizeCharacterMarbles,
+  normalizeCustomTacticalDeck,
   normalizeLineup,
   normalizeVelocity,
   parseGemKey,
@@ -133,6 +138,8 @@ import {
   stages,
   syncCharacterUnlocks,
   tacticalCardWeight,
+  tacticalDeckById,
+  tacticalDecks,
   toggleInsuredDropKey,
   upgradeCardHtml,
   upgradeCardTierLabel,
@@ -227,7 +234,6 @@ function homeMenuHtml(this: any, showChallenges = false, showStagePicker = false
           ${this.accountPanelHtml()}
           ${this.homeResourceStripHtml()}
           <div class="home-tools" aria-label="快捷入口">
-            ${this.homeToolButtonHtml("ranking", "排行", this.rankIconHtml())}
             <button class="settings-button home-tool-button" type="button" data-menu="settings" aria-label="设置" title="设置">
               ${this.settingsIconHtml()}
             </button>
@@ -259,13 +265,32 @@ function homeMenuHtml(this: any, showChallenges = false, showStagePicker = false
   }
 
 function homeResourceStripHtml(this: any) {
+    const coins = Math.floor(this.save.coins);
+    const crystals = Math.floor(this.save.energyCrystals);
     return `
       <div class="home-resource-strip" aria-label="资源状态">
-        <div><span>金币</span><strong>${Math.floor(this.save.coins)}</strong></div>
-        <div><span>竞技币</span><strong>${Math.floor(this.save.pvpCoins || 0)}</strong></div>
-        <div><span>能源晶体</span><strong>${Math.floor(this.save.energyCrystals)}</strong></div>
+        <div aria-label="金币" title="金币 ${coins.toLocaleString("zh-CN")}">
+          <img src="${homeAssetSources.coin}" alt="" draggable="false" />
+          <strong>${formatHomeResourceAmount(coins)}</strong>
+        </div>
+        <div aria-label="能源晶体" title="能源晶体 ${crystals.toLocaleString("zh-CN")}">
+          <img src="${homeAssetSources.energyCrystal}" alt="" draggable="false" />
+          <strong>${formatHomeResourceAmount(crystals)}</strong>
+        </div>
       </div>
     `;
+  }
+
+function formatHomeResourceAmount(value: number) {
+    const amount = Math.max(0, Math.floor(Number(value) || 0));
+    if (amount < 10000) return String(amount);
+    if (amount < 100000000) return `${formatCompactUnit(amount / 10000)}万`;
+    return `${formatCompactUnit(amount / 100000000)}亿`;
+  }
+
+function formatCompactUnit(value: number) {
+    const fixed = value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
+    return fixed.replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
   }
 
 function homeBattleTerminalHtml(this: any) {
@@ -282,6 +307,7 @@ function homeBattleTerminalHtml(this: any) {
   }
 
 function battleStartModalHtml(this: any, stage: StageConfig, clearedCount: number, totalPower: number, canStart: boolean) {
+    const loadoutSelect = this.battleLoadoutStartSelectHtml();
     return `
       <div class="battle-start-modal" data-battle-terminal-backdrop>
         <section class="battle-start-panel" aria-label="作战终端">
@@ -299,6 +325,7 @@ function battleStartModalHtml(this: any, stage: StageConfig, clearedCount: numbe
             <div><span>战力</span><strong>${totalPower}</strong></div>
             <div><span>收益</span><strong>${this.stageRewardText(stage)}</strong></div>
           </div>
+          ${loadoutSelect}
           <button class="primary-button menu-start-button" type="button" data-action="start" ${canStart ? "" : "disabled"}>
             开始战斗
           </button>
@@ -309,6 +336,223 @@ function battleStartModalHtml(this: any, stage: StageConfig, clearedCount: numbe
         </section>
       </div>
     `;
+  }
+
+function battleLoadoutStartSelectHtml(this: any) {
+    const activeId = this.save.activeBattleLoadoutId;
+    const presets = this.save.battleLoadouts || [];
+    const activePreset = presets.find((preset: any) => preset.id === activeId) || presets.find((preset: any) => Array.isArray(preset.lineup) && preset.lineup.length > 0) || presets[0];
+    const lineup = Array.isArray(activePreset?.lineup) ? activePreset.lineup : [];
+    const members = lineup.map((id: string) => characters.find((character) => character.id === id)).filter(Boolean);
+    const saved = members.length > 0;
+    const power = members.reduce((sum: number, character: any) => sum + this.characterUiStats(character).power, 0);
+    return `
+      <div class="battle-loadout-select">
+        <div class="battle-loadout-select-head">
+          <strong>当前阵容方案</strong>
+          <button class="battle-loadout-adjust-button" type="button" data-loadout-config-open>调整</button>
+        </div>
+        <article class="battle-loadout-card active ${saved ? "saved" : "empty"}">
+          <span class="battle-loadout-card-head">
+            <strong>${this.escapeText(activePreset?.name || "未选择方案")}</strong>
+            <em>${saved ? `战力 ${power}` : "空方案"}</em>
+          </span>
+          <span class="battle-loadout-portraits">
+            ${
+              saved
+                ? members
+                    .slice(0, 3)
+                    .map((character: any, index: number) => {
+                      const src = characterPortraitSources[character.id];
+                      return `<i style="--hero-color:${character.color}"><b>${index + 1}</b>${src ? `<img src="${src}" alt="" draggable="false" />` : this.escapeText(character.name.slice(0, 1))}</i>`;
+                    })
+                    .join("")
+                : `<em>未保存阵容</em>`
+            }
+          </span>
+        </article>
+      </div>
+    `;
+  }
+
+function battleBuildPreviewHtml(this: any) {
+    const selectedFormation = formationById(this.save.preferences.formationId);
+    const selectedDeck = tacticalDeckById(this.save.preferences.tacticalDeckId);
+    const lineup = this.lineupCharacters();
+    const activeBonds = this.activeBondPreview(lineup, selectedFormation.id);
+    const bondText =
+      activeBonds.length > 0
+        ? activeBonds.map((bond) => `<span style="--bond-color:${bond.color}">${this.escapeText(bond.name)}</span>`).join("")
+        : `<em>调整角色和弹珠可激活羁绊</em>`;
+
+    return `
+      <div class="battle-build-preview">
+        <div class="battle-build-head">
+          <strong>战斗构筑</strong>
+          <span>${this.escapeText(selectedFormation.shortName)} · ${this.escapeText(selectedDeck.name)}</span>
+        </div>
+        <div class="formation-select-grid" aria-label="选择出战阵法">
+          ${formations
+            .map(
+              (formation) => `
+                <button
+                  class="formation-select-card ${formation.id === selectedFormation.id ? "active" : ""}"
+                  type="button"
+                  data-formation-select="${formation.id}"
+                  style="--formation-color:${formation.color}; --formation-accent:${formation.accentColor}"
+                >
+                  <strong>${this.escapeText(formation.name)}</strong>
+                  <span>${formation.tags.map((tag) => this.escapeText(tag)).join(" / ")}</span>
+                </button>
+              `,
+            )
+            .join("")}
+        </div>
+        <div class="deck-select-row" aria-label="选择战术卡组">
+          ${tacticalDecks
+            .map(
+              (deck) => `
+                <button class="${deck.id === selectedDeck.id ? "active" : ""}" type="button" data-tactical-deck-select="${deck.id}">
+                  ${this.escapeText(deck.name)}
+                </button>
+              `,
+            )
+            .join("")}
+        </div>
+        ${this.customDeckEditorHtml(selectedDeck)}
+        <div class="bond-preview-row">
+          <strong>羁绊</strong>
+          <div>${bondText}</div>
+        </div>
+      </div>
+    `;
+  }
+
+function customDeckEditorHtml(this: any, selectedDeck: TacticalDeckConfig) {
+    const customDeck = normalizeCustomTacticalDeck(this.save.customTacticalDeck);
+    const selectedIds = new Set(customDeck.cardIds);
+    const sourceDeck = selectedDeck.id === "auto" ? tacticalDeckById(formationById(this.save.preferences.formationId).recommendedDeckId) : selectedDeck;
+    const canCopy = sourceDeck.id !== "custom" && sourceDeck.cardIds.length > 0;
+    const coreCards = upgradeCards.filter((card) => card.core);
+    const regularCards = upgradeCards.filter((card) => !card.core);
+    const cards = [...coreCards, ...regularCards];
+    const tags = [...new Set(customDeck.cardIds.map((id) => upgradeCards.find((card) => card.id === id)?.tag).filter(Boolean))].slice(0, 5);
+
+    return `
+      <div class="custom-deck-editor ${selectedDeck.id === "custom" ? "active" : ""}">
+        <div class="custom-deck-head">
+          <div>
+            <strong>自定义卡组 ${customDeck.cardIds.length}/24</strong>
+            <span>${tags.length ? tags.map((tag) => this.escapeText(tag)).join(" / ") : "从预设复制后微调"}</span>
+          </div>
+          <div>
+            <button type="button" data-action="copyDeckToCustom" ${canCopy ? "" : "disabled"}>复制当前</button>
+            <button type="button" data-action="resetCustomDeck">重置</button>
+          </div>
+        </div>
+        <div class="custom-deck-card-grid">
+          ${cards
+            .map(
+              (card) => `
+                <button
+                  class="custom-deck-card ${selectedIds.has(card.id) ? "active" : ""} ${card.rarity}"
+                  type="button"
+                  data-deck-card-toggle="${card.id}"
+                  title="${this.escapeText(card.desc)}"
+                >
+                  <span>${this.escapeText(card.tag)}</span>
+                  <strong>${this.escapeText(card.name)}</strong>
+                </button>
+              `,
+            )
+            .join("")}
+        </div>
+      </div>
+    `;
+  }
+
+function copyCurrentDeckToCustom(this: any) {
+    const selectedFormation = formationById(this.save.preferences.formationId);
+    const selectedDeck = tacticalDeckById(this.save.preferences.tacticalDeckId);
+    const sourceDeck =
+      selectedDeck.id === "auto"
+        ? tacticalDeckById(selectedFormation.recommendedDeckId)
+        : selectedDeck.id === "custom"
+          ? this.save.customTacticalDeck
+          : selectedDeck;
+    this.save.customTacticalDeck = normalizeCustomTacticalDeck({
+      ...this.save.customTacticalDeck,
+      formationHint: sourceDeck.formationHint || selectedFormation.id,
+      tagHints: sourceDeck.tagHints,
+      cardIds: sourceDeck.cardIds,
+    });
+    this.save.preferences.tacticalDeckId = "custom";
+    this.menuNotice = `已复制「${sourceDeck.name}」到自定义卡组`;
+    this.persistSave("custom-deck-copy");
+    this.renderMenu("home");
+  }
+
+function resetCustomTacticalDeck(this: any) {
+    this.save.customTacticalDeck = defaultCustomTacticalDeck();
+    this.save.preferences.tacticalDeckId = "custom";
+    this.menuNotice = "自定义卡组已重置";
+    this.persistSave("custom-deck-reset");
+    this.renderMenu("home");
+  }
+
+function toggleCustomDeckCard(this: any, cardId: string) {
+    const card = upgradeCards.find((item) => item.id === cardId);
+    if (!card) return;
+    const customDeck = normalizeCustomTacticalDeck(this.save.customTacticalDeck);
+    const selected = new Set(customDeck.cardIds);
+    if (selected.has(cardId)) {
+      if (selected.size <= 8) {
+        this.menuNotice = "自定义卡组至少保留 8 张卡";
+        this.renderMenu("home");
+        return;
+      }
+      selected.delete(cardId);
+    } else {
+      if (selected.size >= 24) {
+        this.menuNotice = "自定义卡组最多选择 24 张卡";
+        this.renderMenu("home");
+        return;
+      }
+      selected.add(cardId);
+    }
+
+    const cardIds = upgradeCards.filter((item) => selected.has(item.id)).map((item) => item.id);
+    const tagHints = [...new Set(cardIds.map((id) => upgradeCards.find((item) => item.id === id)?.tag).filter(Boolean))].slice(0, 5);
+    this.save.customTacticalDeck = normalizeCustomTacticalDeck({
+      ...customDeck,
+      formationHint: this.save.preferences.formationId,
+      tagHints,
+      cardIds,
+    });
+    this.save.preferences.tacticalDeckId = "custom";
+    this.persistSave("custom-deck-toggle");
+    this.renderMenu("home");
+  }
+
+function activeBondPreview(this: any, lineup: CharacterConfig[], formationId: string) {
+    const characterIds = new Set(lineup.map((character) => character.id));
+    const marbleIds = new Set<string>();
+    const tags = new Set<string>();
+
+    for (const character of lineup) {
+      for (const marbleId of this.characterMarbles(character)) {
+        marbleIds.add(marbleId);
+        for (const tag of marbleConfigs[marbleId].tags) tags.add(tag);
+      }
+    }
+
+    return bonds.filter((bond) => {
+      if (bond.requiredFormationId && bond.requiredFormationId !== formationId) return false;
+      if (bond.requiredCharacters?.some((id) => !characterIds.has(id))) return false;
+      if (bond.requiredMarbles?.some((id) => !marbleIds.has(id))) return false;
+      if (bond.requiredTags?.some((tag) => !tags.has(tag))) return false;
+      return true;
+    });
   }
 
 function homeFacilitySceneHtml(this: any) {
@@ -337,6 +581,13 @@ function homeFacilitySceneHtml(this: any) {
         target: "pvp",
         image: homeAssetSources.pvpArena,
         tone: "pvp",
+      },
+      {
+        title: "排行榜",
+        subtitle: "赛季与总榜",
+        target: "ranking",
+        image: homeAssetSources.rankingTerminal,
+        tone: "ranking",
       },
       {
         title: "编队舱",
@@ -732,6 +983,14 @@ function escapeText(this: any, value: string) {
 function menuPageHtml(this: any, view: MenuView) {
     if (view === "heroes") {
       const selected = characters.find((character) => character.id === this.selectedCharacterId) || characters[0];
+      if (this.loadoutConfigOpen) {
+        return `
+          <div class="panel main-panel menu-page hero-page hero-loadout-page">
+            ${this.menuPageTitleHtml("作战方案配置", `${this.save.battleLoadouts?.length || 0}/10`)}
+            ${this.loadoutConfigPageHtml()}
+          </div>
+        `;
+      }
       return `
         <div class="panel main-panel menu-page hero-page">
           ${this.menuPageTitleHtml("角色", `金币 ${Math.floor(this.save.coins)}`)}
@@ -1750,6 +2009,13 @@ export const gameUiShellMethods = {
   homeResourceStripHtml,
   homeBattleTerminalHtml,
   battleStartModalHtml,
+  battleLoadoutStartSelectHtml,
+  battleBuildPreviewHtml,
+  customDeckEditorHtml,
+  copyCurrentDeckToCustom,
+  resetCustomTacticalDeck,
+  toggleCustomDeckCard,
+  activeBondPreview,
   homeFacilitySceneHtml,
   homeFacilityEntryHtml,
   stageRewardText,

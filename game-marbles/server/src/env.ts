@@ -13,6 +13,7 @@ export type ServerEnv = {
   dbUser: string;
   dbPassword: string;
   dbSchema: string;
+  configEnvironment: string;
   corsOrigins: string[];
 };
 
@@ -83,6 +84,7 @@ export const env: ServerEnv = {
   dbUser: process.env.DB_USER || "postgres",
   dbPassword: process.env.DB_PASSWORD || "",
   dbSchema: schemaEnv(process.env.DB_SCHEMA),
+  configEnvironment: process.env.CONFIG_ENV || "test",
   corsOrigins: [
     siteUrl,
     "http://localhost:5173",

@@ -22,6 +22,7 @@ import {
   battleCoinReward,
   battleShardReward,
   battleWaveBannerText,
+  bonds,
   boostDropRarityForContinue,
   byId,
   calculateStageStars,
@@ -69,6 +70,7 @@ import {
   extractionResultTitleForMode,
   formatSessionWaveText,
   formatTime,
+  formations,
   gemConfigs,
   gemEffectText,
   gemFuseChance,
@@ -126,6 +128,7 @@ import {
   stages,
   syncCharacterUnlocks,
   tacticalCardWeight,
+  tacticalDecks,
   toggleInsuredDropKey,
   upgradeCardHtml,
   upgradeCardTierLabel,
@@ -279,7 +282,7 @@ function collectionTabs(this: any): Array<{ id: CollectionTab; label: string; hi
       { id: "gems", label: "宝石", hint: `${ownedGemTypes}/${Object.values(gemConfigs).length}`, icon: "gems" },
       { id: "marbles", label: "弹珠", hint: `${Object.values(marbleConfigs).length} 种`, icon: "marbles" },
       { id: "loot", label: "战利品", hint: `${ownedLoot}/${Object.values(collectibleConfigs).length}`, icon: "loot" },
-      { id: "tactics", label: "战术升级", hint: `${upgradeCards.length} 张`, icon: "tactics" },
+      { id: "tactics", label: "战术升级", hint: `${upgradeCards.length + formations.length + tacticalDecks.length + bonds.length} 项`, icon: "tactics" },
       { id: "protocols", label: "基地协议", hint: `${activeProtocols}/${metaUpgrades.length}`, icon: "protocols" },
       { id: "achievements", label: "成就", hint: `${achieved}/${achievements.length}`, icon: "achievements" },
       { id: "cosmetics", label: "幻化", hint: `${ownedCosmetics}/${cosmetics.length}`, icon: "cosmetics" },
@@ -516,6 +519,12 @@ function collectionLootEntries(this: any): CollectionEntry[] {
   }
 
 function collectionTacticSections(this: any): Array<{ title: string; hint: string; entries: CollectionEntry[] }> {
+    const systemSections = [
+      { title: "出战阵法", hint: "开战前选择，决定构筑偏向和初始战术资源", entries: this.collectionFormationEntries() },
+      { title: "战术卡组", hint: "战术升级从卡组池中优先抽取，自定义卡组可在作战终端配置", entries: this.collectionDeckEntries() },
+      { title: "羁绊效果", hint: "角色、弹珠与阵法组合满足条件后激活", entries: this.collectionBondEntries() },
+      { title: "核心质变", hint: "战局中积累进度后出现，拿到核心后可继续强化", entries: this.collectionCoreEntries() },
+    ];
     const groups: Array<{ kind: NonNullable<UpgradeCard["kind"]>; title: string; hint: string }> = [
       { kind: "tiered", title: "升级链", hint: "初 / 中 / 高阶递进，低阶会解锁并提高高阶出现率" },
       { kind: "stackable", title: "无限叠加", hint: "可重复选择，越拿越稀有，适合堆核心数值" },
@@ -524,7 +533,7 @@ function collectionTacticSections(this: any): Array<{ title: string; hint: strin
       { kind: "unique", title: "唯一效果", hint: "强机制卡，通常每局只生效一次" },
     ];
 
-    return groups
+    const cardSections = groups
       .map((group) => {
         const entries = this.collectionTacticEntries(group.kind);
         return {
@@ -534,11 +543,13 @@ function collectionTacticSections(this: any): Array<{ title: string; hint: strin
         };
       })
       .filter((section) => section.entries.length > 0);
+
+    return [...systemSections, ...cardSections];
   }
 
 function collectionTacticEntries(this: any, kind: NonNullable<UpgradeCard["kind"]>): CollectionEntry[] {
     return upgradeCards
-      .filter((card) => card.kind === kind)
+      .filter((card) => card.kind === kind && !card.core)
       .sort((a, b) => this.collectionTacticSortScore(a).localeCompare(this.collectionTacticSortScore(b)))
       .map((card) => ({
       key: `tactics:${card.id}`,
@@ -553,6 +564,77 @@ function collectionTacticEntries(this: any, kind: NonNullable<UpgradeCard["kind"
       footer: "战斗内出现",
       reward: this.collectionRarityReward(card.rarity, 0.45),
     }));
+  }
+
+function collectionFormationEntries(this: any): CollectionEntry[] {
+    return formations.map((formation) => ({
+      key: `formations:${formation.id}`,
+      color: formation.color,
+      state: "known",
+      iconHtml: `<span class="collection-tactic-icon legendary" style="--entry-color:${formation.color}">${this.escapeText(formation.shortName.slice(0, 1))}</span>`,
+      eyebrow: "出战阵法",
+      title: formation.name,
+      desc: formation.desc,
+      facts: [`初始刷新 +${formation.initialRefreshCharges || 0}`, `推荐卡组 ${tacticalDecks.find((deck) => deck.id === formation.recommendedDeckId)?.name || "自动推荐"}`],
+      tags: formation.tags,
+      footer: formation.unlockText,
+      reward: { coins: 120 },
+    }));
+  }
+
+function collectionDeckEntries(this: any): CollectionEntry[] {
+    return tacticalDecks.map((deck) => ({
+      key: `decks:${deck.id}`,
+      color: deck.id === "custom" ? "#61e6a8" : deck.id === "auto" ? "#54c7ff" : "#f6c95f",
+      state: "known",
+      iconHtml: `<span class="collection-tactic-icon epic">${deck.id === "auto" ? "自" : deck.id === "custom" ? "编" : "组"}</span>`,
+      eyebrow: deck.formationHint ? `适配 ${formations.find((formation) => formation.id === deck.formationHint)?.name || "阵法"}` : "通用卡组",
+      title: deck.name,
+      desc: deck.desc,
+      facts: [`卡牌 ${deck.id === "custom" ? this.save.customTacticalDeck.cardIds.length : deck.cardIds.length}`, `标签 ${deck.tagHints.join("/") || "自动"}`],
+      tags: ["战术卡组", ...deck.tagHints],
+      footer: deck.id === "custom" ? "作战终端可编辑" : "作战终端可选择",
+      reward: { coins: deck.id === "custom" ? 150 : 90 },
+    }));
+  }
+
+function collectionBondEntries(this: any): CollectionEntry[] {
+    return bonds.map((bond) => ({
+      key: `bonds:${bond.id}`,
+      color: bond.color,
+      state: "known",
+      iconHtml: `<span class="collection-tactic-icon rare" style="--entry-color:${bond.color}">羁</span>`,
+      eyebrow: "组合羁绊",
+      title: bond.name,
+      desc: bond.desc,
+      facts: [
+        bond.requiredCharacters?.length ? `角色 ${bond.requiredCharacters.map((id) => characters.find((character) => character.id === id)?.name || id).join("/")}` : "角色不限",
+        bond.requiredMarbles?.length ? `弹珠 ${bond.requiredMarbles.map((id) => marbleConfigs[id].name).join("/")}` : "弹珠标签触发",
+        bond.requiredFormationId ? `阵法 ${formations.find((formation) => formation.id === bond.requiredFormationId)?.name || bond.requiredFormationId}` : "阵法不限",
+      ],
+      tags: ["羁绊", ...(bond.unlockedCardIds || []).slice(0, 3)],
+      footer: bond.unlockedCoreIds?.length ? `解锁核心 ${bond.unlockedCoreIds.length} 项` : "解锁羁绊卡",
+      reward: { coins: 140, energyCrystals: 1 },
+    }));
+  }
+
+function collectionCoreEntries(this: any): CollectionEntry[] {
+    return upgradeCards
+      .filter((card) => card.core)
+      .sort((a, b) => `${a.core?.coreId}:${a.core?.type}`.localeCompare(`${b.core?.coreId}:${b.core?.type}`))
+      .map((card) => ({
+        key: `cores:${card.id}`,
+        color: rarityColor(card.rarity),
+        state: "known",
+        iconHtml: `<span class="collection-tactic-icon ${card.rarity}">${card.core?.type === "enhance" ? "强" : card.core?.type === "main" ? "主" : "副"}</span>`,
+        eyebrow: `${rarityName(card.rarity)} · ${card.core?.type === "enhance" ? "核心强化" : card.core?.type === "main" ? "主核心" : "副核心"}`,
+        title: card.name,
+        desc: card.desc,
+        facts: [`核心 ${card.core?.coreId || "unknown"}`, this.collectionTacticUnlockText(card), `叠加 ${this.collectionTacticStackText(card)}`],
+        tags: this.collectionTacticTags(card),
+        footer: card.core?.type === "enhance" ? "持有对应核心后出现" : "战斗中积累核心进度后出现",
+        reward: this.collectionRarityReward(card.rarity, card.rarity === "legendary" ? 0.8 : 0.55),
+      }));
   }
 
 function collectionTacticSortScore(this: any, card: UpgradeCard) {
@@ -903,6 +985,9 @@ function collectionTotalEntries(this: any) {
       Object.values(marbleConfigs).length +
       Object.values(collectibleConfigs).length +
       upgradeCards.length +
+      formations.length +
+      tacticalDecks.length +
+      bonds.length +
       metaUpgrades.length +
       this.collectionAchievementEntries().length +
       this.collectionCosmeticEntries().length
@@ -1002,6 +1087,10 @@ export const gameCollectionUiMethods = {
   collectionLootEntries,
   collectionTacticSections,
   collectionTacticEntries,
+  collectionFormationEntries,
+  collectionDeckEntries,
+  collectionBondEntries,
+  collectionCoreEntries,
   collectionTacticSortScore,
   collectionTacticIconText,
   collectionTacticStackText,

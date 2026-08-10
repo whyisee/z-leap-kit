@@ -10,6 +10,7 @@
 - [章节关卡设计](./STAGE_CHAPTER_DESIGN.md)
 - [基地主页 UI 改版方案](./HOME_UI_REDESIGN.md)
 - [战术卡片扩展设计](./TACTICAL_CARD_DESIGN.md)
+- [战斗 BD 深度系统设计](./COMBAT_BUILD_SYSTEM_DESIGN.md)
 - [PVP 模式设计方案](./PVP_DESIGN.md)
 - [排行榜功能设计](./LEADERBOARD_DESIGN.md)
 - [幻化抽卡系统设计](./COSMETIC_GACHA_DESIGN.md)

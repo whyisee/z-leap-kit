@@ -263,6 +263,18 @@ function fireMarble(this: any, character: CharacterRuntime, marbleId: MarbleId, 
     const rotated = rotate(aimX, aimY, jitter);
     const speed = config.speed * session.modifiers.marbleSpeedMul * (small ? 0.88 : 1);
     const splitLife = session.modifiers.cardStacks.splitLife || 0;
+    const swarmSmallBonus =
+      small && session.modifiers.cardStacks.coreSwarmGrowth
+        ? {
+            damage:
+              1 +
+              Math.min(
+                session.modifiers.cardStacks.coreSwarmGrowthPlus ? 0.68 : 0.45,
+                Math.floor(session.marbles.length / 10) * (session.modifiers.cardStacks.coreSwarmGrowthPlus ? 0.085 : 0.06),
+              ),
+            life: Math.min(session.modifiers.cardStacks.coreSwarmGrowthPlus ? 3.2 : 2.4, session.marbles.length * (session.modifiers.cardStacks.coreSwarmGrowthPlus ? 0.055 : 0.04)),
+          }
+        : { damage: 1, life: 0 };
     const reboundLevel =
       character.id === "engineer" && (marbleId === "basic" || marbleId === "split")
         ? this.characterRouteLevel(character.id, "engineer_rebound")
@@ -293,8 +305,14 @@ function fireMarble(this: any, character: CharacterRuntime, marbleId: MarbleId, 
       vx: rotated.x * speed,
       vy: rotated.y * speed,
       radius: Math.max(5, config.radius * (small ? 0.68 : 1)),
-      damage: config.damage * this.marbleDamageLevelMul(marbleId) * (small ? 0.54 : 1) * smallDamageMul * this.characterDamageMul(character, marbleId),
-      lifetime: config.lifetime + (marbleId === "split" ? splitLife * 0.5 : 0) + prismLife + voidLife,
+      damage:
+        config.damage *
+        this.marbleDamageLevelMul(marbleId) *
+        (small ? 0.54 : 1) *
+        smallDamageMul *
+        swarmSmallBonus.damage *
+        this.characterDamageMul(character, marbleId),
+      lifetime: config.lifetime + (marbleId === "split" ? splitLife * 0.5 : 0) + prismLife + voidLife + swarmSmallBonus.life,
       bounce: 0,
       maxBounce: config.maxBounce + Math.floor(reboundLevel / 2),
       hitCount: 0,
@@ -434,6 +452,18 @@ function enemyBreakthrough(this: any, enemy: Enemy) {
     this.addFloatingText(enemy.x, FIELD_BOTTOM - 24, `-${damage}`, "#ff6c7e");
     this.addParticle(enemy.x, FIELD_BOTTOM, "#ff6c7e", 18);
 
+    if (
+      session.modifiers.cardStacks.coreLastLine &&
+      session.baseHp > 0 &&
+      session.baseHp <= Math.ceil(session.maxBaseHp * 0.35) &&
+      session.modifiers.cardStacks.coreLastLineRepairWave !== session.wave
+    ) {
+      session.modifiers.cardStacks.coreLastLineRepairWave = session.wave;
+      const repair = session.modifiers.cardStacks.coreLastLinePlus ? 2 : 1;
+      session.baseHp = Math.min(session.maxBaseHp, session.baseHp + repair);
+      this.addFloatingText(WIDTH / 2, FIELD_BOTTOM - 56, `+${repair} 火网回修`, "#61e6a8");
+    }
+
     if (session.baseHp <= 0 && session.modifiers.revive) {
       session.modifiers.revive = false;
       session.baseHp = 1;
@@ -461,6 +491,7 @@ function updateMarbles(this: any, dt: number) {
 
     for (const marble of session.marbles) {
       marble.lifetime -= dt;
+      const previousBounce = marble.bounce;
 
       if (session.modifiers.magnetic > 0) {
         const target = nearestEnemy(session.enemies, marble.x, marble.y);
@@ -503,6 +534,20 @@ function updateMarbles(this: any, dt: number) {
         marble.y = FIELD_BOTTOM - marble.radius;
         marble.vy = -Math.abs(marble.vy);
         marble.bounce += 1;
+      }
+
+    if (
+      session.modifiers.cardStacks.coreReboundFracture &&
+      !marble.small &&
+      Math.floor(previousBounce / (session.modifiers.cardStacks.coreReboundFracturePlus ? 4 : 5)) <
+        Math.floor(marble.bounce / (session.modifiers.cardStacks.coreReboundFracturePlus ? 4 : 5))
+    ) {
+        const owner = session.characters.find((char) => char.id === marble.ownerId) || session.characters[0];
+        if (owner) {
+          this.fireMarble(owner, "split", randomRange(-0.45, 0.45), true);
+          this.addParticle(marble.x, marble.y, "#61e6a8", 7);
+          if (session.speed < 4) this.addFloatingText(marble.x, marble.y - 18, "裂变", "#61e6a8");
+        }
       }
 
       for (const [enemyId, timer] of marble.hitCooldown) {
@@ -657,12 +702,31 @@ function handleMarbleHit(this: any, marble: Marble, enemy: Enemy) {
       const passiveChain =
         (marble.ownerId === "magnetist" && this.passiveUnlocked(marble.ownerId, "magnetist_conductor") ? 1 : 0) +
         (marble.ownerId === "prism" && this.passiveUnlocked(marble.ownerId, "prism_afterglow") ? 1 : 0);
+      const staticCoreBonus =
+        session.modifiers.cardStacks.coreStaticFrost && enemy.slowTimer > 0
+          ? session.modifiers.cardStacks.coreStaticFrostPlus
+            ? 2
+            : 1
+          : 0;
       this.lightning(
         enemy,
-        3 + session.modifiers.chainBonus + passiveChain + Math.floor(chainRoute / 3) + Math.floor(prismRoute / 3) + Math.floor(frostRoute / 3),
+        3 +
+          session.modifiers.chainBonus +
+          passiveChain +
+          staticCoreBonus +
+          Math.floor(chainRoute / 3) +
+          Math.floor(prismRoute / 3) +
+          Math.floor(frostRoute / 3),
         marble.damage * 0.72,
         marble,
       );
+      if (staticCoreBonus) {
+        this.applySlowToTargets(
+          [enemy],
+          session.modifiers.cardStacks.coreStaticFrostPlus ? 2.25 : 1.6,
+          (session.modifiers.cardStacks.coreStaticFrostPlus ? 0.34 : 0.28) + session.modifiers.slowBonus * 0.35,
+        );
+      }
     }
 
     if (marble.marbleId === "slow") {
@@ -742,6 +806,10 @@ function marbleDamage(this: any, marble: Marble, enemy: Enemy) {
       damage *= 1 + Math.min(0.28, Math.floor(session.coins / 80) * 0.01);
     }
 
+    if (session.modifiers.cardStacks.goldenFuel && marble.marbleId === "burn") {
+      damage *= 1 + Math.min(0.32, Math.floor(session.coins / 500) * 0.035 * session.modifiers.cardStacks.goldenFuel);
+    }
+
     if (session.modifiers.bounceDamage) {
       const bounceBonus = Math.min(12, marble.bounce) * session.modifiers.bounceDamage;
       const engineerActive = session.characters.find((char) => char.id === "engineer")?.skillActive ?? 0;
@@ -754,7 +822,7 @@ function marbleDamage(this: any, marble: Marble, enemy: Enemy) {
 
     if (session.modifiers.cardStacks.lastLine) {
       const pressure = clamp((enemy.y - FIELD.y) / FIELD.h, 0, 1);
-      damage *= 1 + pressure * 0.25;
+      damage *= 1 + pressure * (session.modifiers.cardStacks.coreLastLinePlus ? 0.36 : 0.25);
     }
 
     if (session.modifiers.cardStacks.slowVulnerable && enemy.slowTimer > 0) {
@@ -772,6 +840,16 @@ function marbleDamage(this: any, marble: Marble, enemy: Enemy) {
     if (Math.random() < session.modifiers.critChance) {
       damage *= session.modifiers.critDamage;
       this.addFloatingText(enemy.x, enemy.y - enemy.radius, "暴击", "#f6c95f");
+      if (session.modifiers.cardStacks.coreBossHunter && (enemy.type === "boss" || enemy.type === "elite")) {
+        const owner = session.characters.find((character) => character.id === marble.ownerId) || session.characters[0];
+        if (owner) {
+          owner.skillTimer = Math.max(0, owner.skillTimer - (session.modifiers.cardStacks.coreBossHunterPlus ? 1.85 : 1.2));
+          if (session.modifiers.cardStacks.coreBossHunterPlus) {
+            session.modifiers.cardStacks.bossDamage = (session.modifiers.cardStacks.bossDamage || 0) + 0.04;
+          }
+          if (session.speed < 4) this.addFloatingText(owner.x, owner.y - 58, "猎核回充", "#f6c95f");
+        }
+      }
     }
 
     return damage;
@@ -818,11 +896,51 @@ function killEnemy(this: any, enemy: Enemy, source: string, marble: Marble | nul
     }
 
     if (session.modifiers.cardStacks.burnSpread && enemy.burnTimer > 0) {
+      const spreadRadius = session.modifiers.cardStacks.corePyroChainPlus ? 132 : 112;
       for (const target of session.enemies) {
         const dist = Math.hypot(target.x - enemy.x, target.y - enemy.y);
-        if (!target.dead && target !== enemy && dist < 112) {
+        if (!target.dead && target !== enemy && dist < spreadRadius) {
           target.burnTimer = Math.max(target.burnTimer, 2.5);
-          target.burnDps = Math.max(target.burnDps, 4.2 * session.modifiers.burnMul);
+          target.burnDps = Math.max(target.burnDps, (session.modifiers.cardStacks.corePyroChainPlus ? 5.4 : 4.2) * session.modifiers.burnMul);
+        }
+      }
+    }
+
+    if (session.modifiers.cardStacks.corePyroChain && enemy.burnTimer > 0) {
+      const blastMarble =
+        marble ||
+        this.createSkillMarble?.("pyro_core", "blast", enemy.x, enemy.y, 32) || {
+          id: -3,
+          marbleId: "blast",
+          ownerId: "pyro_core",
+          x: enemy.x,
+          y: enemy.y,
+          vx: 0,
+          vy: 0,
+          radius: 1,
+          damage: 32,
+          lifetime: 0,
+          bounce: 0,
+          maxBounce: 0,
+          hitCount: 0,
+          pierce: 0,
+          splitDone: true,
+          hitCooldown: new Map(),
+          trail: [],
+          small: false,
+        };
+      this.explode(
+        enemy.x,
+        enemy.y,
+        (session.modifiers.cardStacks.corePyroChainPlus ? 72 : 54) * session.modifiers.blastRadiusMul,
+        (session.modifiers.cardStacks.corePyroChainPlus ? 46 : 34) * session.modifiers.burnMul,
+        blastMarble,
+      );
+      for (const target of session.enemies) {
+        const dist = Math.hypot(target.x - enemy.x, target.y - enemy.y);
+        if (!target.dead && target !== enemy && dist < (session.modifiers.cardStacks.corePyroChainPlus ? 122 : 96)) {
+          target.burnTimer = Math.max(target.burnTimer, session.modifiers.cardStacks.corePyroChainPlus ? 3.1 : 2.4);
+          target.burnDps = Math.max(target.burnDps, (session.modifiers.cardStacks.corePyroChainPlus ? 6.2 : 4.8) * session.modifiers.burnMul);
         }
       }
     }

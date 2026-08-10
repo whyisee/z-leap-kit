@@ -70,6 +70,8 @@ import {
   extractionResultTitleForMode,
   formatSessionWaveText,
   formatTime,
+  formationById,
+  formations,
   gemConfigs,
   gemEffectText,
   gemFuseChance,
@@ -127,6 +129,8 @@ import {
   stages,
   syncCharacterUnlocks,
   tacticalCardWeight,
+  tacticalDeckById,
+  tacticalDecks,
   toggleInsuredDropKey,
   upgradeCardHtml,
   upgradeCardTierLabel,
@@ -321,7 +325,10 @@ function heroTeamHtml(this: any) {
       <div class="hero-team">
         <div class="hero-section-title">
           <span>出战阵容</span>
-          <em>${this.save.lineup.length}/3</em>
+          <div class="hero-team-title-actions">
+            <em>${this.save.lineup.length}/3</em>
+            <button class="hero-loadout-config-button" type="button" data-loadout-config-open aria-label="配置作战方案">配置</button>
+          </div>
         </div>
         <div class="hero-team-grid">
           ${[0, 1, 2]
@@ -357,6 +364,360 @@ function heroTeamHtml(this: any) {
             .join("")}
         </div>
       </div>
+    `;
+  }
+
+function loadoutConfigPageHtml(this: any) {
+    const activeId = this.save.activeBattleLoadoutId;
+    const editorId = this.loadoutEditorPresetId || activeId || "loadout_1";
+    const presets = this.save.battleLoadouts || [];
+    const preset = presets.find((item: any) => item.id === editorId) || presets[0];
+    const lineup = Array.isArray(preset?.lineup) ? preset.lineup : [];
+    const formation = formationById(preset?.formationId);
+    const deck = tacticalDeckById(preset?.tacticalDeckId);
+    const customDeck = preset?.customTacticalDeck || this.save.customTacticalDeck;
+    const selectedCards = new Set(customDeck.cardIds || []);
+    const selectedSlot = Math.max(0, Math.min(2, Math.floor(this.loadoutEditorSlot || 0)));
+    const sidebarMode = this.loadoutSidebarMode === "decks" ? "decks" : "loadouts";
+    const previewDeck = deck.id === "auto" ? tacticalDeckById(formation.recommendedDeckId) : deck;
+    const previewDeckCards = previewDeck.cardIds
+      .map((id: string) => upgradeCards.find((card: any) => card.id === id))
+      .filter(Boolean);
+    const configurableDeckCards = upgradeCards.filter((card: any) => this.isLoadoutDeckCardConfigurable?.(card, preset) ?? true);
+    const selectedDeckCards =
+      deck.id === "custom"
+        ? (customDeck.cardIds || []).map((id: string) => upgradeCards.find((card: any) => card.id === id)).filter(Boolean)
+        : previewDeckCards;
+    const rarityFilterOptions = [
+      { id: "all", name: "全部" },
+      { id: "common", name: "普通" },
+      { id: "rare", name: "稀有" },
+      { id: "epic", name: "史诗" },
+      { id: "legendary", name: "传说" },
+    ];
+    const tagFilterOptions = ["all", ...new Set(configurableDeckCards.map((card: any) => card.tag).filter(Boolean))];
+    const rarityFilter = rarityFilterOptions.some((item) => item.id === this.loadoutDeckCardRarityFilter) ? this.loadoutDeckCardRarityFilter : "all";
+    const tagFilter = tagFilterOptions.includes(this.loadoutDeckCardTagFilter) ? this.loadoutDeckCardTagFilter : "all";
+    const filteredDeckCards = configurableDeckCards.filter(
+      (card: any) => (rarityFilter === "all" || card.rarity === rarityFilter) && (tagFilter === "all" || card.tag === tagFilter),
+    );
+    const loadoutCardChipHtml = (card: any, options: { selected?: boolean; readonly?: boolean; compact?: boolean; source?: "selected" | "library" } = {}) => {
+      const tagText = [this.escapeText(card.tag), this.escapeText(upgradeCardTypeLabel(card))].filter(Boolean).join(" · ");
+      const body = `
+        <span>${this.escapeText(upgradeCardTierLabel(card) || rarityName(card.rarity))}</span>
+        <strong>${this.escapeText(card.name)}</strong>
+        <em>${tagText}</em>
+      `;
+      const className = `loadout-card-chip ${options.selected ? "active" : ""} ${options.readonly ? "readonly" : ""} ${options.compact ? "compact" : ""} ${card.rarity}`;
+      return options.readonly
+        ? `<article class="${className}">${body}</article>`
+        : `<button
+            class="${className}"
+            type="button"
+            draggable="true"
+            data-loadout-deck-card="${card.id}"
+            data-loadout-deck-drag-card="${card.id}"
+            data-loadout-deck-card-source="${options.source || "library"}"
+          >${body}</button>`;
+    };
+    const selectedDeckPanelHtml = `
+      <div class="loadout-deck-area selected" data-loadout-deck-drop="selected">
+        <div class="loadout-deck-area-head">
+          <div>
+            <span>已选择卡片</span>
+            <strong>${deck.id === "custom" ? `${selectedDeckCards.length}/24` : `${this.escapeText(previewDeck.name)} · ${selectedDeckCards.length} 张`}</strong>
+          </div>
+          <em>${deck.id === "custom" ? "卡组上限 24 张" : "当前卡组内容预览"}</em>
+        </div>
+        ${
+          selectedDeckCards.length
+            ? `
+              <div class="loadout-selected-card-grid">
+                ${selectedDeckCards
+                  .map((card: any) =>
+                    loadoutCardChipHtml(card, {
+                      selected: deck.id === "custom",
+                      readonly: deck.id !== "custom",
+                      compact: true,
+                      source: "selected",
+                    }),
+                  )
+                  .join("")}
+              </div>
+            `
+            : `<div class="loadout-custom-deck-empty">还没有选择卡片。</div>`
+        }
+        ${deck.id === "custom" ? `<div class="loadout-deck-remove-zone" data-loadout-deck-drop="library">移除区</div>` : ""}
+      </div>
+    `;
+    const cardFilterHtml = `
+      <div class="loadout-card-filter">
+        <div class="loadout-card-filter-row">
+          ${rarityFilterOptions
+            .map(
+              (item) => `
+                <button class="${rarityFilter === item.id ? "active" : ""}" type="button" data-loadout-deck-card-rarity-filter="${item.id}">
+                  ${item.name}
+                </button>
+              `,
+            )
+            .join("")}
+        </div>
+        <div class="loadout-card-filter-row tags">
+          ${tagFilterOptions
+            .map((tag) => {
+              const label = tag === "all" ? "全部标签" : tag;
+              return `
+                <button class="${tagFilter === tag ? "active" : ""}" type="button" data-loadout-deck-card-tag-filter="${this.escapeText(tag)}">
+                  ${this.escapeText(label)}
+                </button>
+              `;
+            })
+            .join("")}
+        </div>
+      </div>
+    `;
+    const cardLibraryPanelHtml = `
+      <div class="loadout-deck-area library" data-loadout-deck-drop="library">
+        <div class="loadout-deck-area-head">
+          <div>
+            <span>卡片列表</span>
+            <strong>${filteredDeckCards.length}/${configurableDeckCards.length}</strong>
+          </div>
+          <em>${deck.id === "custom" ? "可用卡片池" : "复制为自定义后可编辑"}</em>
+        </div>
+        ${cardFilterHtml}
+        ${
+          filteredDeckCards.length
+            ? `
+              <div class="loadout-custom-deck-grid library">
+                ${filteredDeckCards
+                  .map((card: any) =>
+                    loadoutCardChipHtml(card, {
+                      selected: selectedCards.has(card.id),
+                      readonly: deck.id !== "custom",
+                      source: "library",
+                    }),
+                  )
+                  .join("")}
+              </div>
+            `
+            : `<div class="loadout-custom-deck-empty">当前筛选下没有卡片。</div>`
+        }
+      </div>
+    `;
+    const planListHtml = presets
+      .map((preset: any) => {
+        const saved = Array.isArray(preset.lineup) && preset.lineup.length > 0;
+        const active = preset.id === activeId;
+        const editing = preset.id === editorId;
+        const formation = formationById(preset.formationId);
+        const deck = tacticalDeckById(preset.tacticalDeckId);
+        return `
+          <article class="loadout-plan-card ${active ? "active" : ""} ${editing ? "editing" : ""} ${saved ? "saved" : "empty"}" style="--formation-color:${formation.color};--formation-accent:${formation.accentColor}">
+            <div class="loadout-preset-card-head">
+              <span>${this.escapeText(preset.name)}</span>
+              <em>${active ? "使用中" : editing ? "编辑中" : saved ? "已保存" : "空槽"}</em>
+            </div>
+            <button class="loadout-plan-select" type="button" data-loadout-edit-select="${this.escapeText(preset.id)}">
+              ${saved
+                ? preset.lineup
+                    .map((id: string, index: number) => {
+                      const character = characters.find((item) => item.id === id);
+                      return character
+                        ? `<span style="--hero-color:${character.color}"><b>${index + 1}</b>${this.characterPortraitHtml(character, "loadout-mini-portrait")}</span>`
+                        : "";
+                    })
+                    .join("")
+                : `<i>未保存小队</i>`}
+            </button>
+            <div class="loadout-preset-meta">
+              <span>阵法 <strong>${this.escapeText(formation.name)}</strong></span>
+              <span>卡组 <strong>${this.escapeText(deck.name)}</strong></span>
+            </div>
+            <div class="loadout-preset-actions">
+              <button type="button" data-loadout-apply="${this.escapeText(preset.id)}" ${saved ? "" : "disabled"}>${active ? "重载" : "应用"}</button>
+              <button type="button" data-loadout-save="${this.escapeText(preset.id)}">存当前</button>
+              <button type="button" data-loadout-clear="${this.escapeText(preset.id)}" ${saved && !active ? "" : "disabled"}>清空</button>
+            </div>
+          </article>
+        `;
+      })
+      .join("");
+    const deckListHtml = tacticalDecks
+      .map((item: any) => {
+        const selected = item.id === deck.id;
+        const cardCount = item.id === "custom" ? customDeck.cardIds?.length || 0 : item.cardIds.length;
+        const badge = item.id === "custom" ? "自定义" : item.id === "auto" ? "推荐" : "预设";
+        const countText = item.id === "auto" ? "自动推荐" : item.id === "custom" ? `${cardCount}/24 张` : `${cardCount} 张`;
+        const tagText = (item.tagHints || []).slice(0, 2).map((tag: string) => this.escapeText(tag)).join(" / ");
+        return `
+          <button
+            class="loadout-deck-list-card ${selected ? "active" : ""} ${item.id === "custom" ? "custom" : ""}"
+            type="button"
+            data-loadout-deck="${item.id}"
+          >
+            <span class="loadout-deck-list-main">
+              <strong>${this.escapeText(item.name)}</strong>
+              <em>${countText}</em>
+            </span>
+            <span class="loadout-deck-list-sub">
+              <b>${badge}</b>
+              <small>${tagText || this.escapeText(item.desc)}</small>
+            </span>
+          </button>
+        `;
+      })
+      .join("");
+    return `
+      <section class="loadout-builder" aria-label="作战方案配置">
+        <div class="loadout-builder-head">
+          <button class="secondary-button loadout-back-button" type="button" data-loadout-config-close>返回角色</button>
+          <div>
+            <span>当前编辑</span>
+            <strong>${this.escapeText(preset?.name || "方案")}</strong>
+            <em>${lineup.length}/3 · ${this.escapeText(formation.name)} · ${this.escapeText(deck.name)}</em>
+          </div>
+          <button class="primary-button loadout-apply-main" type="button" data-loadout-apply="${this.escapeText(preset?.id || "")}" ${lineup.length > 0 ? "" : "disabled"}>
+            应用此方案
+          </button>
+        </div>
+
+        <div class="loadout-builder-layout">
+          <aside class="loadout-sidebar" aria-label="配置列表">
+            <div class="loadout-sidebar-tabs">
+              <button class="${sidebarMode === "loadouts" ? "active" : ""}" type="button" data-loadout-sidebar-mode="loadouts">方案列表</button>
+              <button class="${sidebarMode === "decks" ? "active" : ""}" type="button" data-loadout-sidebar-mode="decks">卡组列表</button>
+            </div>
+            <div class="loadout-sidebar-list ${sidebarMode === "decks" ? "deck-mode" : "plan-mode"}">
+              ${sidebarMode === "decks" ? deckListHtml : planListHtml}
+            </div>
+          </aside>
+
+          <section class="loadout-editor ${sidebarMode === "decks" ? "deck-only" : ""}" aria-label="${sidebarMode === "decks" ? "卡组配置" : "方案编辑"}">
+            ${
+              sidebarMode === "loadouts"
+                ? `
+            <div class="loadout-editor-section">
+              <div class="loadout-editor-title">
+                <span>出战角色</span>
+                <em>点击槽位决定替换位置，再点角色加入或移除</em>
+              </div>
+              <div class="loadout-slot-row">
+                ${[0, 1, 2]
+                  .map((slot) => {
+                    const character = characters.find((item) => item.id === lineup[slot]);
+                    return `
+                      <button class="loadout-slot-card ${slot === selectedSlot ? "active" : ""} ${character ? "" : "empty"}" type="button" data-loadout-slot-select="${slot}" style="--hero-color:${character?.color || "#54c7ff"}">
+                        <span>位 ${slot + 1}</span>
+                        ${character ? this.characterPortraitHtml(character, "loadout-slot-portrait") : "<i>空位</i>"}
+                        <strong>${character ? this.escapeText(character.name) : "待选择"}</strong>
+                      </button>
+                    `;
+                  })
+                  .join("")}
+              </div>
+              <div class="loadout-character-grid">
+                ${characters
+                  .map((character) => {
+                    const progress = this.characterProgress(character.id);
+                    const inSlot = lineup.indexOf(character.id);
+                    const stats = this.characterUiStats(character);
+                    return `
+                      <button
+                        class="loadout-character-card ${inSlot >= 0 ? "selected" : ""} ${progress.owned ? "" : "locked"}"
+                        type="button"
+                        data-loadout-character="${character.id}"
+                        ${progress.owned ? "" : "disabled"}
+                        style="--hero-color:${character.color}"
+                      >
+                        ${this.characterPortraitHtml(character, "loadout-character-portrait")}
+                        <span>
+                          <strong>${this.escapeText(character.name)}</strong>
+                          <em>${progress.owned ? `战力 ${stats.power} · ${character.role}` : this.characterUnlockText(character)}</em>
+                        </span>
+                        ${inSlot >= 0 ? `<b>${inSlot + 1}</b>` : ""}
+                      </button>
+                    `;
+                  })
+                  .join("")}
+              </div>
+            </div>
+
+            <div class="loadout-editor-section">
+              <div class="loadout-editor-title">
+                <span>出战阵法</span>
+                <em>${this.escapeText(formation.desc)}</em>
+              </div>
+              <div class="loadout-formation-grid">
+                ${formations
+                  .map(
+                    (item: any) => `
+                      <button
+                        class="${item.id === formation.id ? "active" : ""}"
+                        type="button"
+                        data-loadout-formation="${item.id}"
+                        style="--formation-color:${item.color};--formation-accent:${item.accentColor}"
+                      >
+                        <strong>${this.escapeText(item.name)}</strong>
+                        <span>${item.tags.map((tag: string) => this.escapeText(tag)).join(" / ")}</span>
+                        <em>${this.escapeText(item.unlockText)}</em>
+                      </button>
+                    `,
+                  )
+                  .join("")}
+              </div>
+            </div>
+            `
+                : ""
+            }
+
+            <div class="loadout-editor-section">
+              <div class="loadout-editor-title">
+                <span>${sidebarMode === "decks" ? this.escapeText(deck.name) : "战术卡组配置"}</span>
+                <em>${
+                  deck.id === "custom"
+                    ? `自定义 ${customDeck.cardIds?.length || 0}/24`
+                    : deck.id === "auto" && previewDeck.id !== "auto"
+                      ? `当前按「${this.escapeText(formation.name)}」预览 ${this.escapeText(previewDeck.name)}`
+                      : this.escapeText(deck.desc)
+                }</em>
+              </div>
+              ${
+                sidebarMode === "loadouts"
+                  ? `
+                    <div class="loadout-deck-row">
+                      ${tacticalDecks
+                        .map(
+                          (item: any) => `
+                            <button class="${item.id === deck.id ? "active" : ""}" type="button" data-loadout-deck="${item.id}">
+                              <strong>${this.escapeText(item.name)}</strong>
+                              <span>${item.id === "custom" ? `${customDeck.cardIds?.length || 0} 张` : item.cardIds.length ? `${item.cardIds.length} 张` : "自动推荐"}</span>
+                            </button>
+                          `,
+                        )
+                        .join("")}
+                    </div>
+                  `
+                  : ""
+              }
+              <div class="loadout-custom-deck-panel ${deck.id === "custom" ? "active" : ""}">
+                <div class="loadout-custom-deck-head">
+                  <div>
+                    <span>${deck.id === "custom" ? "自定义卡组内容" : "卡组内容预览"}</span>
+                    <strong>${deck.id === "custom" ? `${customDeck.cardIds?.length || 0}/24` : `${this.escapeText(previewDeck.name)} · ${previewDeckCards.length || 0} 张`}</strong>
+                    <em>${deck.id === "custom" ? "自定义卡牌池" : "预设卡组只读，可以复制为自定义后调整内容"}</em>
+                  </div>
+                  <button type="button" data-loadout-copy-deck-to-custom ${deck.id === "custom" ? "disabled" : ""}>
+                    ${deck.id === "custom" ? "正在编辑" : "复制为自定义"}
+                  </button>
+                </div>
+                ${sidebarMode === "decks" || deck.id === "custom" ? `${selectedDeckPanelHtml}${cardLibraryPanelHtml}` : `<div class="loadout-custom-deck-empty">选择“复制为自定义”后，这里会展示可勾选的战术卡牌。</div>`}
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
     `;
   }
 
@@ -803,6 +1164,7 @@ export const gameHeroUiMethods = {
   heroListMetricText,
   heroCollectionHtml,
   heroTeamHtml,
+  loadoutConfigPageHtml,
   heroModalHtml,
   heroDetailHtml,
   heroDetailTabsHtml,
