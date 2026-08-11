@@ -1,9 +1,11 @@
 self.addEventListener("push", (event) => {
   let payload = {};
   try { payload = event.data ? event.data.json() : {}; } catch { payload = {}; }
-  event.waitUntil(self.registration.showNotification(payload.title || "TraceWeave 提醒", {
+  event.waitUntil(self.registration.showNotification(payload.title || "织络提醒", {
     body: payload.body || "你有一条待处理的生活记录。",
     tag: payload.tag || "traceweave-notification",
+    icon: "/brand-icon-192.png",
+    badge: "/brand-icon-192.png",
     data: { url: payload.url || "/?view=drafts", notificationId: payload.notificationId },
   }));
 });

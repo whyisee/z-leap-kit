@@ -6,6 +6,10 @@ import { config, quoteIdentifier } from "../config";
 import { pool } from "../db/pool";
 import { withTransaction } from "../db/transaction";
 import { refreshSocialProjectionsForUser } from "./social-service";
+import {
+  refreshPublicEventProjection,
+  refreshPublicGraphProjectionsForUser,
+} from "./world-sync-service";
 
 const schema = quoteIdentifier(config.DB_SCHEMA);
 const leaseMinutes = 5;
@@ -27,19 +31,44 @@ function payloadUserIds(record: OutboxRecord): string[] {
   return [...new Set(values.filter((value): value is string => typeof value === "string"))].sort();
 }
 
+function payloadEventIds(record: OutboxRecord): string[] {
+  const values = [record.payload.eventId];
+  if (Array.isArray(record.payload.affectedEventIds)) values.push(...record.payload.affectedEventIds);
+  return [...new Set(values.filter((value): value is string => typeof value === "string"))].sort();
+}
+
 async function handleOutboxRecord(client: PoolClient, record: OutboxRecord): Promise<void> {
+  const userIds = payloadUserIds(record);
+  const eventIds = payloadEventIds(record);
   switch (record.eventType) {
     case "event.confirmed":
     case "event.updated":
     case "event.deleted":
     case "event.privacy_updated":
+      for (const userId of userIds) await refreshSocialProjectionsForUser(client, userId);
+      if (eventIds.length) {
+        for (const eventId of eventIds) await refreshPublicEventProjection(client, eventId);
+      } else {
+        for (const userId of userIds) await refreshPublicGraphProjectionsForUser(client, userId);
+      }
+      return;
     case "privacy_policy.updated":
-    case "shared_occurrence.updated":
+      for (const userId of userIds) await refreshSocialProjectionsForUser(client, userId);
+      if (eventIds.length) {
+        for (const eventId of eventIds) await refreshPublicEventProjection(client, eventId);
+      } else {
+        for (const userId of userIds) await refreshPublicGraphProjectionsForUser(client, userId);
+      }
+      return;
     case "entity_memory.updated":
     case "account.deleted":
-      for (const userId of payloadUserIds(record)) {
+      for (const userId of userIds) {
         await refreshSocialProjectionsForUser(client, userId);
+        await refreshPublicGraphProjectionsForUser(client, userId);
       }
+      return;
+    case "shared_occurrence.updated":
+      for (const userId of userIds) await refreshSocialProjectionsForUser(client, userId);
       return;
     default:
       // Forward-compatible consumers may not know every domain event. Treating an

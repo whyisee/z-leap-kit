@@ -173,7 +173,7 @@ function ScopePolicyEditor({
   );
 }
 
-export function PrivacySettingsView() {
+export function PrivacySettingsView({ embedded = false }: { embedded?: boolean } = {}) {
   const [overview, setOverview] = useState<PrivacyOverview | null>(null);
   const [defaultDraft, setDefaultDraft] = useState<PolicyValues | null>(null);
   const [scope, setScope] = useState<"categories" | "entities">("categories");
@@ -214,16 +214,16 @@ export function PrivacySettingsView() {
   }
 
   if (!overview || !defaultDraft) {
-    return <section className="list-page privacy-page"><div className="empty-state">{message ?? "正在读取隐私策略…"}</div></section>;
+    return <section className={`list-page privacy-page ${embedded ? "embedded" : ""}`}><div className="empty-state">{message ?? "正在读取隐私策略…"}</div></section>;
   }
   const inherited = defaultValues(overview.defaultPolicy);
 
   return (
-    <section className="list-page privacy-page">
-      <div className="page-heading privacy-page-heading">
+    <section className={`list-page privacy-page ${embedded ? "embedded" : ""}`}>
+      {!embedded ? <div className="page-heading privacy-page-heading">
         <div><span className="eyebrow">一个决策点控制所有数据出口</span><h1>隐私与授权</h1></div>
         <span className="privacy-policy-version">默认策略 v{overview.defaultPolicy.version}</span>
-      </div>
+      </div> : <div className="settings-section-intro"><div><strong>隐私与授权</strong><small>控制生活数据的可见范围和派生用途</small></div><span>默认策略 v{overview.defaultPolicy.version}</span></div>}
       {message ? <div className="message">{message}</div> : null}
 
       <section className="privacy-default-card">
@@ -233,7 +233,7 @@ export function PrivacySettingsView() {
         </div>
         <PolicyControls values={defaultDraft} onChange={setDefaultDraft} allowInheritance={false} />
         <div className="privacy-default-actions">
-          <small>好友、圈子和公开内容读取将在对应成员模型完成后启用；当前不会因此自动暴露原始记录。</small>
+          <small>好友、圈子和公开可见范围已经生效；系统只展示符合授权策略的派生内容，不会自动暴露原始记录。</small>
           <button
             className="primary-button"
             type="button"

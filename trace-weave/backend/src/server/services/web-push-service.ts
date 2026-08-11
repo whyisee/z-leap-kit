@@ -35,11 +35,12 @@ export async function deliverPendingWebPush(client: PoolClient): Promise<{ deliv
   if (!webPushConfigured) return { delivered: 0, failed: 0 };
   const pending = await client.query<{
     notificationId: string; subscriptionId: string; endpoint: string; p256dh: string; auth: string;
-    title: string; body: string; resourceId: string;
+    title: string; body: string; resourceId: string; notificationType: string;
   }>(
     `SELECT notification.id AS "notificationId", subscription.id AS "subscriptionId",
             subscription.endpoint, subscription.p256dh, subscription.auth_secret AS auth,
-            notification.title, notification.body, notification.resource_id AS "resourceId"
+            notification.title, notification.body, notification.resource_id AS "resourceId",
+            notification.notification_type AS "notificationType"
      FROM ${schema}.notifications notification
      JOIN ${schema}.notification_preferences preference ON preference.owner_user_id = notification.owner_user_id
        AND preference.browser_notifications_enabled
@@ -62,9 +63,14 @@ export async function deliverPendingWebPush(client: PoolClient): Promise<{ deliv
       [deliveryId, item.notificationId, item.subscriptionId],
     );
     try {
+      const targetUrl = item.notificationType === "direct_message"
+        ? "/?view=contacts&tab=messages"
+        : item.notificationType.startsWith("friend_request")
+          ? "/?view=contacts&tab=friends"
+          : "/?view=drafts";
       const response = await webPush.sendNotification(
         { endpoint: item.endpoint, keys: { p256dh: item.p256dh, auth: item.auth } },
-        JSON.stringify({ title: item.title, body: item.body, tag: `traceweave-${item.notificationId}`, url: "/?view=drafts", notificationId: item.notificationId }),
+        JSON.stringify({ title: item.title, body: item.body, tag: `traceweave-${item.notificationId}`, url: targetUrl, notificationId: item.notificationId }),
         { TTL: 24 * 60 * 60, urgency: "normal" },
       );
       await client.query(

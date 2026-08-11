@@ -71,7 +71,7 @@ const providerResponseSchema = z.object({
   }).optional(),
 });
 
-const QUERY_SYSTEM_PROMPT = `你是 TraceWeave 的生活账本查询解释器。你只能把用户的问题转换成受限 JSON 查询意图，不能回答问题，不能生成 SQL。
+const QUERY_SYSTEM_PROMPT = `你是织络的生活账本查询解释器。你只能把用户的问题转换成受限 JSON 查询意图，不能回答问题，不能生成 SQL。
 
 根对象字段固定为：intent、datePreset、dateRange、eventTypes、entityMention、entityType、limit。
 - intent 只能是 count_events、sum_amount、latest_event、top_entities、list_events。

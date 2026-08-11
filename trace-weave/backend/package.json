@@ -10,6 +10,8 @@
     "db:migrate": "tsx src/server/db/migrate.ts",
     "db:seed": "tsx src/server/db/seed.ts",
     "db:seed:graph-demo": "tsx src/server/db/seed-graph-demo.ts",
+    "db:seed:world-entities": "tsx src/server/db/seed-world-entities.ts",
+    "world:sync": "tsx src/server/jobs/sync-world.ts",
     "test": "vitest run"
   },
   "dependencies": {

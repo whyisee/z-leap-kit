@@ -45,6 +45,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         id: string;
         username: string;
         displayName: string;
+        createdAt: string;
         hasCredentials: boolean;
       }>(
         `
@@ -52,6 +53,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
             u.id,
             u.username,
             u.display_name AS "displayName",
+            u.created_at AS "createdAt",
             (uc.user_id IS NOT NULL) AS "hasCredentials"
           FROM ${schema}.users u
           LEFT JOIN ${schema}.user_credentials uc ON uc.user_id = u.id
@@ -71,10 +73,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
       if (!user) {
         const userId = randomUUID();
-        await client.query(
+        const inserted = await client.query<{ createdAt: string }>(
           `
             INSERT INTO ${schema}.users (id, username, display_name, status)
             VALUES ($1, $2, $3, 'active')
+            RETURNING created_at AS "createdAt"
           `,
           [userId, username, body.displayName],
         );
@@ -88,7 +91,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           `,
           [randomUUID(), userId],
         );
-        user = { id: userId, username, displayName: body.displayName, hasCredentials: false };
+        user = {
+          id: userId,
+          username,
+          displayName: body.displayName,
+          createdAt: inserted.rows[0]!.createdAt,
+          hasCredentials: false,
+        };
       } else {
         await client.query(
           `UPDATE ${schema}.users SET display_name = $2, updated_at = now() WHERE id = $1`,
@@ -115,6 +124,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         id: result.user.id,
         username: result.user.username,
         displayName: result.user.displayName,
+        createdAt: result.user.createdAt,
       },
     });
   });
@@ -125,6 +135,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       id: string;
       username: string;
       displayName: string;
+      createdAt: string;
       passwordHash: string;
       passwordSalt: string;
     }>(
@@ -133,6 +144,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           u.id,
           u.username,
           u.display_name AS "displayName",
+          u.created_at AS "createdAt",
           uc.password_hash AS "passwordHash",
           uc.password_salt AS "passwordSalt"
         FROM ${schema}.users u
@@ -153,7 +165,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const session = await withTransaction((client) => createSession(client, user.id, request));
     setSessionCookie(reply, session);
-    return { user: { id: user.id, username: user.username, displayName: user.displayName } };
+    return {
+      user: {
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        createdAt: user.createdAt,
+      },
+    };
   });
 
   app.post(

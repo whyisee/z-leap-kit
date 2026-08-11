@@ -9,6 +9,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@antv/g-canvas": "^2.2.0",
+    "@antv/g6": "^5.1.1",
     "react": "latest",
     "react-dom": "latest"
   },

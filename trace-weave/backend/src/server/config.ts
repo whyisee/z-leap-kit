@@ -53,6 +53,7 @@ const environmentSchema = z.object({
   OUTBOX_SWEEP_SECONDS: z.coerce.number().int().min(1).max(300).default(2),
   OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(20),
   OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(50).default(8),
+  WORLD_SYNC_INTERVAL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(3_600),
   DELETION_SWEEP_SECONDS: z.coerce.number().int().min(1).max(300).default(3),
   DELETION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
   WEB_PUSH_VAPID_SUBJECT: z.string().trim().default("mailto:admin@example.com"),

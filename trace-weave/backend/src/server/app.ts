@@ -6,6 +6,7 @@ import { config, quoteIdentifier } from "./config";
 import { pool } from "./db/pool";
 import { authRoutes } from "./routes/auth";
 import { dataGovernanceRoutes } from "./routes/data-governance";
+import { contactRoutes } from "./routes/contacts";
 import { entityRoutes } from "./routes/entities";
 import { DraftLimitError, EntryConflictError, entryRoutes } from "./routes/entries";
 import { eventRoutes } from "./routes/events";
@@ -30,6 +31,7 @@ import { MediaValidationError } from "./services/media-storage";
 import { PrivacyManagementError } from "./services/privacy-management-service";
 import { SocialMatchError } from "./services/social-service";
 import { SharedInviteError } from "./services/shared-occurrence-service";
+import { ContactError } from "./services/contact-service";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -120,6 +122,10 @@ export async function buildApp() {
       return reply.code(error.statusCode).send({ message: error.message, code: "SHARED_INVITE_ERROR" });
     }
 
+    if (error instanceof ContactError) {
+      return reply.code(error.statusCode).send({ message: error.message, code: error.code });
+    }
+
     if (error instanceof AiConfigurationError) {
       return reply.code(503).send({ message: error.message, code: "AI_NOT_CONFIGURED" });
     }
@@ -168,6 +174,7 @@ export async function buildApp() {
   });
 
   await app.register(authRoutes);
+  await app.register(contactRoutes);
   await app.register(dataGovernanceRoutes);
   await app.register(entityRoutes);
   await app.register(entryRoutes);

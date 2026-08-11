@@ -4,17 +4,20 @@ import { closePool } from "./db/pool";
 import { startDraftReminderWorker } from "./services/notification-service";
 import { startDeletionWorker } from "./services/data-governance-service";
 import { startOutboxWorker } from "./services/outbox-service";
+import { startWorldSyncWorker } from "./services/world-sync-service";
 
 const app = await buildApp();
 let stopReminderWorker: (() => void) | undefined;
 let stopOutboxWorker: (() => void) | undefined;
 let stopDeletionWorker: (() => void) | undefined;
+let stopWorldSyncWorker: (() => void) | undefined;
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "Shutting down");
   stopReminderWorker?.();
   stopOutboxWorker?.();
   stopDeletionWorker?.();
+  stopWorldSyncWorker?.();
   await app.close();
   await closePool();
   process.exit(0);
@@ -28,6 +31,7 @@ try {
   stopReminderWorker = startDraftReminderWorker(app.log);
   stopOutboxWorker = startOutboxWorker(app.log);
   stopDeletionWorker = startDeletionWorker(app.log);
+  stopWorldSyncWorker = startWorldSyncWorker(app.log);
 } catch (error) {
   app.log.error(error);
   await closePool();

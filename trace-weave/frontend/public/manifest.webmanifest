@@ -1,0 +1,22 @@
+{
+  "name": "织络 · 生活流水账",
+  "short_name": "织络",
+  "description": "把生活织成可以回看的脉络",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3eee4",
+  "theme_color": "#26231f",
+  "icons": [
+    {
+      "src": "/brand-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/brand-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

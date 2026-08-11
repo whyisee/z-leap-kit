@@ -6,6 +6,24 @@ import { evaluateEventPrivacyBatch } from "./privacy-policy-service";
 const schema = quoteIdentifier(config.DB_SCHEMA);
 const ANONYMITY_THRESHOLD = 3;
 
+type CircleRelationCandidate = { eventId: string; ownerUserId: string; canonicalEntityId: string; name: string; entityType: string };
+
+export function aggregateCircleRelations(candidates: CircleRelationCandidate[], permittedEventIds: Set<string>, threshold = ANONYMITY_THRESHOLD) {
+  const grouped = new Map<string, { id: string; name: string; entityType: string; eventIds: Set<string>; ownerIds: Set<string> }>();
+  for (const row of candidates) {
+    if (!permittedEventIds.has(row.eventId)) continue;
+    const item = grouped.get(row.canonicalEntityId) ?? { id: row.canonicalEntityId, name: row.name, entityType: row.entityType, eventIds: new Set<string>(), ownerIds: new Set<string>() };
+    item.eventIds.add(row.eventId);
+    item.ownerIds.add(row.ownerUserId);
+    grouped.set(row.canonicalEntityId, item);
+  }
+  return [...grouped.values()]
+    .filter((item) => item.ownerIds.size >= threshold)
+    .sort((a, b) => b.eventIds.size - a.eventIds.size || a.name.localeCompare(b.name, "zh-CN"))
+    .slice(0, 12)
+    .map((item) => ({ id: item.id, name: item.name, entityType: item.entityType, eventCount: item.eventIds.size, participantCountLowerBound: item.ownerIds.size }));
+}
+
 export class CircleError extends Error {
   constructor(message: string, readonly statusCode: 400 | 403 | 404 | 409 = 400) { super(message); this.name = "CircleError"; }
 }
@@ -108,8 +126,8 @@ export async function getSocialFeed(client: PoolClient, userId: string) {
      FROM ${schema}.social_connections WHERE (user_low_id = $1 OR user_high_id = $1) AND status IN ('active','muted')`, [userId],
   );
   const friends = new Set(relations.rows.map((row) => row.otherId));
-  const circleVisibleResult = await client.query<{ eventId: string }>(
-    `SELECT DISTINCT event.id AS "eventId"
+  const circleVisibleResult = await client.query<{ eventId: string; circleId: string; circleName: string; circleType: "interest" | "place" }>(
+    `SELECT DISTINCT event.id AS "eventId", circle.id AS "circleId", circle.name AS "circleName", circle.circle_type AS "circleType"
      FROM ${schema}.events event
      JOIN ${schema}.event_entity_relations relation ON relation.event_id = event.id
      JOIN ${schema}.social_circles circle ON circle.canonical_entity_id = relation.canonical_entity_id AND circle.status = 'active'
@@ -118,6 +136,10 @@ export async function getSocialFeed(client: PoolClient, userId: string) {
      WHERE event.id = ANY($2::uuid[])`, [userId, candidates.rows.map((event) => event.id)],
   );
   const circleVisible = new Set(circleVisibleResult.rows.map((row) => row.eventId));
+  const circleContexts = new Map<string, Array<{ id: string; name: string; circleType: "interest" | "place" }>>();
+  for (const row of circleVisibleResult.rows) {
+    circleContexts.set(row.eventId, [...(circleContexts.get(row.eventId) ?? []), { id: row.circleId, name: row.circleName, circleType: row.circleType }]);
+  }
   const visible = candidates.rows.filter((event) => policies.get(event.id) === "public"
     || (friends.has(event.ownerUserId) && policies.get(event.id) === "friends")
     || (circleVisible.has(event.id) && policies.get(event.id) === "circle"));
@@ -125,7 +147,58 @@ export async function getSocialFeed(client: PoolClient, userId: string) {
     `SELECT id,username,display_name AS "displayName" FROM ${schema}.users WHERE id = ANY($1::uuid[])`, [[...new Set(visible.map((event) => event.ownerUserId))]],
   ) : { rows: [] };
   const ownerMap = new Map(owners.rows.map((owner) => [owner.id, owner]));
-  return { feed: visible.slice(0, 100).map((event) => ({ ...event, owner: ownerMap.get(event.ownerUserId) })) };
+  return { feed: visible.slice(0, 100).map((event) => ({ ...event, owner: ownerMap.get(event.ownerUserId), circles: circleContexts.get(event.id) ?? [] })) };
+}
+
+async function getCircleRelatedEntities(client: PoolClient, circleId: string, canonicalEntityId: string) {
+  const candidates = await client.query<CircleRelationCandidate>(
+    `SELECT DISTINCT event.id AS "eventId", event.owner_user_id AS "ownerUserId",
+            related.canonical_entity_id AS "canonicalEntityId", entity.canonical_name AS name, entity.entity_type AS "entityType"
+     FROM ${schema}.events event
+     JOIN ${schema}.event_entity_relations anchor ON anchor.event_id = event.id AND anchor.canonical_entity_id = $2
+     JOIN ${schema}.event_entity_relations related ON related.event_id = event.id
+       AND related.canonical_entity_id IS NOT NULL AND related.canonical_entity_id <> $2
+     JOIN ${schema}.canonical_entities entity ON entity.id = related.canonical_entity_id
+     WHERE event.deleted_at IS NULL AND event.factual_status IN ('occurred','ongoing')
+       AND COALESCE(event.occurred_start,event.created_at) >= now() - interval '60 days'
+       AND entity.status = 'active' AND entity.sensitivity = 'normal' AND entity.match_eligible
+       AND entity.entity_type <> 'person'
+       AND EXISTS (SELECT 1 FROM ${schema}.social_circles circle WHERE circle.id = $1 AND circle.canonical_entity_id = $2 AND circle.status = 'active')`,
+    [circleId, canonicalEntityId],
+  );
+  const permitted = new Set<string>();
+  const byOwner = new Map<string, string[]>();
+  for (const event of candidates.rows) {
+    byOwner.set(event.ownerUserId, [...new Set([...(byOwner.get(event.ownerUserId) ?? []), event.eventId])]);
+  }
+  for (const [ownerId, eventIds] of byOwner) {
+    const policies = await evaluateEventPrivacyBatch(client, ownerId, eventIds);
+    for (const [eventId, policy] of policies) if (policy.allowAnonymousStats) permitted.add(eventId);
+  }
+  return aggregateCircleRelations(candidates.rows, permitted);
+}
+
+export async function getCircleDetail(client: PoolClient, userId: string, circleId: string) {
+  const circleResult = await listCircles(client, userId);
+  const circle = circleResult.circles.find((item) => item.id === circleId);
+  if (!circle) throw new CircleError("圈子不存在", 404);
+  if (!circle.joined) return { circle, stat: null, relatedEntities: [], feed: [], anonymityThreshold: ANONYMITY_THRESHOLD };
+  const canonical = await client.query<{ canonicalEntityId: string }>(
+    `SELECT canonical_entity_id AS "canonicalEntityId" FROM ${schema}.social_circles WHERE id = $1 AND status = 'active'`,
+    [circleId],
+  );
+  const [statsResult, feedResult, relatedEntities] = await Promise.all([
+    getAnonymousCircleStats(client, userId),
+    getSocialFeed(client, userId),
+    getCircleRelatedEntities(client, circleId, canonical.rows[0].canonicalEntityId),
+  ]);
+  return {
+    circle,
+    stat: statsResult.stats.find((item) => item.circleId === circleId) ?? null,
+    relatedEntities,
+    feed: feedResult.feed.filter((item) => item.circles.some((context) => context.id === circleId)),
+    anonymityThreshold: ANONYMITY_THRESHOLD,
+  };
 }
 
 export async function blockUser(client: PoolClient, userId: string, blockedUserId: string, reason?: string) {
@@ -135,6 +208,14 @@ export async function blockUser(client: PoolClient, userId: string, blockedUserI
   await client.query(`INSERT INTO ${schema}.social_blocks (id,blocker_user_id,blocked_user_id,reason) VALUES ($1,$2,$3,$4) ON CONFLICT (blocker_user_id,blocked_user_id) DO UPDATE SET reason = EXCLUDED.reason`, [randomUUID(), userId, blockedUserId, reason ?? null]);
   await client.query(`UPDATE ${schema}.social_connections SET status = 'blocked', ended_at = now() WHERE (user_low_id = LEAST($1::uuid,$2::uuid) AND user_high_id = GREATEST($1::uuid,$2::uuid)) AND status <> 'ended'`, [userId, blockedUserId]);
   await client.query(`UPDATE ${schema}.social_matches SET status = 'revoked', updated_at = now() WHERE user_low_id = LEAST($1::uuid,$2::uuid) AND user_high_id = GREATEST($1::uuid,$2::uuid)`, [userId, blockedUserId]);
+  await client.query(
+    `UPDATE ${schema}.friend_requests
+     SET status = 'cancelled', responded_at = now(), updated_at = now()
+     WHERE ((sender_user_id = $1 AND recipient_user_id = $2)
+         OR (sender_user_id = $2 AND recipient_user_id = $1))
+       AND status = 'pending'`,
+    [userId, blockedUserId],
+  );
 }
 
 export async function reportUser(client: PoolClient, userId: string, input: { reportedUserId: string; reason: string; details?: string; contextType?: string; contextId?: string }) {

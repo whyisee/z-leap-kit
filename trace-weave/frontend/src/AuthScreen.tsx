@@ -34,8 +34,8 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUs
   return (
     <main className="auth-page">
       <section className="auth-story">
-        <span className="brand-mark auth-brand-mark">TW</span>
-        <span className="eyebrow">TraceWeave</span>
+        <span className="brand-mark auth-brand-mark" aria-hidden="true"><img src="/brand-icon.svg" alt="" /></span>
+        <span className="eyebrow">织络</span>
         <h1>你的生活，<br />只属于你的账户。</h1>
         <p>记录、事件、地点和关系图谱会严格按账户隔离。只有你明确授权的内容，才可能参与匿名关系发现。</p>
         <div className="auth-principles">

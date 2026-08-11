@@ -4,8 +4,7 @@ import { pool } from "../db/pool";
 import { withTransaction } from "../db/transaction";
 import { authenticateRequest } from "../services/auth-service";
 import { getSocialMatches } from "../services/social-service";
-import { getSharedOccurrences } from "../services/shared-occurrence-service";
-import { buildGlobalGraph } from "../services/global-graph-service";
+import { getPublicWorldGraph } from "../services/global-graph-service";
 
 const schema = quoteIdentifier(config.DB_SCHEMA);
 
@@ -31,17 +30,9 @@ type GraphEdge = {
 export const graphRoutes: FastifyPluginAsync = async (app) => {
   app.addHook("preHandler", authenticateRequest);
 
-  app.get("/api/graph/global", async (request) => {
-    const [matches, shared] = await Promise.all([
-      withTransaction((client) => getSocialMatches(client, request.authUser.id)),
-      withTransaction((client) => getSharedOccurrences(client, request.authUser.id)),
-    ]);
-    return buildGlobalGraph({
-      viewer: request.authUser,
-      matches,
-      occurrences: shared.occurrences,
-    });
-  });
+  app.get("/api/graph/global", async (request) =>
+    withTransaction((client) => getPublicWorldGraph(client, request.authUser)),
+  );
 
   app.get("/api/graph", async (request) => {
     const ownerUserId = request.authUser.id;

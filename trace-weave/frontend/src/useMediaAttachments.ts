@@ -39,6 +39,7 @@ function normalizeFile(file: File): File {
 }
 
 function kindAcceptsFile(kind: SupplementalMediaKind, file: File): boolean {
+  if (kind === "file") return true;
   return kind === "video" ? file.type.startsWith("video/") : file.type.startsWith("image/");
 }
 
@@ -52,13 +53,13 @@ export function useMediaAttachments() {
     const normalized = Array.from(files).map(normalizeFile);
     const invalid = normalized.find((file) => !kindAcceptsFile(kind, file));
     if (invalid) {
-      setError(kind === "video" ? "视频入口只能添加视频文件" : "图片入口只能添加图片文件");
+      setError(kind === "video" ? "视频入口只能添加视频文件" : "照片入口只能添加图片文件");
       return;
     }
 
     setItems((current) => {
       if (current.length + normalized.length > maxSupplementalFiles) {
-        setError(`每条记录最多添加 ${maxSupplementalFiles} 个图片、截图或视频附件`);
+        setError(`每条记录最多添加 ${maxSupplementalFiles} 个照片、视频或文件附件`);
         return current;
       }
       const nextBytes = [...current.map((item) => item.file), ...normalized].reduce(

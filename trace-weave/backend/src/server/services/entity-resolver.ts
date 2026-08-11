@@ -8,6 +8,7 @@ const schema = quoteIdentifier(config.DB_SCHEMA);
 const sensitivePlacePattern = /家|住址|小区|宿舍|医院|诊所|寺|庙|教堂|清真寺/;
 const globallyReusableTypes = new Set([
   "food",
+  "drink",
   "work",
   "book",
   "song",
@@ -17,6 +18,10 @@ const globallyReusableTypes = new Set([
   "series",
   "game",
   "app",
+  "platform",
+  "brand",
+  "activity",
+  "topic",
   "currency",
 ]);
 
@@ -158,12 +163,20 @@ export async function resolveEventEntity(
   if (reusable) {
     const existingCanonical = await client.query<{ id: string }>(
       `
-        SELECT id
-        FROM ${schema}.canonical_entities
-        WHERE entity_type = $1
-          AND normalized_name = $2
-          AND status = 'active'
-        ORDER BY created_at
+        SELECT canonical.id
+        FROM ${schema}.canonical_entities canonical
+        WHERE canonical.entity_type = $1
+          AND canonical.status = 'active'
+          AND (
+            canonical.normalized_name = $2
+            OR EXISTS (
+              SELECT 1
+              FROM ${schema}.canonical_entity_aliases alias
+              WHERE alias.canonical_entity_id = canonical.id
+                AND alias.normalized_alias = $2
+            )
+          )
+        ORDER BY CASE WHEN canonical.normalized_name = $2 THEN 0 ELSE 1 END, canonical.created_at
         LIMIT 1
       `,
       [entity.entityType, normalizedName],

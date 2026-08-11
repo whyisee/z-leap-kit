@@ -7,7 +7,7 @@ async function seed(): Promise<void> {
   await pool.query(
     `
       INSERT INTO ${schema}.users (id, username, display_name, status)
-      VALUES ($1, 'traceweave-dev', 'TraceWeave 开发用户', 'active')
+      VALUES ($1, 'traceweave-dev', '织络开发用户', 'active')
       ON CONFLICT (id) DO UPDATE
       SET display_name = EXCLUDED.display_name,
           updated_at = now()
@@ -55,4 +55,3 @@ seed()
     process.exitCode = 1;
   })
   .finally(closePool);
-

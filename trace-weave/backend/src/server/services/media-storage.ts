@@ -6,7 +6,7 @@ import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } fro
 import { config } from "../config";
 import { mediaScanner } from "./media-scanner";
 
-export type MediaKind = "voice" | "image" | "screenshot" | "video";
+export type MediaKind = "voice" | "image" | "screenshot" | "video" | "file";
 
 const allowedAudioMimeTypes = new Set([
   "audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/wav", "audio/x-wav",
@@ -218,8 +218,8 @@ class PrivateMediaStorage {
   assertMedia(kind: MediaKind, mimeType: string, byteSize: number): void {
     const normalizedMimeType = mimeType.toLowerCase().split(";", 1)[0];
     const allowed = kind === "voice" ? allowedAudioMimeTypes : kind === "video" ? allowedVideoMimeTypes : allowedImageMimeTypes;
-    const kindLabel = kind === "voice" ? "录音" : kind === "video" ? "视频" : kind === "screenshot" ? "截图" : "图片";
-    if (!allowed.has(normalizedMimeType)) throw new MediaValidationError(`不支持的${kindLabel}格式：${mimeType || "未知格式"}`);
+    const kindLabel = kind === "voice" ? "录音" : kind === "video" ? "视频" : kind === "screenshot" ? "截图" : kind === "file" ? "文件" : "图片";
+    if (kind !== "file" && !allowed.has(normalizedMimeType)) throw new MediaValidationError(`不支持的${kindLabel}格式：${mimeType || "未知格式"}`);
     if (byteSize === 0) throw new MediaValidationError(`${kindLabel}内容为空`);
     if (byteSize > config.MEDIA_MAX_BYTES) {
       throw new MediaValidationError(`单个附件不能超过 ${Math.floor(config.MEDIA_MAX_BYTES / 1024 / 1024)} MB`, 413);

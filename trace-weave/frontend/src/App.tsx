@@ -7,11 +7,11 @@ import {
   type CandidateRecord,
   type CandidateEntity,
   type CandidateParticipant,
+  type ContactOverview,
   type Draft,
   type EntityMemory,
   type EventDetail,
   type EventPrivacySettings,
-  type HealthStatus,
   type LocationObservation,
   type MediaAttachment,
   type NotificationPreferences,
@@ -24,20 +24,27 @@ import {
   type TimelineEvent,
 } from "./api";
 import { AuthScreen } from "./AuthScreen";
-import { DataGovernanceView } from "./DataGovernanceView";
+import { ContactsView } from "./ContactsView";
 import { EntityMemoryView } from "./EntityMemoryView";
 import { GraphView } from "./GraphView";
 import { PendingMediaGallery, StoredMediaGallery } from "./MediaGallery";
 import { ReviewView } from "./ReviewView";
-import { PrivacySettingsView } from "./PrivacySettingsView";
 import { SocialDiscoveryView } from "./SocialDiscoveryView";
+import { SettingsView } from "./SettingsView";
 import { useLocationCapture } from "./useLocationCapture";
 import { useMediaAttachments } from "./useMediaAttachments";
 import { useVoiceRecorder } from "./useVoiceRecorder";
 import { mergeCandidatePayloads, prepareCandidates } from "./candidate-resolution";
 import "./styles.css";
 
-type View = "record" | "drafts" | "timeline" | "review" | "graph" | "discover" | "memory" | "privacy" | "data" | "notifications";
+type View = "record" | "drafts" | "timeline" | "review" | "graph" | "discover" | "memory" | "notifications" | "settings" | "contacts";
+
+function initialView(): View {
+  const requested = new URLSearchParams(window.location.search).get("view");
+  return requested && ["record", "drafts", "timeline", "review", "graph", "discover", "memory", "notifications", "settings", "contacts"].includes(requested)
+    ? requested as View
+    : "record";
+}
 
 const eventTypeLabels: Record<string, string> = {
   activity: "一般活动",
@@ -49,6 +56,103 @@ const eventTypeLabels: Record<string, string> = {
   play: "游玩",
   purchase: "消费",
   visit: "到访",
+  browse: "浏览",
+  digital_activity: "数字生活",
+  use_app: "使用应用",
+  order_food: "点外卖",
+  social: "社交",
+  work: "工作",
+  study: "学习",
+  exercise: "运动",
+  travel: "出行",
+  commute: "通勤",
+  sleep: "睡眠",
+};
+
+const entityTypeLabels: Record<string, string> = {
+  person: "人物",
+  place: "地点或场所",
+  location: "坐标位置",
+  food: "食物",
+  drink: "饮品",
+  app: "应用",
+  platform: "平台",
+  video: "视频",
+  content: "内容",
+  game: "游戏",
+  book: "书籍",
+  song: "歌曲",
+  music: "音乐",
+  movie: "影视",
+  product: "商品",
+  store: "商店",
+  restaurant: "餐饮场所",
+  organization: "组织",
+  topic: "主题",
+  activity: "活动",
+  transport: "交通工具",
+  device: "设备",
+  object: "事物",
+};
+
+const participantRoleLabels: Record<string, string> = {
+  actor: "主要参与者",
+  companion: "同行人",
+  subject: "当事人",
+  organizer: "组织者",
+  attendee: "参与者",
+  creator: "创作者",
+  owner: "所有者",
+  sender: "发送者",
+  recipient: "接收者",
+  mentioned: "被提及的人",
+};
+
+const entityRoleLabels: Record<string, string> = {
+  object: "涉及内容",
+  content: "内容",
+  platform: "使用平台",
+  place: "涉及地点",
+  occurred_at: "事情发生地",
+  recorded_at: "记录地点",
+  consumed: "食用或消费",
+  drank: "饮用",
+  listened_to: "收听",
+  watched: "观看",
+  played: "游玩",
+  read: "阅读",
+  purchased: "购买",
+  visited: "到访",
+  used: "使用",
+  ordered: "下单",
+  paid_for: "支付对象",
+  topic: "相关主题",
+  source: "来源",
+  target: "目标",
+};
+
+const timePrecisionLabels: Record<string, string> = {
+  minute: "精确到分钟",
+  hour: "精确到小时",
+  day: "精确到日期",
+  week: "精确到周",
+  month: "精确到月份",
+  year: "精确到年份",
+  approximate: "大约时间",
+  inferred_recording_time: "根据记录时间推断",
+  unknown: "时间未知",
+};
+
+const timezoneLabels: Record<string, string> = {
+  "": "自动使用记录时区",
+  "Asia/Shanghai": "中国标准时间（上海）",
+  "Asia/Hong_Kong": "中国标准时间（香港）",
+  "Asia/Taipei": "台北时间",
+  "Asia/Tokyo": "日本标准时间",
+  "Europe/London": "伦敦时间",
+  "America/Los_Angeles": "北美太平洋时间",
+  "America/New_York": "北美东部时间",
+  UTC: "协调世界时",
 };
 
 const factualStatusLabels: Record<string, string> = {
@@ -81,6 +185,23 @@ function formatDay(value: string | null): string {
   }).format(new Date(value));
 }
 
+function formatTimelineAxisDay(value: string | null, utc = false): string {
+  if (!value) return "未知";
+  const date = new Date(value);
+  const month = utc ? date.getUTCMonth() + 1 : date.getMonth() + 1;
+  const day = utc ? date.getUTCDate() : date.getDate();
+  return `${month}月${day}日`;
+}
+
+function formatTimelineAxisClock(value: string | null): string {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
+
 function toDateTimeLocal(value: string | null): string {
   if (!value) return "";
   const date = new Date(value);
@@ -94,12 +215,66 @@ function optionalNumber(value: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function candidateTimeLabel(candidate: CandidateRecord): string {
+  const expression = candidate.payload.time.sourceExpression?.trim();
+  if (expression) return expression;
+  const start = candidate.payload.time.start;
+  if (!start) return "时间未识别";
+  const includeTime = ["minute", "hour", "approximate"].includes(candidate.payload.time.precision);
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    ...(includeTime ? { hour: "2-digit", minute: "2-digit" } : {}),
+  }).format(new Date(start));
+}
+
+function candidateEntityTypeLabel(entity: CandidateEntity): string {
+  if (entity.entityType === "object" && /视频|短片|直播/.test(entity.mention)) return "视频";
+  if (entity.entityType === "object" && /歌|音乐|播客/.test(entity.mention)) return "音频";
+  return entityTypeLabels[entity.entityType] ?? "事物";
+}
+
+function codeLabel(labels: Record<string, string>, value: string, fallback: string): string {
+  return labels[value] ?? fallback;
+}
+
+function accountLedgerDay(createdAt: string | undefined): number {
+  if (!createdAt) return 1;
+  const created = new Date(createdAt);
+  if (Number.isNaN(created.getTime())) return 1;
+  const today = new Date();
+  const createdDay = new Date(created.getFullYear(), created.getMonth(), created.getDate()).getTime();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  return Math.max(1, Math.floor((todayStart - createdDay) / 86_400_000) + 1);
+}
+
 function urlBase64ToBytes(value: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - value.length % 4) % 4);
   const binary = atob((value + padding).replaceAll("-", "+").replaceAll("_", "/"));
   const bytes = new Uint8Array(new ArrayBuffer(binary.length));
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
   return bytes;
+}
+
+function CodeSelect({
+  value,
+  labels,
+  onChange,
+  unknownLabel = "其他（保留原值）",
+}: {
+  value: string;
+  labels: Record<string, string>;
+  onChange: (value: string) => void;
+  unknownLabel?: string;
+}) {
+  return (
+    <select value={value} onChange={(event) => onChange(event.target.value)}>
+      {!Object.prototype.hasOwnProperty.call(labels, value) ? <option value={value}>{unknownLabel}</option> : null}
+      {Object.entries(labels).map(([optionValue, label]) => (
+        <option key={optionValue || "empty"} value={optionValue}>{label}</option>
+      ))}
+    </select>
+  );
 }
 
 function JsonRecordEditor({
@@ -161,68 +336,126 @@ function CandidateEditor({
   onMergePrevious: () => void;
   onReject: () => void;
 }) {
+  const [editingSummary, setEditingSummary] = useState(false);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
   const updatePayload = (patch: Partial<CandidateRecord["payload"]>) =>
     onChange({ ...candidate, payload: { ...candidate.payload, ...patch } });
+  const openDetails = () => {
+    if (detailsRef.current) detailsRef.current.open = true;
+  };
+  const visibleParticipants = candidate.payload.participants.filter((participant) => !participant.isCurrentUser);
+  const visibleEntities = candidate.payload.entities.slice(0, 6);
+  const remainingEntities = candidate.payload.entities.length - visibleEntities.length;
+  const needsReview = candidate.payload.confidence < 0.72;
 
   return (
-    <section className="candidate-card">
-      <div className="candidate-heading">
+    <section className="candidate-card candidate-card-compact">
+      <div className="candidate-compact-heading">
         <div>
           <span className="eyebrow">
             {candidate.parserProvider === "deepseek"
-              ? `DeepSeek 解析 · ${candidate.parserModelVersion ?? ""}`
-              : "开发规则解析 · 非 AI"}
+              ? "AI 已整理"
+              : "系统已整理"}
           </span>
-          <h2>请确认第 {index + 1} 件事</h2>
+          <small>第 {index + 1} 件 · {needsReview ? "有不确定内容，建议看一眼" : "确认理解无误即可入账"}</small>
         </div>
-        <div className="candidate-resolution-actions">
-          <span className="confidence">置信度 {Math.round(candidate.payload.confidence * 100)}%</span>
-          <button className="text-button" type="button" onClick={onSplit}>拆成两件</button>
-          {canMergePrevious ? <button className="text-button" type="button" onClick={onMergePrevious}>并入上一件</button> : null}
-          <button className="text-button danger" type="button" onClick={onReject}>不记录</button>
+        <button className="text-button danger" type="button" onClick={onReject}>不记录这件事</button>
+      </div>
+
+      <div className="candidate-summary-card">
+        <div className="candidate-summary-meta">
+          <button type="button" className="candidate-summary-chip time" onClick={openDetails}>
+            {candidateTimeLabel(candidate)}
+          </button>
+          <button type="button" className="candidate-summary-chip" onClick={openDetails}>
+            {eventTypeLabels[candidate.payload.eventType] ?? "生活事件"}
+          </button>
+          {candidate.payload.factualStatus !== "occurred" ? (
+            <button type="button" className="candidate-summary-chip muted" onClick={openDetails}>
+              {factualStatusLabels[candidate.payload.factualStatus] ?? candidate.payload.factualStatus}
+            </button>
+          ) : null}
+        </div>
+
+        {editingSummary ? (
+          <div className="candidate-summary-edit">
+            <textarea
+              aria-label="事件摘要"
+              value={candidate.payload.title}
+              onChange={(event) => updatePayload({ title: event.target.value })}
+              rows={2}
+              autoFocus
+            />
+            <button className="secondary-button" type="button" onClick={() => setEditingSummary(false)}>完成</button>
+          </div>
+        ) : (
+          <button className="candidate-summary-title" type="button" onClick={() => setEditingSummary(true)}>
+            {candidate.payload.title}
+          </button>
+        )}
+
+        {visibleParticipants.length || visibleEntities.length || location ? (
+          <div className="candidate-summary-relations" aria-label="识别出的关系">
+            {visibleParticipants.map((participant, participantIndex) => (
+              <button type="button" onClick={openDetails} key={`summary-participant-${participantIndex}`}>
+                <span>人物</span>{participant.mention}
+              </button>
+            ))}
+            {visibleEntities.map((entity, entityIndex) => (
+              <button type="button" onClick={openDetails} key={`summary-entity-${entityIndex}`}>
+                <span>{candidateEntityTypeLabel(entity)}</span>{entity.mention}
+              </button>
+            ))}
+            {remainingEntities > 0 ? <button type="button" onClick={openDetails}>还有 {remainingEntities} 项</button> : null}
+            {location ? <button type="button" onClick={openDetails}><span>位置</span>{location.label || "已附加位置"}</button> : null}
+          </div>
+        ) : null}
+
+        <div className="candidate-summary-actions">
+          <button className="text-button" type="button" onClick={() => setEditingSummary(true)}>修改描述</button>
+          <button className="text-button" type="button" onClick={openDetails}>修改时间、人物等详细信息</button>
         </div>
       </div>
 
-      <label className="field field-wide">
-        <span>事件描述</span>
-        <textarea
-          value={candidate.payload.title}
-          onChange={(event) => updatePayload({ title: event.target.value })}
-          rows={3}
-        />
-      </label>
+      <details className="candidate-details" ref={detailsRef}>
+        <summary>
+          <span>展开详细信息</span>
+          <small>类型、时间、人物、事物、数量和定位</small>
+        </summary>
+        <div className="candidate-details-body">
+          <div className="candidate-advanced-heading">
+            <div>
+              <strong>完整结构</strong>
+              <small>{candidate.parserProvider === "deepseek" ? `由 ${candidate.parserModelVersion ?? "AI"} 解析` : "由开发规则解析"} · 置信度 {Math.round(candidate.payload.confidence * 100)}%</small>
+            </div>
+            <div className="candidate-resolution-actions">
+              <button className="text-button" type="button" onClick={onSplit}>拆成两件</button>
+              {canMergePrevious ? <button className="text-button" type="button" onClick={onMergePrevious}>并入上一件</button> : null}
+            </div>
+          </div>
 
       <div className="field-grid">
         <label className="field">
           <span>活动类型</span>
-          <select
+          <CodeSelect
             value={candidate.payload.eventType}
-            onChange={(event) => updatePayload({ eventType: event.target.value })}
-          >
-            {Object.entries(eventTypeLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+            labels={eventTypeLabels}
+            unknownLabel="其他活动（保留原值）"
+            onChange={(value) => updatePayload({ eventType: value })}
+          />
         </label>
 
         <label className="field">
           <span>事实状态</span>
-          <select
+          <CodeSelect
             value={candidate.payload.factualStatus}
-            onChange={(event) =>
+            labels={factualStatusLabels}
+            onChange={(value) =>
               updatePayload({
-                factualStatus: event.target.value as CandidateRecord["payload"]["factualStatus"],
+                factualStatus: value as CandidateRecord["payload"]["factualStatus"],
               })
             }
-          >
-            {Object.entries(factualStatusLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+          />
         </label>
 
         <label className="field">
@@ -258,26 +491,20 @@ function CandidateEditor({
         </label>
         <label className="field">
           <span>时间精度</span>
-          <select
+          <CodeSelect
             value={candidate.payload.time.precision}
-            onChange={(event) => updatePayload({ time: { ...candidate.payload.time, precision: event.target.value } })}
-          >
-            <option value="minute">分钟</option>
-            <option value="hour">小时</option>
-            <option value="day">天</option>
-            <option value="week">周</option>
-            <option value="month">月</option>
-            <option value="year">年</option>
-            <option value="approximate">大约</option>
-            <option value="unknown">未知</option>
-          </select>
+            labels={timePrecisionLabels}
+            unknownLabel="其他时间精度（保留原值）"
+            onChange={(value) => updatePayload({ time: { ...candidate.payload.time, precision: value } })}
+          />
         </label>
         <label className="field">
           <span>时区</span>
-          <input
+          <CodeSelect
             value={candidate.payload.time.timezone ?? ""}
-            placeholder="Asia/Shanghai"
-            onChange={(event) => updatePayload({ time: { ...candidate.payload.time, timezone: event.target.value || null } })}
+            labels={timezoneLabels}
+            unknownLabel="其他时区（保留原值）"
+            onChange={(value) => updatePayload({ time: { ...candidate.payload.time, timezone: value || null } })}
           />
         </label>
         <label className="field field-wide">
@@ -325,12 +552,13 @@ function CandidateEditor({
               </label>
               <label className="field">
                 <span>角色</span>
-                <input
+                <CodeSelect
                   value={participant.role}
-                  placeholder="actor / companion"
-                  onChange={(event) => {
+                  labels={participantRoleLabels}
+                  unknownLabel="其他人物角色（保留原值）"
+                  onChange={(value) => {
                     const participants = [...candidate.payload.participants];
-                    participants[index] = { ...participant, role: event.target.value };
+                    participants[index] = { ...participant, role: value };
                     updatePayload({ participants });
                   }}
                 />
@@ -408,7 +636,7 @@ function CandidateEditor({
               <div className="candidate-entity-row" key={`entity-${index}`}>
                 <div className="candidate-entity-fields">
                   <label className="field"><span>名称</span><input value={entity.mention} onChange={(event) => updateEntity({ mention: event.target.value })} /></label>
-                  <label className="field"><span>类型</span><input value={entity.entityType} placeholder="food / place / app / book" onChange={(event) => updateEntity({ entityType: event.target.value, resolvedUserEntityId: undefined })} /></label>
+                  <label className="field"><span>类型</span><CodeSelect value={entity.entityType} labels={entityTypeLabels} unknownLabel="其他实体类型（保留原值）" onChange={(value) => updateEntity({ entityType: value, resolvedUserEntityId: undefined })} /></label>
                   <label className="field">
                     <span>长期实体</span>
                     <select value={entity.resolvedUserEntityId ?? ""} onChange={(event) => updateEntity({ resolvedUserEntityId: event.target.value || undefined })}>
@@ -418,13 +646,16 @@ function CandidateEditor({
                       ))}
                     </select>
                   </label>
-                  <label className="field"><span>关系角色</span><input value={entity.role} placeholder="object / place / consumed" onChange={(event) => updateEntity({ role: event.target.value })} /></label>
+                  <label className="field"><span>与事件的关系</span><CodeSelect value={entity.role} labels={entityRoleLabels} unknownLabel="其他关系（保留原值）" onChange={(value) => updateEntity({ role: value })} /></label>
                   <label className="field"><span>数量</span><input type="number" step="any" value={entity.quantity ?? ""} onChange={(event) => updateEntity({ quantity: optionalNumber(event.target.value) })} /></label>
                   <label className="field"><span>单位</span><input value={entity.unit ?? ""} onChange={(event) => updateEntity({ unit: event.target.value || undefined })} /></label>
                   <label className="field"><span>金额</span><input type="number" step="any" value={entity.amount ?? ""} onChange={(event) => updateEntity({ amount: optionalNumber(event.target.value) })} /></label>
                   <label className="field"><span>币种</span><input maxLength={3} value={entity.currency ?? ""} placeholder="CNY" onChange={(event) => updateEntity({ currency: event.target.value.toUpperCase() || undefined })} /></label>
                 </div>
-                <JsonRecordEditor label="扩展属性（JSON）" value={entity.attributes} onChange={(attributes) => updateEntity({ attributes })} />
+                <details className="candidate-entity-attributes">
+                  <summary>更多属性 <small>通常无需修改</small></summary>
+                  <JsonRecordEditor label="实体扩展数据" value={entity.attributes} onChange={(attributes) => updateEntity({ attributes })} />
+                </details>
                 <button
                   className="text-button danger"
                   type="button"
@@ -436,10 +667,13 @@ function CandidateEditor({
           {!candidate.payload.entities.length ? <span className="empty-inline">暂未识别到实体，可手动添加。</span> : null}
         </div>
 
-        <div className="candidate-json-grid">
-          <JsonRecordEditor label="主观感受（JSON）" value={candidate.payload.subjectiveExperience} onChange={(subjectiveExperience) => updatePayload({ subjectiveExperience })} />
-          <JsonRecordEditor label="事件扩展字段（JSON）" value={candidate.payload.extensions} onChange={(extensions) => updatePayload({ extensions })} />
-        </div>
+        <details className="candidate-developer-fields">
+          <summary>高级扩展数据 <small>通常无需修改</small></summary>
+          <div className="candidate-json-grid">
+            <JsonRecordEditor label="主观感受数据" value={candidate.payload.subjectiveExperience} onChange={(subjectiveExperience) => updatePayload({ subjectiveExperience })} />
+            <JsonRecordEditor label="其他扩展数据" value={candidate.payload.extensions} onChange={(extensions) => updatePayload({ extensions })} />
+          </div>
+        </details>
         <label className="field candidate-confidence-field">
           <span>确认后的整体置信度：{Math.round(candidate.payload.confidence * 100)}%</span>
           <input type="range" min="0" max="1" step="0.01" value={candidate.payload.confidence} onChange={(event) => updatePayload({ confidence: Number(event.target.value) })} />
@@ -479,6 +713,8 @@ function CandidateEditor({
           </select>
         </div>
       ) : null}
+        </div>
+      </details>
     </section>
   );
 }
@@ -500,7 +736,7 @@ function ParticipantLinkControl({
   const [username, setUsername] = useState("");
 
   if (participant.isCurrentUser) {
-    return <span className="participant-account-chip current">我<small>{participant.role}</small></span>;
+    return <span className="participant-account-chip current">我<small>{codeLabel(participantRoleLabels, participant.role, "其他角色")}</small></span>;
   }
   if (participant.link) {
     return (
@@ -518,12 +754,12 @@ function ParticipantLinkControl({
     );
   }
   if (participant.isAccount) {
-    return <span className="participant-account-chip">{participant.name}<small>{participant.role}</small></span>;
+    return <span className="participant-account-chip">{participant.name}<small>{codeLabel(participantRoleLabels, participant.role, "其他角色")}</small></span>;
   }
   if (!editing) {
     return (
       <button className="participant-unlinked" type="button" onClick={() => setEditing(true)}>
-        <span>{participant.name}<small>{participant.role}</small></span>
+        <span>{participant.name}<small>{codeLabel(participantRoleLabels, participant.role, "其他角色")}</small></span>
         <strong>关联账户</strong>
       </button>
     );
@@ -689,20 +925,11 @@ function TimelineEventEditor({
         </label>
         <label className="field">
           <span>活动类型</span>
-          <select value={eventType} onChange={(changeEvent) => setEventType(changeEvent.target.value)}>
-            {!eventTypeLabels[eventType] ? <option value={eventType}>{eventType}</option> : null}
-            {Object.entries(eventTypeLabels).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
+          <CodeSelect value={eventType} labels={eventTypeLabels} unknownLabel="其他活动（保留原值）" onChange={setEventType} />
         </label>
         <label className="field">
           <span>事实状态</span>
-          <select value={factualStatus} onChange={(changeEvent) => setFactualStatus(changeEvent.target.value)}>
-            {Object.entries(factualStatusLabels).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
+          <CodeSelect value={factualStatus} labels={factualStatusLabels} onChange={(value) => setFactualStatus(value as TimelineEvent["factualStatus"])} />
         </label>
         <label className="field">
           <span>开始时间</span>
@@ -841,7 +1068,7 @@ function TimelineEventEditor({
           {participants.map((participant, index) => (
             <div key={participant.existingParticipantId ?? `new-${index}`}>
               <input value={participant.mention} placeholder="称呼" onChange={(changeEvent) => setParticipants((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, mention: changeEvent.target.value } : item))} />
-              <input value={participant.role} placeholder="角色" onChange={(changeEvent) => setParticipants((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, role: changeEvent.target.value } : item))} />
+              <CodeSelect value={participant.role} labels={participantRoleLabels} unknownLabel="其他人物角色（保留原值）" onChange={(value) => setParticipants((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, role: value } : item))} />
               {!participant.isCurrentUser ? <select value={participant.resolvedUserEntityId ?? ""} onChange={(changeEvent) => setParticipants((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, resolvedUserEntityId: changeEvent.target.value || undefined } : item))}><option value="">自动识别</option>{entityMemory.filter((item) => item.entityType === "person").map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select> : <span>当前用户</span>}
               <button className="text-button danger" type="button" onClick={() => setParticipants((items) => items.filter((_, itemIndex) => itemIndex !== index))}>删除</button>
             </div>
@@ -855,8 +1082,8 @@ function TimelineEventEditor({
           {entities.map((entity, index) => (
             <div key={`${entity.resolvedUserEntityId ?? "new"}-${index}`}>
               <input value={entity.mention} placeholder="名称" onChange={(changeEvent) => setEntities((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, mention: changeEvent.target.value } : item))} />
-              <input value={entity.entityType} placeholder="类型" onChange={(changeEvent) => setEntities((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, entityType: changeEvent.target.value, resolvedUserEntityId: undefined } : item))} />
-              <input value={entity.role} placeholder="关系" onChange={(changeEvent) => setEntities((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, role: changeEvent.target.value } : item))} />
+              <CodeSelect value={entity.entityType} labels={entityTypeLabels} unknownLabel="其他实体类型（保留原值）" onChange={(value) => setEntities((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, entityType: value, resolvedUserEntityId: undefined } : item))} />
+              <CodeSelect value={entity.role} labels={entityRoleLabels} unknownLabel="其他关系（保留原值）" onChange={(value) => setEntities((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, role: value } : item))} />
               <button className="text-button danger" type="button" onClick={() => setEntities((items) => items.filter((_, itemIndex) => itemIndex !== index))}>删除</button>
             </div>
           ))}
@@ -901,11 +1128,8 @@ function WorkspaceApp({
   onLogout: () => Promise<void>;
   onAccountDeleted: () => void;
 }) {
-  const [view, setView] = useState<View>(() =>
-    new URLSearchParams(window.location.search).get("view") === "drafts" ? "drafts" : "record",
-  );
+  const [view, setView] = useState<View>(initialView);
   const [text, setText] = useState("");
-  const [additionalTexts, setAdditionalTexts] = useState<string[]>([]);
   const [entryId, setEntryId] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
   const [sourceCandidates, setSourceCandidates] = useState<CandidateRecord[]>([]);
@@ -922,14 +1146,18 @@ function WorkspaceApp({
   const [timelinePlaceId, setTimelinePlaceId] = useState("");
   const [timelineFrom, setTimelineFrom] = useState("");
   const [timelineTo, setTimelineTo] = useState("");
+  const [timelineFiltersOpen, setTimelineFiltersOpen] = useState(false);
   const [eventDetails, setEventDetails] = useState<Record<string, EventDetail>>({});
   const [graph, setGraph] = useState<PersonalGraph | null>(null);
   const [globalGraph, setGlobalGraph] = useState<GlobalGraph | null>(null);
   const [social, setSocial] = useState<SocialDiscovery | null>(null);
+  const [contacts, setContacts] = useState<ContactOverview>({ contacts: [], incomingRequests: [], outgoingRequests: [], unreadTotal: 0 });
+  const [contactsInitialTab, setContactsInitialTab] = useState<"friends" | "messages">(() =>
+    new URLSearchParams(window.location.search).get("tab") === "messages" ? "messages" : "friends",
+  );
   const [sharedInvites, setSharedInvites] = useState<SharedParticipantInvite[]>([]);
   const [sharedOccurrences, setSharedOccurrences] = useState<SharedOccurrence[]>([]);
   const [entityMemory, setEntityMemory] = useState<EntityMemory[]>([]);
-  const [health, setHealth] = useState<HealthStatus | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>({
     browserNotificationsEnabled: false,
@@ -944,12 +1172,48 @@ function WorkspaceApp({
   const media = useMediaAttachments();
   const locationCapture = useLocationCapture();
   const notifyingIds = useRef(new Set<string>());
+  const accountMenuRef = useRef<HTMLDetailsElement>(null);
+  const notificationMenuRef = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    if (message !== "已经正式记入你的生活流水") return;
+
+    const timer = window.setTimeout(() => {
+      setMessage((current) =>
+        current === "已经正式记入你的生活流水" ? null : current,
+      );
+    }, 3_500);
+
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
+  useEffect(() => {
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) {
+        accountMenuRef.current?.removeAttribute("open");
+      }
+      if (!notificationMenuRef.current?.contains(event.target as Node)) {
+        notificationMenuRef.current?.removeAttribute("open");
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        accountMenuRef.current?.removeAttribute("open");
+        notificationMenuRef.current?.removeAttribute("open");
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
 
   const loadData = useCallback(async () => {
-    const [draftResult, timelineResult, healthResult, graphResult, globalGraphResult, socialResult, inviteResult, occurrenceResult, notificationResult, entityResult] = await Promise.all([
+    const [draftResult, timelineResult, graphResult, globalGraphResult, socialResult, inviteResult, occurrenceResult, notificationResult, entityResult, contactResult] = await Promise.all([
       api.getDrafts(),
       api.getTimeline(),
-      api.getHealth(),
       api.getGraph(),
       api.getGlobalGraph(),
       api.getSocial(),
@@ -957,11 +1221,11 @@ function WorkspaceApp({
       api.getSharedOccurrences(),
       api.getNotifications(),
       api.getEntityMemory(),
+      api.getContacts(),
     ]);
     setDrafts(draftResult.drafts);
     setTimeline(timelineResult.events);
     setTimelineTotal(timelineResult.total);
-    setHealth(healthResult);
     setGraph(graphResult);
     setGlobalGraph(globalGraphResult);
     setSocial(socialResult);
@@ -970,6 +1234,7 @@ function WorkspaceApp({
     setNotifications(notificationResult.notifications);
     setNotificationPreferences(notificationResult.preferences);
     setEntityMemory(entityResult.entities);
+    setContacts(contactResult);
   }, []);
 
   useEffect(() => {
@@ -982,20 +1247,45 @@ function WorkspaceApp({
     setNotificationPreferences(result.preferences);
   }, []);
 
-  async function loadTimelinePage(page: number) {
+  const reloadRelationshipViews = useCallback(async () => {
+    const [personal, global, discovery] = await Promise.all([api.getGraph(), api.getGlobalGraph(), api.getSocial()]);
+    setGraph(personal);
+    setGlobalGraph(global);
+    setSocial(discovery);
+  }, []);
+
+  async function loadTimelinePage(
+    page: number,
+    overrides: Partial<{
+      query: string;
+      eventType: string;
+      entityId: string;
+      personId: string;
+      placeId: string;
+      from: string;
+      to: string;
+    }> = {},
+  ) {
     setBusy(true);
     setMessage(null);
     try {
-      const toExclusive = timelineTo
-        ? new Date(new Date(`${timelineTo}T00:00:00`).getTime() + 24 * 60 * 60 * 1000).toISOString()
+      const query = overrides.query ?? timelineQuery;
+      const eventType = overrides.eventType ?? timelineEventType;
+      const entityId = overrides.entityId ?? timelineEntityId;
+      const personId = overrides.personId ?? timelinePersonId;
+      const placeId = overrides.placeId ?? timelinePlaceId;
+      const from = overrides.from ?? timelineFrom;
+      const to = overrides.to ?? timelineTo;
+      const toExclusive = to
+        ? new Date(new Date(`${to}T00:00:00`).getTime() + 24 * 60 * 60 * 1000).toISOString()
         : undefined;
       const result = await api.getTimeline({
-        q: timelineQuery.trim() || undefined,
-        eventType: timelineEventType || undefined,
-        entityId: timelineEntityId || undefined,
-        personId: timelinePersonId || undefined,
-        placeId: timelinePlaceId || undefined,
-        from: timelineFrom ? new Date(`${timelineFrom}T00:00:00`).toISOString() : undefined,
+        q: query.trim() || undefined,
+        eventType: eventType || undefined,
+        entityId: entityId || undefined,
+        personId: personId || undefined,
+        placeId: placeId || undefined,
+        from: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
         to: toExclusive,
         page,
         limit: 30,
@@ -1035,6 +1325,13 @@ function WorkspaceApp({
   }, [loadNotificationsOnly]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => {
+      void api.getContacts().then(setContacts).catch(() => undefined);
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     if (
       !notificationPreferences.browserNotificationsEnabled ||
       typeof Notification === "undefined" ||
@@ -1048,15 +1345,21 @@ function WorkspaceApp({
       notifyingIds.current.add(notification.id);
       void (async () => {
         try {
+          const targetUrl = notification.notificationType === "direct_message"
+            ? "/?view=contacts&tab=messages"
+            : notification.notificationType.startsWith("friend_request")
+              ? "/?view=contacts&tab=friends"
+              : "/?view=drafts";
           if ("serviceWorker" in navigator) {
             const registration = await navigator.serviceWorker.ready;
             await registration.showNotification(notification.title, {
               body: notification.body,
               tag: `traceweave-${notification.id}`,
-              data: { url: "/?view=drafts" },
+              data: { url: targetUrl },
             });
           } else {
-            new Notification(notification.title, { body: notification.body });
+            const browserNotification = new Notification(notification.title, { body: notification.body });
+            browserNotification.onclick = () => window.location.assign(targetUrl);
           }
           await api.updateNotification(notification.id, "delivered");
           setNotifications((current) =>
@@ -1074,23 +1377,63 @@ function WorkspaceApp({
   }, [notificationPreferences.browserNotificationsEnabled, notifications]);
 
   const draftCountLabel = useMemo(() => `${drafts.length}/30`, [drafts.length]);
-  const unreadNotificationCount = useMemo(
-    () => notifications.filter((notification) => notification.status !== "read").length,
+  const systemNotifications = useMemo(
+    () => notifications.filter((notification) => notification.notificationType !== "direct_message" && !notification.notificationType.startsWith("friend_request")),
     [notifications],
   );
+  const systemUnreadCount = useMemo(
+    () => systemNotifications.filter((notification) => notification.status !== "read").length,
+    [systemNotifications],
+  );
+  const friendNotificationCount = useMemo(
+    () => notifications.filter((notification) => notification.status !== "read" && notification.notificationType.startsWith("friend_request")).length,
+    [notifications],
+  );
+  const friendCenterCount = Math.max(contacts.incomingRequests.length, friendNotificationCount);
+  const contactCenterCount = contacts.unreadTotal + friendCenterCount;
+  const messageCenterCount = contactCenterCount + systemUnreadCount;
+  const ledgerDay = useMemo(() => accountLedgerDay(user.createdAt), [user.createdAt]);
+  const activeTimelineFilterCount = useMemo(
+    () => [
+      timelineEventType,
+      timelineEntityId,
+      timelinePersonId,
+      timelinePlaceId,
+      timelineFrom,
+      timelineTo,
+    ].filter(Boolean).length,
+    [timelineEntityId, timelineEventType, timelineFrom, timelinePersonId, timelinePlaceId, timelineTo],
+  );
+
+  function clearTimelineFilters() {
+    setTimelineEventType("");
+    setTimelineEntityId("");
+    setTimelinePersonId("");
+    setTimelinePlaceId("");
+    setTimelineFrom("");
+    setTimelineTo("");
+    setTimelineFiltersOpen(false);
+    void loadTimelinePage(1, {
+      eventType: "",
+      entityId: "",
+      personId: "",
+      placeId: "",
+      from: "",
+      to: "",
+    });
+  }
 
   async function submitEntry() {
-    const textBlocks = [text, ...additionalTexts].map((block) => block.trim()).filter(Boolean);
-    const aggregateText = textBlocks.join("\n");
+    const aggregateText = text.trim();
     if (!aggregateText || busy) return;
     setBusy(true);
     setMessage(null);
 
     try {
-      const result = voice.audioBlob || media.items.length || textBlocks.length > 1
+      const result = voice.audioBlob || media.items.length
         ? await api.createMixedEntry({
             text: aggregateText,
-            textBlocks,
+            textBlocks: [aggregateText],
             audio: voice.audioBlob
               ? {
                   blob: voice.audioBlob,
@@ -1136,7 +1479,6 @@ function WorkspaceApp({
     try {
       await api.confirmEntry(entryId, candidates, rejectedCandidateIds);
       setText("");
-      setAdditionalTexts([]);
       setEntryId(null);
       setCandidates([]);
       setSourceCandidates([]);
@@ -1160,7 +1502,6 @@ function WorkspaceApp({
     voice.reset();
     media.reset();
     setText(draft.text ?? "");
-    setAdditionalTexts([]);
     setEntryId(draft.id);
     const draftSourceCandidates = draft.candidates.map((candidate) => ({
         ...candidate,
@@ -1275,7 +1616,6 @@ function WorkspaceApp({
         setCandidates([]);
         setSourceCandidates([]);
         setRejectedCandidateIds([]);
-        setAdditionalTexts([]);
         setExistingMediaAttachments([]);
         setPersistedLocation(null);
         voice.reset();
@@ -1556,26 +1896,55 @@ function WorkspaceApp({
   }
 
   async function handleNotification(
-    notificationId: string,
+    notification: AppNotification,
     action: "read" | "dismiss",
   ) {
     if (busy) return;
     setBusy(true);
     try {
-      await api.updateNotification(notificationId, action);
+      await api.updateNotification(notification.id, action);
       if (action === "dismiss") {
-        setNotifications((current) => current.filter((item) => item.id !== notificationId));
+        setNotifications((current) => current.filter((item) => item.id !== notification.id));
       } else {
         setNotifications((current) =>
-          current.map((item) => (item.id === notificationId ? { ...item, status: "read" } : item)),
+          current.map((item) => (item.id === notification.id ? { ...item, status: "read" } : item)),
         );
-        setView("drafts");
+        if (notification.notificationType === "direct_message") {
+          openContacts("messages");
+        } else if (notification.notificationType.startsWith("friend_request")) {
+          openContacts("friends");
+        } else {
+          setView("drafts");
+        }
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "无法处理提醒");
     } finally {
       setBusy(false);
     }
+  }
+
+  function openContacts(tab: "friends" | "messages") {
+    setContactsInitialTab(tab);
+    setView("contacts");
+    notificationMenuRef.current?.removeAttribute("open");
+    if (tab === "friends") {
+      const friendNotifications = notifications.filter(
+        (notification) => notification.status !== "read" && notification.notificationType.startsWith("friend_request"),
+      );
+      if (friendNotifications.length) {
+        setNotifications((current) => current.map((notification) =>
+          notification.notificationType.startsWith("friend_request") ? { ...notification, status: "read" } : notification,
+        ));
+        void Promise.all(friendNotifications.map((notification) => api.updateNotification(notification.id, "read")))
+          .catch(() => void loadNotificationsOnly());
+      }
+    }
+  }
+
+  function openSystemNotifications() {
+    setView("notifications");
+    notificationMenuRef.current?.removeAttribute("open");
   }
 
   const existingVoice = existingMediaAttachments.find((attachment) => attachment.kind === "voice") ?? null;
@@ -1587,9 +1956,9 @@ function WorkspaceApp({
     <div className="app-shell">
       <header className="topbar">
         <button className="brand" type="button" onClick={() => setView("record")}>
-          <span className="brand-mark">TW</span>
+          <span className="brand-mark" aria-hidden="true"><img src="/brand-icon.svg" alt="" /></span>
           <span>
-            <strong>TraceWeave</strong>
+            <strong>织络</strong>
             <small>把生活织成可以回看的脉络</small>
           </span>
         </button>
@@ -1602,176 +1971,139 @@ function WorkspaceApp({
             <button className={view === "graph" ? "active" : ""} onClick={() => setView("graph")}>
               关系图
             </button>
-            <button className={view === "drafts" ? "active" : ""} onClick={() => setView("drafts")}>
-              待确认 <span className="count">{draftCountLabel}</span>
-            </button>
             <button className={view === "timeline" ? "active" : ""} onClick={() => setView("timeline")}>
               时间线
             </button>
             <button className={view === "discover" ? "active" : ""} onClick={() => setView("discover")}>
-              发现{(social?.matches.length ?? 0) + sharedInvites.length > 0 ? (
-                <span className="count">{(social?.matches.length ?? 0) + sharedInvites.length}</span>
-              ) : null}
+              发现
             </button>
-            <details className="nav-more">
-              <summary className={["review", "memory", "privacy", "data", "notifications"].includes(view) ? "active" : ""}>
-                更多{unreadNotificationCount ? <span className="count">{unreadNotificationCount}</span> : null}
-              </summary>
-              <div className="nav-more-menu">
-                <button className={view === "review" ? "active" : ""} onClick={(event) => { setView("review"); event.currentTarget.closest("details")?.removeAttribute("open"); }}>回顾与洞察</button>
-                <button className={view === "memory" ? "active" : ""} onClick={(event) => { setView("memory"); event.currentTarget.closest("details")?.removeAttribute("open"); }}>实体记忆</button>
-                <button className={view === "notifications" ? "active" : ""} onClick={(event) => { setView("notifications"); event.currentTarget.closest("details")?.removeAttribute("open"); }}>提醒{unreadNotificationCount ? <span className="count">{unreadNotificationCount}</span> : null}</button>
-                <button className={view === "privacy" ? "active" : ""} onClick={(event) => { setView("privacy"); event.currentTarget.closest("details")?.removeAttribute("open"); }}>隐私设置</button>
-                <button className={view === "data" ? "active" : ""} onClick={(event) => { setView("data"); event.currentTarget.closest("details")?.removeAttribute("open"); }}>数据管理</button>
-              </div>
-            </details>
           </nav>
-          <div className="account-menu">
-            <span>
-              <strong>{user.displayName}</strong>
-              <small>@{user.username}</small>
-            </span>
-            <button type="button" onClick={() => void onLogout()}>退出</button>
+          <div className="topbar-account-area">
+          <details className="notification-menu" ref={notificationMenuRef}>
+            <summary className={view === "contacts" || view === "notifications" ? "active" : ""} aria-label={messageCenterCount ? `消息，${messageCenterCount} 条未读` : "消息"}>
+              <span className="notification-menu-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
+                {messageCenterCount ? <strong>{messageCenterCount > 99 ? "99+" : messageCenterCount}</strong> : null}
+              </span>
+              <span>消息</span>
+            </summary>
+            <div className="notification-menu-panel">
+              <button type="button" onClick={() => openContacts(contacts.unreadTotal ? "messages" : "friends")}>
+                <span><strong>好友与私聊</strong><small>私聊消息和好友申请</small></span>
+                {contactCenterCount ? <i>{contactCenterCount > 99 ? "99+" : contactCenterCount}</i> : null}
+              </button>
+              <button type="button" onClick={openSystemNotifications}>
+                <span><strong>系统提醒</strong><small>草稿到期和系统通知</small></span>
+                {systemUnreadCount ? <i>{systemUnreadCount > 99 ? "99+" : systemUnreadCount}</i> : null}
+              </button>
+            </div>
+          </details>
+          <span className="account-ledger-age">在织络记流水账的第 <strong>{ledgerDay}</strong> 天</span>
+          <details className="account-menu" ref={accountMenuRef}>
+            <summary aria-label="打开账户菜单">
+              <span className="account-avatar" aria-hidden="true">
+                {user.displayName.trim().slice(0, 1) || user.username.slice(0, 1).toUpperCase()}
+              </span>
+              <span className="account-summary">
+                <strong>{user.displayName}</strong>
+                <small>@{user.username}</small>
+              </span>
+              <i aria-hidden="true" />
+            </summary>
+            <div className="account-menu-panel">
+              <div className="account-menu-profile">
+                <span className="account-avatar large" aria-hidden="true">
+                  {user.displayName.trim().slice(0, 1) || user.username.slice(0, 1).toUpperCase()}
+                </span>
+                <div><strong>{user.displayName}</strong><small>@{user.username}</small></div>
+              </div>
+              <div className="account-menu-actions">
+                <button className="pending-entry" type="button" onClick={() => { setView("drafts"); accountMenuRef.current?.removeAttribute("open"); }}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2M8 8h8M8 12h8M8 16h5" /></svg>
+                  <span>待确认</span>
+                  <strong>{draftCountLabel}</strong>
+                </button>
+                <button type="button" onClick={() => { setView("review"); accountMenuRef.current?.removeAttribute("open"); }}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0-8.5-6M3 21v-6h6M8 12h4V7M12 12l3 2" /></svg>
+                  <span>回忆</span>
+                </button>
+                <button type="button" onClick={() => { setView("memory"); accountMenuRef.current?.removeAttribute("open"); }}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5zM20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5z" /></svg>
+                  <span>图鉴</span>
+                </button>
+                <button type="button" onClick={() => { setView("settings"); accountMenuRef.current?.removeAttribute("open"); }}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19 13.5v-3l-2-.7a7 7 0 0 0-.8-1.8l.9-1.9L15 4l-1.9.9a7 7 0 0 0-1.8-.8L10.5 2h-3l-.7 2.1a7 7 0 0 0-1.8.8L3.1 4 1 6.1 1.9 8a7 7 0 0 0-.8 1.8L-1 10.5v3l2.1.7a7 7 0 0 0 .8 1.8L1 17.9 3.1 20l1.9-.9a7 7 0 0 0 1.8.8l.7 2.1h3l.7-2.1a7 7 0 0 0 1.8-.8l1.9.9 2.1-2.1-.9-1.9a7 7 0 0 0 .8-1.8z" transform="translate(1.5)" /></svg>
+                  <span>设置</span>
+                </button>
+                <button type="button" onClick={() => { accountMenuRef.current?.removeAttribute("open"); void onLogout(); }}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5M14 8l4 4-4 4M8 12h10" /></svg>
+                  <span>退出登录</span>
+                </button>
+              </div>
+            </div>
+          </details>
           </div>
         </div>
       </header>
 
-      <main className={view === "graph" ? "graph-main" : undefined}>
-        {message ? <div className="message">{message}</div> : null}
+      <main className={view === "graph" ? "graph-main" : view === "timeline" ? "timeline-main" : view === "settings" ? "settings-main" : view === "discover" ? "discovery-main" : view === "memory" ? "catalog-main" : view === "review" ? "reminiscence-main" : view === "contacts" || view === "notifications" ? "message-center-main" : undefined}>
+        {message ? (
+          <div className="message app-message" role="status" aria-live="polite">
+            <span>{message}</span>
+            <button type="button" aria-label="关闭提示" onClick={() => setMessage(null)}>
+              ×
+            </button>
+          </div>
+        ) : null}
+
+        {view === "contacts" || view === "notifications" ? (
+          <header className="message-center-heading">
+            <div>
+              <h1>消息中心</h1>
+            </div>
+            <div className="message-center-tabs" role="tablist" aria-label="消息中心">
+              <button type="button" className={view === "contacts" && contactsInitialTab === "messages" ? "active" : ""} onClick={() => openContacts("messages")}>
+                私聊{contacts.unreadTotal ? <strong>{contacts.unreadTotal > 99 ? "99+" : contacts.unreadTotal}</strong> : null}
+              </button>
+              <button type="button" className={view === "contacts" && contactsInitialTab === "friends" ? "active" : ""} onClick={() => openContacts("friends")}>
+                好友{friendCenterCount ? <strong>{friendCenterCount > 99 ? "99+" : friendCenterCount}</strong> : null}
+              </button>
+              <button type="button" className={view === "notifications" ? "active" : ""} onClick={openSystemNotifications}>
+                提醒{systemUnreadCount ? <strong>{systemUnreadCount > 99 ? "99+" : systemUnreadCount}</strong> : null}
+              </button>
+            </div>
+          </header>
+        ) : null}
 
         {view === "record" ? (
-          <div className="record-layout">
+          <div className={`record-layout ${entryId ? "confirming" : ""}`}>
             <section className="intro-panel">
-              <span className="eyebrow">主动记录</span>
+              <svg className="record-network-decoration" viewBox="0 0 360 190" aria-hidden="true" focusable="false">
+                <g className="record-network-lines">
+                  <path d="M28 108 L104 48 L185 83 L260 30 L330 73" pathLength="1" />
+                  <path d="M104 48 L132 150 L185 83 L236 146 L330 73" pathLength="1" />
+                  <path d="M28 108 L132 150 L236 146" pathLength="1" />
+                </g>
+                <g className="record-network-nodes">
+                  <circle cx="28" cy="108" r="5" />
+                  <circle cx="104" cy="48" r="7" />
+                  <circle cx="132" cy="150" r="4" />
+                  <circle className="is-core" cx="185" cy="83" r="9" />
+                  <circle cx="236" cy="146" r="5" />
+                  <circle cx="260" cy="30" r="4" />
+                  <circle cx="330" cy="73" r="6" />
+                </g>
+              </svg>
               <h1>刚刚发生了什么？</h1>
-              <p>像和自己说话一样写下来。系统只理解你主动提交的内容，确认以后才会正式入账。</p>
-              <div
-                className={`ai-status ${health?.ai.configured ? "configured" : "not-configured"}`}
-              >
-                <span className="ai-status-dot" />
-                {health?.ai.provider === "deepseek" && health.ai.configured
-                  ? `DeepSeek 已连接 · ${health.ai.model}`
-                  : health?.ai.provider === "mock"
-                    ? "当前为开发规则模式，不是真实 AI"
-                    : "DeepSeek Key 尚未配置"}
-              </div>
-              <div className="privacy-note">
-                <span aria-hidden="true">◇</span>
-                <div>
-                  <strong>默认只对你可见</strong>
-                  <small>未确认内容不会进入统计、图谱或关系匹配。</small>
-                </div>
-              </div>
+              <p>像和自己说话一样写下来。系统会理解你提交的内容，确认以后正式入账。</p>
+              <p className="record-network-note">
+                每一次记录都会成为一个事件节点。时间久了，人物、地点、兴趣与经历会彼此连接，织成你的生活网络。
+              </p>
             </section>
 
             <section className="record-panel">
+              {!entryId ? (
               <div className="composer">
-                <div className="input-mode-row">
-                  <span>
-                    {media.items.length || existingSupplementalMedia.length
-                      ? "组合记录"
-                      : voice.audioBlob || voice.phase === "recording" || existingVoice
-                        ? "语音记录"
-                        : "文字记录"}
-                  </span>
-                  <div className="voice-actions">
-                    {voice.phase === "recording" ? (
-                      <button className="recording-button" type="button" onClick={voice.stop}>
-                        <span className="recording-dot" />
-                        结束录音 {Math.floor(voice.durationMs / 1000)}s
-                      </button>
-                    ) : (
-                      <button
-                        className="voice-button"
-                        type="button"
-                        onClick={() => voice.start(setText, text)}
-                        disabled={busy || Boolean(entryId) || !voice.recordingSupported}
-                      >
-                        <span aria-hidden="true">●</span>
-                        {voice.audioBlob ? "重新录音" : "开始录音"}
-                      </button>
-                    )}
-                    <label className={`upload-audio-button ${entryId ? "disabled" : ""}`}>
-                      选择录音
-                      <input
-                        type="file"
-                        accept="audio/*"
-                        capture="user"
-                        disabled={busy || Boolean(entryId) || voice.phase === "recording"}
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (file) voice.selectFile(file);
-                          event.target.value = "";
-                        }}
-                      />
-                    </label>
-                    <button
-                      className="location-button"
-                      type="button"
-                      onClick={locationCapture.capture}
-                      disabled={
-                        busy ||
-                        Boolean(entryId) ||
-                        locationCapture.busy ||
-                        !locationCapture.supported
-                      }
-                    >
-                      <span aria-hidden="true">⌖</span>
-                      {locationCapture.busy
-                        ? "定位中…"
-                        : locationCapture.location
-                          ? "更新定位"
-                          : "添加位置"}
-                    </button>
-                  </div>
-                </div>
-                <div className="attachment-action-row">
-                  <div>
-                    <strong>补充附件</strong>
-                    <small>附件不会发送给 AI，只保存为这条生活记录的原始证据。</small>
-                  </div>
-                  <div className="attachment-buttons">
-                    <label className={entryId ? "disabled" : ""}>
-                      照片 / 相册
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        disabled={busy || Boolean(entryId)}
-                        onChange={(event) => {
-                          if (event.target.files) media.add(event.target.files, "image");
-                          event.target.value = "";
-                        }}
-                      />
-                    </label>
-                    <label className={entryId ? "disabled" : ""}>
-                      截图
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        disabled={busy || Boolean(entryId)}
-                        onChange={(event) => {
-                          if (event.target.files) media.add(event.target.files, "screenshot");
-                          event.target.value = "";
-                        }}
-                      />
-                    </label>
-                    <label className={entryId ? "disabled" : ""}>
-                      视频
-                      <input
-                        type="file"
-                        accept="video/*"
-                        multiple
-                        disabled={busy || Boolean(entryId)}
-                        onChange={(event) => {
-                          if (event.target.files) media.add(event.target.files, "video");
-                          event.target.value = "";
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
                 <textarea
                   aria-label="生活记录"
                   placeholder={
@@ -1784,20 +2116,6 @@ function WorkspaceApp({
                   disabled={Boolean(entryId)}
                   rows={6}
                 />
-                <div className="text-block-editor">
-                  {additionalTexts.map((block, index) => (
-                    <div className="text-block" key={index}>
-                      <div><strong>文字段 {index + 2}</strong><small>AI 会按当前顺序与第一段一起理解。</small></div>
-                      <textarea value={block} rows={3} disabled={Boolean(entryId)} onChange={(event) => setAdditionalTexts((items) => items.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} />
-                      <div>
-                        <button className="text-button" type="button" disabled={index === 0} onClick={() => setAdditionalTexts((items) => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>前移</button>
-                        <button className="text-button" type="button" disabled={index === additionalTexts.length - 1} onClick={() => setAdditionalTexts((items) => { const next = [...items]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>后移</button>
-                        <button className="text-button danger" type="button" onClick={() => setAdditionalTexts((items) => items.filter((_, itemIndex) => itemIndex !== index))}>删除</button>
-                      </div>
-                    </div>
-                  ))}
-                  {!entryId ? <button className="text-button add-text-block" type="button" disabled={additionalTexts.length >= 19} onClick={() => setAdditionalTexts((items) => [...items, ""])}>＋ 添加一段文字</button> : null}
-                </div>
                 {voice.audioUrl || existingVoice ? (
                   <div className="audio-preview">
                     <div>
@@ -1907,26 +2225,150 @@ function WorkspaceApp({
                   <div className="location-message">{locationCapture.error}</div>
                 ) : null}
                 <div className="composer-footer">
-                  <span>
-                    {[text, ...additionalTexts].reduce((count, block) => count + block.length, 0).toLocaleString()} 字 · {1 + additionalTexts.length + (voice.audioBlob ? 1 : 0) + media.items.length} 个内容块
-                    {voice.audioBlob ? ` · 录音 ${Math.max(1, Math.round(voice.durationMs / 1000))} 秒` : ""}
-                    {media.items.length ? ` · ${media.items.length} 个附件` : ""}
-                  </span>
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={submitEntry}
-                    disabled={
-                      ![text, ...additionalTexts].some((block) => block.trim()) ||
-                      busy ||
-                      Boolean(entryId) ||
-                      voice.phase === "recording"
-                    }
-                  >
-                    {busy && !entryId ? "正在理解…" : "解析这条记录"}
-                  </button>
+                  <div className="composer-footer-left">
+                    <div className="composer-add-menu">
+                      <button className="composer-add-trigger" type="button" aria-label="添加文字或附件" aria-haspopup="menu">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M12 5.5v13M5.5 12h13" />
+                        </svg>
+                      </button>
+                      <div className="composer-add-panel" role="menu">
+                        <div className="composer-add-heading">
+                          <strong>添加内容</strong>
+                          <small>附件只作为原始证据保存，不发送给 AI。</small>
+                        </div>
+                        <div className="composer-add-options">
+                          <label className={busy || entryId ? "disabled" : ""}>
+                            <span aria-hidden="true">照</span>
+                            <strong>照片</strong>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              disabled={busy || Boolean(entryId)}
+                              onChange={(event) => {
+                                if (event.target.files) media.add(event.target.files, "image");
+                                event.currentTarget.blur();
+                                event.target.value = "";
+                              }}
+                            />
+                          </label>
+                          <label className={busy || entryId ? "disabled" : ""}>
+                            <span aria-hidden="true">影</span>
+                            <strong>视频</strong>
+                            <input
+                              type="file"
+                              accept="video/*"
+                              multiple
+                              disabled={busy || Boolean(entryId)}
+                              onChange={(event) => {
+                                if (event.target.files) media.add(event.target.files, "video");
+                                event.currentTarget.blur();
+                                event.target.value = "";
+                              }}
+                            />
+                          </label>
+                          <label className={busy || entryId ? "disabled" : ""}>
+                            <span aria-hidden="true">件</span>
+                            <strong>文件</strong>
+                            <input
+                              type="file"
+                              multiple
+                              disabled={busy || Boolean(entryId)}
+                              onChange={(event) => {
+                                if (event.target.files) media.add(event.target.files, "file");
+                                event.currentTarget.blur();
+                                event.target.value = "";
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      className={`composer-location-trigger ${locationCapture.location ? "active" : ""}`}
+                      type="button"
+                      onClick={locationCapture.capture}
+                      disabled={busy || locationCapture.busy || !locationCapture.supported}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 21s6-5.35 6-11a6 6 0 1 0-12 0c0 5.65 6 11 6 11Z" />
+                        <circle cx="12" cy="10" r="2.2" />
+                      </svg>
+                      <span>
+                        {locationCapture.busy
+                          ? "定位中…"
+                          : locationCapture.location
+                            ? "更新位置"
+                            : "添加位置"}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="composer-footer-actions">
+                    {voice.phase === "recording" ? (
+                      <button
+                        className="composer-voice-trigger recording"
+                        type="button"
+                        onClick={voice.stop}
+                        aria-label={`结束录音，已录制 ${Math.floor(voice.durationMs / 1000)} 秒`}
+                        title="结束录音"
+                      >
+                        <span className="composer-recording-stop" aria-hidden="true" />
+                        <small>{Math.floor(voice.durationMs / 1000)}s</small>
+                      </button>
+                    ) : (
+                      <button
+                        className="composer-voice-trigger"
+                        type="button"
+                        onClick={() => voice.start(setText, text)}
+                        disabled={busy || !voice.recordingSupported}
+                        aria-label={voice.audioBlob ? "重新录音" : "开始录音"}
+                        title={voice.recordingSupported ? (voice.audioBlob ? "重新录音" : "开始录音") : "当前浏览器不支持录音"}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="8.5" y="3" width="7" height="12" rx="3.5" />
+                          <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6" />
+                        </svg>
+                      </button>
+                    )}
+                    <button
+                      className="primary-button composer-submit-button"
+                      type="button"
+                      onClick={submitEntry}
+                      disabled={!text.trim() || busy || voice.phase === "recording"}
+                    >
+                      {busy && !entryId ? "正在理解…" : "解析记录"}
+                    </button>
+                  </div>
                 </div>
               </div>
+              ) : (
+                <details className="source-entry-card">
+                  <summary>
+                    <span>原始记录</span>
+                    <strong>{text}</strong>
+                    <small>展开回看</small>
+                  </summary>
+                  <div className="source-entry-body">
+                    <p>{text}</p>
+                    <div className="source-entry-evidence">
+                      {voice.audioBlob || existingVoice ? <span>包含原始录音</span> : null}
+                      {media.items.length + existingSupplementalMedia.length ? <span>包含 {media.items.length + existingSupplementalMedia.length} 个附件</span> : null}
+                      {persistedLocation ? <span>位置：{persistedLocation.label || "已附加位置"}</span> : null}
+                    </div>
+                    {voice.audioUrl || existingVoice ? (
+                      <audio
+                        className="source-entry-audio"
+                        controls
+                        preload="metadata"
+                        src={voice.audioUrl ?? existingVoice?.url ?? (existingVoice ? `/api/media/${existingVoice.id}` : undefined)}
+                      />
+                    ) : null}
+                    <PendingMediaGallery attachments={media.items} readOnly />
+                    <StoredMediaGallery attachments={existingSupplementalMedia} compact />
+                  </div>
+                </details>
+              )}
 
               {candidates.map((candidate, index) => (
                 <CandidateEditor
@@ -1965,14 +2407,6 @@ function WorkspaceApp({
               ) : null}
 
               {entryId ? (
-                <section className="draft-append-card">
-                  <div><strong>还想补充一段？</strong><small>追加内容会保留原草稿，并用全部文字重新生成候选事件。</small></div>
-                  <textarea rows={2} value={draftAppendText} placeholder="补充遗漏的人、地点、金额或另一件事……" onChange={(event) => setDraftAppendText(event.target.value)} />
-                  <button className="secondary-button" type="button" disabled={busy || !draftAppendText.trim()} onClick={() => void appendDraftTextBlock()}>追加并重新解析</button>
-                </section>
-              ) : null}
-
-              {entryId ? (
                 <div className="confirmation-actions">
                   <button className="secondary-button" type="button" onClick={() => setView("drafts")}>
                     稍后处理
@@ -1981,6 +2415,16 @@ function WorkspaceApp({
                     {busy ? "正在处理…" : candidates.length ? `确认并入账 ${candidates.length} 件` : "确认不记录这些事件"}
                   </button>
                 </div>
+              ) : null}
+
+              {entryId ? (
+                <details className="draft-append-card draft-append-disclosure">
+                  <summary><strong>原记录有遗漏？补充后重新解析</strong><small>通常不需要处理</small></summary>
+                  <div className="draft-append-body">
+                    <textarea rows={2} value={draftAppendText} placeholder="补充遗漏的人、地点、金额或另一件事……" onChange={(event) => setDraftAppendText(event.target.value)} />
+                    <button className="secondary-button" type="button" disabled={busy || !draftAppendText.trim()} onClick={() => void appendDraftTextBlock()}>追加并重新解析</button>
+                  </div>
+                </details>
               ) : null}
             </section>
           </div>
@@ -2028,14 +2472,7 @@ function WorkspaceApp({
         ) : null}
 
         {view === "notifications" ? (
-          <section className="list-page notification-page">
-            <div className="page-heading">
-              <div>
-                <span className="eyebrow">到期以后再提醒你</span>
-                <h1>草稿提醒</h1>
-              </div>
-              <span className="large-count">{unreadNotificationCount} 条未读</span>
-            </div>
+          <section className="list-page notification-page message-center-content">
             <div className="notification-settings-card">
               <div>
                 <strong>浏览器系统通知</strong>
@@ -2065,7 +2502,7 @@ function WorkspaceApp({
               </label>
             </div>
             <div className="card-list notification-list">
-              {notifications.map((notification) => (
+              {systemNotifications.map((notification) => (
                 <article className={`list-card notification-card ${notification.status}`} key={notification.id}>
                   <div>
                     <time>{formatDate(notification.createdAt)}</time>
@@ -2077,7 +2514,7 @@ function WorkspaceApp({
                       type="button"
                       className="text-button danger"
                       disabled={busy}
-                      onClick={() => void handleNotification(notification.id, "dismiss")}
+                      onClick={() => void handleNotification(notification, "dismiss")}
                     >
                       忽略
                     </button>
@@ -2085,15 +2522,15 @@ function WorkspaceApp({
                       type="button"
                       className="secondary-button"
                       disabled={busy}
-                      onClick={() => void handleNotification(notification.id, "read")}
+                      onClick={() => void handleNotification(notification, "read")}
                     >
-                      去处理草稿
+                      去处理
                     </button>
                   </div>
                 </article>
               ))}
-              {!notifications.length ? (
-                <div className="empty-state">没有到期提醒。待确认草稿会按你设置的时间出现在这里。</div>
+              {!systemNotifications.length ? (
+                <div className="empty-state">当前没有提醒。草稿到期和系统通知会出现在这里。</div>
               ) : null}
             </div>
           </section>
@@ -2101,51 +2538,97 @@ function WorkspaceApp({
 
         {view === "timeline" ? (
           <section className="list-page timeline-page">
-            <div className="page-heading">
-              <div>
-                <span className="eyebrow">已经确认的生活</span>
-                <h1>时间线</h1>
-              </div>
-              <span className="large-count">{timelineTotal} 件事</span>
+            <div className="timeline-page-heading">
+              <h1>时间线</h1>
+              <span>{timelineTotal} 件已确认事件</span>
             </div>
             <form className="timeline-filters" onSubmit={(event) => { event.preventDefault(); void loadTimelinePage(1); }}>
-              <label className="field field-wide"><span>搜索事件、原文、人物或事物</span><input value={timelineQuery} placeholder="例如：包子、王哥、美团" onChange={(event) => setTimelineQuery(event.target.value)} /></label>
-              <label className="field"><span>活动类型</span><select value={timelineEventType} onChange={(event) => setTimelineEventType(event.target.value)}><option value="">全部</option>{Object.entries(eventTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-              <label className="field"><span>任意实体</span><select value={timelineEntityId} onChange={(event) => setTimelineEntityId(event.target.value)}><option value="">全部</option>{entityMemory.filter((item) => item.entityType !== "person" && item.entityType !== "place").map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label>
-              <label className="field"><span>人物</span><select value={timelinePersonId} onChange={(event) => setTimelinePersonId(event.target.value)}><option value="">全部</option>{entityMemory.filter((item) => item.entityType === "person").map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label>
-              <label className="field"><span>地点</span><select value={timelinePlaceId} onChange={(event) => setTimelinePlaceId(event.target.value)}><option value="">全部</option>{entityMemory.filter((item) => item.entityType === "place").map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label>
-              <label className="field"><span>开始日期</span><input type="date" value={timelineFrom} onChange={(event) => setTimelineFrom(event.target.value)} /></label>
-              <label className="field"><span>结束日期</span><input type="date" value={timelineTo} onChange={(event) => setTimelineTo(event.target.value)} /></label>
-              <button className="secondary-button" type="submit" disabled={busy}>筛选</button>
+              <div className="timeline-search-row">
+                <label className="timeline-search-control">
+                  <span className="timeline-search-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                  </span>
+                  <input
+                    aria-label="搜索事件、原文、人物或事物"
+                    value={timelineQuery}
+                    placeholder="搜索事件、原文、人物或事物"
+                    onChange={(event) => setTimelineQuery(event.target.value)}
+                  />
+                </label>
+                <button className="timeline-search-button" type="submit" disabled={busy}>
+                  {busy ? "查询中" : "搜索"}
+                </button>
+                <button
+                  className={`timeline-filter-toggle ${timelineFiltersOpen ? "open" : ""}`}
+                  type="button"
+                  aria-expanded={timelineFiltersOpen}
+                  aria-controls="timeline-advanced-filters"
+                  onClick={() => setTimelineFiltersOpen((open) => !open)}
+                >
+                  <span>筛选</span>
+                  {activeTimelineFilterCount ? <strong>{activeTimelineFilterCount}</strong> : null}
+                  <i aria-hidden="true" />
+                </button>
+              </div>
+
+              {timelineFiltersOpen ? (
+                <div className="timeline-advanced-filters" id="timeline-advanced-filters">
+                  <div className="timeline-filter-heading">
+                    <div>
+                      <strong>进一步缩小范围</strong>
+                      <small>可按类型、人物、地点和日期组合筛选</small>
+                    </div>
+                    {activeTimelineFilterCount ? (
+                      <button type="button" disabled={busy} onClick={clearTimelineFilters}>清空条件</button>
+                    ) : null}
+                  </div>
+                  <div className="timeline-filter-grid">
+                    <label className="field"><span>活动类型</span><select value={timelineEventType} onChange={(event) => setTimelineEventType(event.target.value)}><option value="">全部类型</option>{Object.entries(eventTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                    <label className="field"><span>相关事物</span><select value={timelineEntityId} onChange={(event) => setTimelineEntityId(event.target.value)}><option value="">全部事物</option>{entityMemory.filter((item) => item.entityType !== "person" && item.entityType !== "place").map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label>
+                    <label className="field"><span>相关人物</span><select value={timelinePersonId} onChange={(event) => setTimelinePersonId(event.target.value)}><option value="">全部人物</option>{entityMemory.filter((item) => item.entityType === "person").map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label>
+                    <label className="field"><span>相关地点</span><select value={timelinePlaceId} onChange={(event) => setTimelinePlaceId(event.target.value)}><option value="">全部地点</option>{entityMemory.filter((item) => item.entityType === "place").map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label>
+                    <label className="field"><span>开始日期</span><input type="date" value={timelineFrom} onChange={(event) => setTimelineFrom(event.target.value)} /></label>
+                    <label className="field"><span>结束日期</span><input type="date" value={timelineTo} onChange={(event) => setTimelineTo(event.target.value)} /></label>
+                  </div>
+                  <div className="timeline-filter-actions">
+                    <button className="secondary-button" type="submit" disabled={busy}>应用筛选</button>
+                  </div>
+                </div>
+              ) : null}
             </form>
             <div className="timeline">
-              {timeline.map((event) => (
+              {timeline.map((event) => {
+                const relatedParticipants = event.participants.filter((participant) => !participant.isCurrentUser);
+                const timelineOccurredAt = event.occurredStart ?? event.createdAt;
+                return (
                 <article className="timeline-item" key={event.id}>
+                  <time className="timeline-axis-time" dateTime={timelineOccurredAt ?? undefined}>
+                    <span>{formatTimelineAxisDay(timelineOccurredAt, !event.isOwned)}</span>
+                    {event.isOwned ? <strong>{formatTimelineAxisClock(timelineOccurredAt)}</strong> : null}
+                  </time>
                   <div className="timeline-dot" />
                   <div className="timeline-card">
                     <div className="timeline-meta">
                       <span>
-                        {eventTypeLabels[event.eventType] ?? event.eventType}
+                        {codeLabel(eventTypeLabels, event.eventType, "其他活动")}
                         {!event.isOwned ? ` · ${event.owner.displayName} 分享的共同经历` : ""}
                       </span>
-                      <time>
-                        {event.isOwned
-                          ? formatDate(event.occurredStart ?? event.createdAt)
-                          : formatDay(event.occurredStart ?? event.createdAt)}
-                      </time>
                     </div>
-                    <h2>{event.title}</h2>
-                    {event.isOwned && editingEventId !== event.id ? (
-                      <div className="timeline-card-actions">
-                        <button type="button" className="timeline-edit-button" onClick={() => void toggleEventDetail(event.id)}>来源与版本</button>
-                        <button type="button" className="timeline-edit-button" onClick={() => setEditingEventId(event.id)}>编辑事件</button>
-                      </div>
-                    ) : null}
-                    {event.participants.length ? (
-                      <div className="timeline-participants">
-                        <span>参与者</span>
-                        <div>
-                          {event.participants.map((participant) => (
+                    <div className="timeline-title-row">
+                      <h2>{event.title}</h2>
+                      {event.isOwned && editingEventId !== event.id ? (
+                        <div className="timeline-card-actions">
+                          <button type="button" className="timeline-edit-button" onClick={() => void toggleEventDetail(event.id)}>{eventDetails[event.id] ? "收起来源" : "来源与版本"}</button>
+                          <button type="button" className="timeline-edit-button" onClick={() => setEditingEventId(event.id)}>编辑</button>
+                        </div>
+                      ) : null}
+                    </div>
+                    {relatedParticipants.length || event.entities.length || event.location || (event.isOwned && event.attachments.length) ? (
+                      <div className="timeline-relation-summary">
+                      {relatedParticipants.length ? (
+                        <div className="timeline-participants" aria-label="相关人物">
+                          <div>
+                          {relatedParticipants.map((participant) => (
                             <ParticipantLinkControl
                               key={participant.id}
                               eventId={event.id}
@@ -2157,15 +2640,15 @@ function WorkspaceApp({
                           ))}
                         </div>
                       </div>
-                    ) : null}
-                    <div className="entity-list">
+                      ) : null}
+                      {event.entities.length ? <div className="entity-list" aria-label="相关事物">
                       {event.entities.map((entity) => (
                         <span className="entity-chip" key={`${event.id}-${entity.id}-${entity.role}`}>
                           {entity.name}
-                          <small>{entity.role}</small>
+                          <small>{codeLabel(entityRoleLabels, entity.role, "其他关系")}</small>
                         </span>
                       ))}
-                    </div>
+                      </div> : null}
                     {event.location ? (
                       <div className="timeline-location">
                         ⌖ {event.location.label || "已附加位置"}
@@ -2174,8 +2657,25 @@ function WorkspaceApp({
                         </small>
                       </div>
                     ) : null}
-                    {event.isOwned ? (
-                      <StoredMediaGallery attachments={event.attachments} compact />
+                    {event.isOwned && event.attachments.length ? (
+                      <details className="timeline-attachments">
+                        <summary>附件 {event.attachments.length}</summary>
+                        <div className="timeline-attachment-links">
+                          {event.attachments.map((attachment, attachmentIndex) => (
+                            <a
+                              href={attachment.url || `/api/media/${attachment.id}`}
+                              key={attachment.id}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <span>{attachmentIndex + 1}</span>
+                              <strong>{attachment.originalFilename || `${attachment.kind}附件`}</strong>
+                            </a>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
+                      </div>
                     ) : null}
                     {event.isOwned && editingEventId === event.id ? (
                       <TimelineEventEditor
@@ -2195,7 +2695,8 @@ function WorkspaceApp({
                     ) : null}
                   </div>
                 </article>
-              ))}
+                );
+              })}
               {!timeline.length ? <div className="empty-state">确认第一条记录后，生活时间线会从这里开始。</div> : null}
             </div>
             {timelineTotal > 30 ? (
@@ -2237,11 +2738,11 @@ function WorkspaceApp({
           />
         ) : null}
 
-        {view === "privacy" ? <PrivacySettingsView /> : null}
-
         {view === "memory" ? <EntityMemoryView entities={entityMemory} onChanged={setEntityMemory} /> : null}
 
-        {view === "data" ? <DataGovernanceView user={user} onAccountDeleted={onAccountDeleted} /> : null}
+        {view === "contacts" ? <ContactsView currentUser={user} data={contacts} initialTab={contactsInitialTab} embedded onTabChange={setContactsInitialTab} onDataChange={setContacts} onNotificationsChanged={loadNotificationsOnly} onRelationshipsChanged={reloadRelationshipViews} /> : null}
+
+        {view === "settings" ? <SettingsView user={user} onAccountDeleted={onAccountDeleted} /> : null}
       </main>
     </div>
   );

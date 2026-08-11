@@ -20,6 +20,8 @@
     "db:migrate": "npm run db:migrate --workspace @trace-weave/backend",
     "db:seed": "npm run db:seed --workspace @trace-weave/backend",
     "db:seed:graph-demo": "npm run db:seed:graph-demo --workspace @trace-weave/backend --",
+    "db:seed:world-entities": "npm run db:seed:world-entities --workspace @trace-weave/backend",
+    "world:sync": "npm run world:sync --workspace @trace-weave/backend",
     "backup": "bash scripts/backup.sh",
     "backup:verify": "bash scripts/verify-backup.sh",
     "load:smoke": "node scripts/load-smoke.mjs"

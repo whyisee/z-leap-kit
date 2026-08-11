@@ -612,8 +612,9 @@ export async function decideSocialMatch(
       INSERT INTO ${schema}.social_connections (
         id, match_id, user_low_id, user_high_id, status
       ) VALUES ($1, $2, $3, $4, 'active')
-      ON CONFLICT (match_id) DO UPDATE
-      SET status = 'active', connected_at = now(), ended_at = NULL
+      ON CONFLICT (user_low_id, user_high_id) DO UPDATE
+      SET match_id = EXCLUDED.match_id,
+          status = 'active', connected_at = now(), ended_at = NULL
     `,
     [randomUUID(), matchId, match.userLowId, match.userHighId],
   );

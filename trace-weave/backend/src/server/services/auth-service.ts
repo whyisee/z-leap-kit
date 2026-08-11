@@ -12,6 +12,7 @@ export type AuthUser = {
   id: string;
   username: string;
   displayName: string;
+  createdAt: string;
 };
 
 export class AuthError extends Error {
@@ -128,7 +129,8 @@ export async function authenticateRequest(request: FastifyRequest): Promise<void
       SELECT
         u.id,
         u.username,
-        u.display_name AS "displayName"
+        u.display_name AS "displayName",
+        u.created_at AS "createdAt"
       FROM ${schema}.user_sessions s
       JOIN ${schema}.users u ON u.id = s.user_id
       WHERE s.token_hash = $1

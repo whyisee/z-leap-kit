@@ -87,7 +87,7 @@ export type LocationObservation = {
   sensitivity: "normal" | "sensitive" | "prohibited";
 };
 
-export type MediaKind = "voice" | "image" | "screenshot" | "video";
+export type MediaKind = "voice" | "image" | "screenshot" | "video" | "file";
 
 export type MediaAttachment = {
   id: string;
@@ -247,6 +247,7 @@ export type AuthUser = {
   id: string;
   username: string;
   displayName: string;
+  createdAt?: string;
 };
 
 export type GraphNode = {
@@ -275,6 +276,7 @@ export type PersonalGraph = {
   stats: {
     events: number; entities: number; people: number; locations: number; socialMatches: number;
     users?: number; occurrences?: number; sharedFeatures?: number;
+    catalogEntities?: number; connectedEntities?: number;
   };
 };
 
@@ -411,7 +413,69 @@ export type SharedOccurrence = {
 
 export type SocialCircle = { id: string; name: string; circleType: "interest" | "place"; entityType: string; entityName: string; memberCount: number; joined: boolean };
 export type CircleStat = { circleId: string; participantCountLowerBound: number; recentEventCount: number; previousEventCount: number; trend: number };
-export type SocialFeedItem = { id: string; ownerUserId: string; title: string; eventType: string; occurredDate: string | null; createdAt: string; owner: AuthUser };
+export type CircleContext = { id: string; name: string; circleType: "interest" | "place" };
+export type CircleRelatedEntity = { id: string; name: string; entityType: string; eventCount: number; participantCountLowerBound: number };
+export type SocialFeedItem = { id: string; ownerUserId: string; title: string; eventType: string; occurredDate: string | null; createdAt: string; owner: AuthUser; circles: CircleContext[] };
+export type CircleDetail = { circle: SocialCircle; stat: CircleStat | null; relatedEntities: CircleRelatedEntity[]; feed: SocialFeedItem[]; anonymityThreshold: number };
+
+export type DirectMessagePreview = {
+  id: string;
+  content: string;
+  senderId: string;
+  createdAt: string;
+};
+
+export type Contact = {
+  connectionId: string;
+  source: "discovery" | "friend_request" | "shared_occurrence";
+  status: "active" | "muted";
+  connectedAt: string;
+  user: AuthUser;
+  conversationId: string | null;
+  unreadCount: number;
+  lastMessage: DirectMessagePreview | null;
+};
+
+export type ContactRequest = {
+  id: string;
+  direction: "incoming" | "outgoing";
+  message: string | null;
+  status: "pending";
+  createdAt: string;
+  respondedAt: string | null;
+  user: AuthUser;
+};
+
+export type ContactOverview = {
+  contacts: Contact[];
+  incomingRequests: ContactRequest[];
+  outgoingRequests: ContactRequest[];
+  unreadTotal: number;
+};
+
+export type ContactSearchResult = AuthUser & {
+  relationship: "none" | "friend" | "incoming" | "outgoing";
+};
+
+export type ConversationSummary = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  otherUser: AuthUser;
+  lastMessage: DirectMessagePreview | null;
+  unreadCount: number;
+  canSend: boolean;
+};
+
+export type DirectMessage = {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  createdAt: string;
+  editedAt: string | null;
+  deletedAt: string | null;
+};
 
 export class ApiError extends Error {
   constructor(
@@ -876,6 +940,7 @@ export const api = {
 
   getCircles() { return request<{ circles: SocialCircle[]; anonymityThreshold: number }>("/api/circles"); },
   getCircleStats() { return request<{ stats: CircleStat[]; anonymityThreshold: number }>("/api/circles/stats"); },
+  getCircleDetail(circleId: string) { return request<CircleDetail>(`/api/circles/${circleId}`); },
   setCircleMembership(circleId: string, joined: boolean) {
     return request<{ circles: SocialCircle[]; anonymityThreshold: number }>(`/api/circles/${circleId}/membership`, { method: "POST", body: JSON.stringify({ joined }) });
   },
@@ -883,6 +948,63 @@ export const api = {
   blockUser(userId: string, reason?: string) { return request<{ status: "blocked" }>("/api/social/block", { method: "POST", body: JSON.stringify({ userId, reason }) }); },
   reportUser(input: { reportedUserId: string; reason: "harassment" | "spam" | "impersonation" | "privacy" | "unsafe_content" | "other"; details?: string; contextType?: string; contextId?: string }) {
     return request<{ status: "submitted" }>("/api/social/report", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  getContacts() {
+    return request<ContactOverview>("/api/contacts");
+  },
+
+  searchContactUsers(query: string) {
+    return request<{ users: ContactSearchResult[] }>(`/api/contacts/search?q=${encodeURIComponent(query)}`);
+  },
+
+  sendFriendRequest(recipientUserId: string, message?: string) {
+    return request<{ requestId: string; status: "pending" }>("/api/contact-requests", {
+      method: "POST",
+      body: JSON.stringify({ recipientUserId, message }),
+    });
+  },
+
+  decideFriendRequest(requestId: string, decision: "accept" | "reject" | "cancel") {
+    return request<{ requestId: string; status: string; conversationId: string | null }>(
+      `/api/contact-requests/${requestId}/decision`,
+      { method: "POST", body: JSON.stringify({ decision }) },
+    );
+  },
+
+  removeContact(userId: string) {
+    return request<{ status: "removed" }>(`/api/contacts/${userId}`, { method: "DELETE" });
+  },
+
+  getConversations() {
+    return request<{ conversations: ConversationSummary[]; unreadTotal: number }>("/api/conversations");
+  },
+
+  openConversation(userId: string) {
+    return request<{ conversationId: string }>("/api/conversations", {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    });
+  },
+
+  getConversationMessages(conversationId: string, before?: string) {
+    const query = before ? `?before=${encodeURIComponent(before)}` : "";
+    return request<{
+      conversation: { id: string; otherUser: AuthUser; canSend: boolean };
+      messages: DirectMessage[];
+      nextCursor: string | null;
+    }>(`/api/conversations/${conversationId}/messages${query}`);
+  },
+
+  sendDirectMessage(conversationId: string, content: string, clientMessageId = crypto.randomUUID()) {
+    return request<{ message: DirectMessage }>(`/api/conversations/${conversationId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ content, clientMessageId }),
+    });
+  },
+
+  markConversationRead(conversationId: string) {
+    return request<{ status: "read" }>(`/api/conversations/${conversationId}/read`, { method: "POST" });
   },
 
   getGraph() {

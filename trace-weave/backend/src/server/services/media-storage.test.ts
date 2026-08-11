@@ -14,6 +14,8 @@ describe("media storage validation", () => {
     expect(() => mediaStorage.assertMedia("image", "image/jpeg", 512)).not.toThrow();
     expect(() => mediaStorage.assertMedia("screenshot", "image/png", 512)).not.toThrow();
     expect(() => mediaStorage.assertMedia("video", "video/mp4", 512)).not.toThrow();
+    expect(() => mediaStorage.assertMedia("file", "application/pdf", 512)).not.toThrow();
+    expect(() => mediaStorage.assertMedia("file", "application/octet-stream", 512)).not.toThrow();
   });
 
   it("does not trust an image MIME type for a video attachment", () => {

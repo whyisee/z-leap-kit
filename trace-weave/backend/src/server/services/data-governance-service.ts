@@ -52,6 +52,10 @@ export async function exportAccountData(client: PoolClient, ownerUserId: string)
     sharedInvites: await rows(client, `SELECT * FROM ${schema}.event_participant_account_invites WHERE owner_user_id = $1 OR target_user_id = $1 ORDER BY created_at`, ownerUserId),
     occurrenceMemberships: await rows(client, `SELECT * FROM ${schema}.occurrence_memberships WHERE user_id = $1 OR invited_by_user_id = $1 ORDER BY created_at`, ownerUserId),
     socialMatches: await rows(client, `SELECT * FROM ${schema}.social_matches WHERE user_low_id = $1 OR user_high_id = $1 ORDER BY calculated_at`, ownerUserId),
+    socialConnections: await rows(client, `SELECT * FROM ${schema}.social_connections WHERE user_low_id = $1 OR user_high_id = $1 ORDER BY connected_at`, ownerUserId),
+    friendRequests: await rows(client, `SELECT * FROM ${schema}.friend_requests WHERE sender_user_id = $1 OR recipient_user_id = $1 ORDER BY created_at`, ownerUserId),
+    directConversations: await rows(client, `SELECT * FROM ${schema}.direct_conversations WHERE user_low_id = $1 OR user_high_id = $1 ORDER BY created_at`, ownerUserId),
+    directMessages: await rows(client, `SELECT message.* FROM ${schema}.direct_messages message JOIN ${schema}.direct_conversations conversation ON conversation.id = message.conversation_id WHERE conversation.user_low_id = $1 OR conversation.user_high_id = $1 ORDER BY message.created_at`, ownerUserId),
     userFeedback: await rows(client, `SELECT * FROM ${schema}.user_feedback WHERE owner_user_id = $1 ORDER BY created_at`, ownerUserId),
     aiProcessingAudits: await rows(client, `SELECT * FROM ${schema}.ai_processing_audits WHERE owner_user_id = $1 ORDER BY started_at`, ownerUserId),
     notificationPreferences: await rows(client, `SELECT * FROM ${schema}.notification_preferences WHERE owner_user_id = $1`, ownerUserId),
@@ -276,6 +280,25 @@ async function eraseAccountDatabase(job: DeletionJob, workerId: string): Promise
     );
     await client.query(
       `DELETE FROM ${schema}.safety_reports WHERE reporter_user_id = $1 OR reported_user_id = $1`,
+      [job.ownerUserId],
+    );
+    await client.query(
+      `UPDATE ${schema}.direct_messages SET content = '消息已由用户删除', deleted_at = now()
+       WHERE sender_user_id = $1 AND deleted_at IS NULL`,
+      [job.ownerUserId],
+    );
+    await client.query(`DELETE FROM ${schema}.direct_conversation_members WHERE user_id = $1`, [job.ownerUserId]);
+    await client.query(
+      `DELETE FROM ${schema}.direct_conversations conversation
+       WHERE (conversation.user_low_id = $1 OR conversation.user_high_id = $1)
+         AND NOT EXISTS (
+           SELECT 1 FROM ${schema}.direct_conversation_members membership
+           WHERE membership.conversation_id = conversation.id
+         )`,
+      [job.ownerUserId],
+    );
+    await client.query(
+      `DELETE FROM ${schema}.friend_requests WHERE sender_user_id = $1 OR recipient_user_id = $1`,
       [job.ownerUserId],
     );
 

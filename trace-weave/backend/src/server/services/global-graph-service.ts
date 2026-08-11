@@ -1,4 +1,7 @@
-import type { SocialMatchView } from "./social-service";
+import type { PoolClient } from "pg";
+import { config, quoteIdentifier } from "../config";
+
+const schema = quoteIdentifier(config.DB_SCHEMA);
 
 export type GlobalGraphNode = {
   id: string;
@@ -19,25 +22,34 @@ export type GlobalGraphEdge = {
   evidenceEventIds: string[];
 };
 
-type SharedOccurrenceView = {
+export type PublicWorldUser = {
   id: string;
-  occurredDate: string | null;
-  members: Array<{
-    user: { id: string; username: string; displayName: string };
-    permissions: Record<string, boolean>;
+  username: string;
+  displayName: string;
+  createdAt: string;
+};
+
+export type PublicWorldEvent = {
+  id: string;
+  ownerUserId: string;
+  title: string;
+  eventType: string;
+  factualStatus: string;
+  occurredStart: string | null;
+  createdAt: string;
+  entities: Array<{
+    canonicalEntityId: string;
+    name: string;
+    type: string;
+    role: string;
   }>;
-  events: Array<{
-    id: string;
-    ownerUserId: string;
-    title: string;
-    eventType: string;
-    entities: Array<{
-      canonicalEntityId?: string;
-      name: string;
-      type: string;
-      role: string;
-    }>;
-  }>;
+};
+
+export type PublicWorldCatalogEntity = {
+  id: string;
+  name: string;
+  type: string;
+  sourceKey: string;
 };
 
 function featureKind(entityType: string): GlobalGraphNode["kind"] {
@@ -46,200 +58,226 @@ function featureKind(entityType: string): GlobalGraphNode["kind"] {
   return "entity";
 }
 
-function cleanFeatureLabel(label: string): string {
-  return label.replace(/^共同地点：/, "").replace(/^共同/, "");
-}
-
 export function buildGlobalGraph(input: {
-  viewer: { id: string; username: string; displayName: string };
-  matches: SocialMatchView[];
-  occurrences: SharedOccurrenceView[];
+  viewerId: string;
+  users: PublicWorldUser[];
+  events: PublicWorldEvent[];
+  catalogEntities?: PublicWorldCatalogEntity[];
 }) {
-  const rootId = `user:${input.viewer.id}`;
   const nodes = new Map<string, GlobalGraphNode>();
-  const edges = new Map<string, GlobalGraphEdge>();
   const evidenceEdges = new Map<string, GlobalGraphEdge>();
-  const addEdge = (edge: GlobalGraphEdge) => {
-    const existing = edges.get(edge.id);
-    if (!existing) {
-      edges.set(edge.id, edge);
-      return;
-    }
-    existing.weight += edge.weight;
-    existing.evidenceEventIds = [...new Set([...existing.evidenceEventIds, ...edge.evidenceEventIds])];
-  };
-  const addFeature = (canonicalEntityId: string, label: string, entityType: string) => {
-    const id = `canonical:${canonicalEntityId}`;
-    const current = nodes.get(id);
-    nodes.set(id, {
-      id,
-      kind: featureKind(entityType),
-      label: cleanFeatureLabel(label),
-      category: entityType,
-      weight: (current?.weight ?? 0) + 1,
-      metadata: { canonicalEntityId, entityType, privacy: "authorized_projection" },
-    });
-    return id;
-  };
-  const addEvidenceEdge = (edge: GlobalGraphEdge) => {
-    const existing = evidenceEdges.get(edge.id);
-    if (!existing) {
-      evidenceEdges.set(edge.id, edge);
-      return;
-    }
-    existing.weight += edge.weight;
-    existing.evidenceEventIds = [...new Set([...existing.evidenceEventIds, ...edge.evidenceEventIds])];
-  };
+  const relationships = new Map<string, {
+    source: string;
+    target: string;
+    labels: Set<string>;
+    eventIds: Set<string>;
+  }>();
 
-  nodes.set(rootId, {
-    id: rootId,
-    kind: "user",
-    label: input.viewer.displayName,
-    category: "self",
-    weight: Math.max(1, input.matches.length + input.occurrences.length),
-    metadata: { username: input.viewer.username, identityRevealed: true },
-  });
+  for (const user of input.users) {
+    nodes.set(`user:${user.id}`, {
+      id: `user:${user.id}`,
+      kind: "user",
+      label: user.displayName,
+      category: user.id === input.viewerId ? "self" : "public_account",
+      weight: 1,
+      metadata: {
+        userId: user.id,
+        username: user.username,
+        createdAt: user.createdAt,
+        identityRevealed: true,
+        publicProfile: true,
+      },
+    });
+  }
 
-  for (const match of input.matches) {
-    const otherNodeId = match.otherUser ? `user:${match.otherUser.id}` : `match:${match.id}`;
-    nodes.set(otherNodeId, {
-      id: otherNodeId,
-      kind: match.otherUser ? "user" : "match",
-      label: match.otherUser?.displayName ?? match.anonymousLabel,
-      category: match.otherUser ? "connected_account" : "anonymous_match",
-      weight: Math.max(1, match.score / 20),
-      metadata: match.otherUser
-        ? { username: match.otherUser.username, identityRevealed: true, matchId: match.id, score: match.score }
-        : { identityRevealed: false, matchId: match.id, score: match.score },
+  for (const event of input.events) {
+    const ownerId = `user:${event.ownerUserId}`;
+    if (!nodes.has(ownerId)) continue;
+    const eventId = `event:${event.id}`;
+    nodes.set(eventId, {
+      id: eventId,
+      kind: "event",
+      label: event.title,
+      category: event.eventType,
+      weight: 1,
+      metadata: {
+        eventId: event.id,
+        eventType: event.eventType,
+        factualStatus: event.factualStatus,
+        occurredStart: event.occurredStart,
+        createdAt: event.createdAt,
+        ownerUserId: event.ownerUserId,
+        visibility: "public",
+      },
     });
-    addEdge({
-      id: `match:${match.id}`,
-      source: rootId,
-      target: otherNodeId,
-      type: "relationship",
-      label: match.status === "connected" ? "已建立联系" : `潜在关联 ${Math.round(match.score)}%`,
-      weight: Math.max(1, match.score / 25),
-      evidenceEventIds: [],
+    const owner = nodes.get(ownerId)!;
+    owner.weight += 1;
+    evidenceEdges.set(`public-event-owner:${event.id}`, {
+      id: `public-event-owner:${event.id}`,
+      source: ownerId,
+      target: eventId,
+      type: "participated",
+      label: "公开记录",
+      weight: 1,
+      evidenceEventIds: [event.id],
     });
-    for (const reason of match.reasons) {
-      const featureId = addFeature(reason.canonicalEntityId, reason.label, reason.entityType);
-      addEdge({
-        id: `viewer-feature:${reason.canonicalEntityId}:${reason.featureType}`,
-        source: rootId,
-        target: featureId,
-        type: "relationship",
-        label: reason.featureType,
-        weight: reason.contribution,
-        evidenceEventIds: [],
+
+    for (const entity of event.entities) {
+      const featureId = `canonical:${entity.canonicalEntityId}`;
+      const current = nodes.get(featureId);
+      nodes.set(featureId, {
+        id: featureId,
+        kind: featureKind(entity.type),
+        label: entity.name,
+        category: entity.type,
+        weight: (current?.weight ?? 0) + 1,
+        metadata: {
+          canonicalEntityId: entity.canonicalEntityId,
+          entityType: entity.type,
+          visibility: "public_projection",
+        },
       });
-      addEdge({
-        id: `match-feature:${match.id}:${reason.canonicalEntityId}:${reason.featureType}`,
-        source: otherNodeId,
+      evidenceEdges.set(`public-event-entity:${event.id}:${entity.canonicalEntityId}:${entity.role}`, {
+        id: `public-event-entity:${event.id}:${entity.canonicalEntityId}:${entity.role}`,
+        source: eventId,
         target: featureId,
-        type: "relationship",
-        label: reason.label,
-        weight: reason.contribution,
-        evidenceEventIds: [],
+        type: "evidence",
+        label: entity.role,
+        weight: 1,
+        evidenceEventIds: [event.id],
       });
+
+      const relationshipKey = `${ownerId}:${featureId}`;
+      const relationship = relationships.get(relationshipKey) ?? {
+        source: ownerId,
+        target: featureId,
+        labels: new Set<string>(),
+        eventIds: new Set<string>(),
+      };
+      relationship.labels.add(entity.role);
+      relationship.eventIds.add(event.id);
+      relationships.set(relationshipKey, relationship);
     }
   }
 
-  for (const occurrence of input.occurrences) {
-    const occurrenceId = `occurrence:${occurrence.id}`;
-    const firstTitle = occurrence.events[0]?.title;
-    nodes.set(occurrenceId, {
-      id: occurrenceId,
-      kind: "occurrence",
-      label: firstTitle ? `共同经历：${firstTitle}` : "共同经历",
-      category: "shared_occurrence",
-      weight: Math.max(1, occurrence.members.length),
-      metadata: { occurrenceId: occurrence.id, occurredDate: occurrence.occurredDate },
+  for (const entity of input.catalogEntities ?? []) {
+    const nodeId = `canonical:${entity.id}`;
+    const current = nodes.get(nodeId);
+    if (current) {
+      nodes.set(nodeId, {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          catalog: true,
+          catalogSourceKey: entity.sourceKey,
+        },
+      });
+      continue;
+    }
+    nodes.set(nodeId, {
+      id: nodeId,
+      kind: featureKind(entity.type),
+      label: entity.name,
+      category: entity.type,
+      weight: 0,
+      metadata: {
+        canonicalEntityId: entity.id,
+        entityType: entity.type,
+        visibility: "catalog",
+        catalog: true,
+        catalogSourceKey: entity.sourceKey,
+      },
     });
-    for (const member of occurrence.members) {
-      const memberId = `user:${member.user.id}`;
-      if (!nodes.has(memberId)) {
-        nodes.set(memberId, {
-          id: memberId,
-          kind: "user",
-          label: member.user.displayName,
-          category: member.user.id === input.viewer.id ? "self" : "shared_account",
-          weight: 1,
-          metadata: { username: member.user.username, identityRevealed: true },
-        });
-      }
-      addEdge({
-        id: `occurrence-member:${occurrence.id}:${member.user.id}`,
-        source: memberId,
-        target: occurrenceId,
-        type: "participated",
-        label: "共同参与",
-        weight: 1,
-        evidenceEventIds: [],
-      });
-      addEvidenceEdge({
-        id: `occurrence-evidence-member:${occurrence.id}:${member.user.id}`,
-        source: memberId,
-        target: occurrenceId,
-        type: "participated",
-        label: "参与共同经历",
-        weight: 1,
-        evidenceEventIds: occurrence.events
-          .filter((event) => event.ownerUserId === member.user.id)
-          .map((event) => event.id),
-      });
-    }
-    for (const event of occurrence.events) {
-      const ownerId = `user:${event.ownerUserId}`;
-      for (const entity of event.entities) {
-        if (!entity.canonicalEntityId) continue;
-        const featureId = addFeature(entity.canonicalEntityId, entity.name, entity.type);
-        addEdge({
-          id: `occurrence-feature:${occurrence.id}:${entity.canonicalEntityId}`,
-          source: occurrenceId,
-          target: featureId,
-          type: "relationship",
-          label: entity.role,
-          weight: 1,
-          evidenceEventIds: [event.id],
-        });
-        addEvidenceEdge({
-          id: `occurrence-evidence-feature:${occurrence.id}:${entity.canonicalEntityId}`,
-          source: occurrenceId,
-          target: featureId,
-          type: "evidence",
-          label: entity.role,
-          weight: 1,
-          evidenceEventIds: [event.id],
-        });
-        if (nodes.has(ownerId)) {
-          addEdge({
-            id: `member-feature:${occurrence.id}:${event.ownerUserId}:${entity.canonicalEntityId}`,
-            source: ownerId,
-            target: featureId,
-            type: "relationship",
-            label: entity.role,
-            weight: 1,
-            evidenceEventIds: [event.id],
-          });
-        }
-      }
-    }
   }
 
   const values = [...nodes.values()];
+  const relationshipEdges = [...relationships.entries()].map(([key, relationship]) => ({
+    id: `public-relationship:${key}`,
+    source: relationship.source,
+    target: relationship.target,
+    type: "relationship" as const,
+    label: [...relationship.labels].sort().join(" / "),
+    weight: relationship.eventIds.size,
+    evidenceEventIds: [...relationship.eventIds],
+  }));
   return {
     nodes: values,
     evidenceEdges: [...evidenceEdges.values()],
-    relationshipEdges: [...edges.values()],
+    relationshipEdges,
     stats: {
-      events: 0,
+      events: input.events.length,
       entities: values.filter((node) => node.kind === "entity").length,
       people: values.filter((node) => node.kind === "person").length,
       locations: values.filter((node) => node.kind === "location").length,
-      socialMatches: input.matches.length,
-      users: values.filter((node) => node.kind === "user" || node.kind === "match").length,
-      occurrences: input.occurrences.length,
+      socialMatches: 0,
+      users: input.users.length,
+      occurrences: 0,
       sharedFeatures: values.filter((node) => ["entity", "person", "location"].includes(node.kind)).length,
+      catalogEntities: values.filter((node) => node.metadata.catalog === true).length,
+      connectedEntities: values.filter((node) => node.metadata.visibility === "public_projection").length,
     },
   };
+}
+
+export async function getPublicWorldGraph(
+  client: PoolClient,
+  viewer: { id: string },
+) {
+  const userResult = await client.query<PublicWorldUser>(
+    `SELECT id, username, display_name AS "displayName", created_at AS "createdAt"
+     FROM ${schema}.users
+     WHERE status = 'active'
+     ORDER BY created_at, id`,
+  );
+  const eventResult = await client.query<Omit<PublicWorldEvent, "entities">>(
+    `SELECT projection.event_id AS id, projection.owner_user_id AS "ownerUserId",
+            projection.title, projection.event_type AS "eventType",
+            projection.factual_status AS "factualStatus",
+            projection.occurred_day::text AS "occurredStart",
+            projection.created_day::text AS "createdAt"
+     FROM ${schema}.public_event_projections projection
+     JOIN ${schema}.users owner ON owner.id=projection.owner_user_id AND owner.status='active'
+     ORDER BY projection.occurred_day DESC NULLS LAST, projection.created_day DESC, projection.event_id`,
+  );
+  const catalogResult = await client.query<PublicWorldCatalogEntity>(
+    `SELECT DISTINCT ON (canonical.id)
+            canonical.id,canonical.canonical_name AS name,canonical.entity_type AS type,
+            source.source_key AS "sourceKey"
+     FROM ${schema}.canonical_entity_sources source
+     JOIN ${schema}.canonical_entities canonical ON canonical.id=source.canonical_entity_id
+     WHERE canonical.status='active' AND canonical.sensitivity='normal'
+     ORDER BY canonical.id,source.source_key`,
+  );
+
+  const publicEvents: PublicWorldEvent[] = eventResult.rows.map((event) => ({ ...event, entities: [] }));
+
+  if (publicEvents.length) {
+    const entityResult = await client.query<{
+      eventId: string;
+      canonicalEntityId: string;
+      name: string;
+      type: string;
+      role: string;
+    }>(
+      `SELECT edge.event_id AS "eventId", canonical.id AS "canonicalEntityId",
+              canonical.canonical_name AS name, canonical.entity_type AS type,
+              edge.relation_role AS role
+       FROM ${schema}.public_event_entity_projections edge
+       JOIN ${schema}.canonical_entities canonical ON canonical.id=edge.canonical_entity_id
+       WHERE edge.event_id = ANY($1::uuid[])
+       ORDER BY edge.event_id,canonical.entity_type,canonical.canonical_name,edge.relation_role`,
+      [publicEvents.map((event) => event.id)],
+    );
+    const eventById = new Map(publicEvents.map((event) => [event.id, event]));
+    for (const entity of entityResult.rows) {
+      eventById.get(entity.eventId)?.entities.push(entity);
+    }
+  }
+
+  return buildGlobalGraph({
+    viewerId: viewer.id,
+    users: userResult.rows,
+    events: publicEvents,
+    catalogEntities: catalogResult.rows,
+  });
 }

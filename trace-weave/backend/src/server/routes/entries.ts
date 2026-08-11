@@ -67,6 +67,7 @@ const multipartMediaKinds: Record<string, MediaKind> = {
   image: "image",
   screenshot: "screenshot",
   video: "video",
+  file: "file",
 };
 
 function attachLocationEvidence(
@@ -1277,9 +1278,13 @@ export const entryRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Params: { attachmentId: string } }>(
     "/api/media/:attachmentId",
     async (request, reply) => {
-      const result = await pool.query<{ storageKey: string; mimeType: string }>(
+      const result = await pool.query<{ storageKey: string; mimeType: string; mediaKind: MediaKind; originalFilename: string | null }>(
         `
-          SELECT storage_key AS "storageKey", mime_type AS "mimeType"
+          SELECT
+            storage_key AS "storageKey",
+            mime_type AS "mimeType",
+            media_kind AS "mediaKind",
+            original_filename AS "originalFilename"
           FROM ${schema}.media_attachments
           WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL
         `,
@@ -1292,6 +1297,11 @@ export const entryRoutes: FastifyPluginAsync = async (app) => {
       reply.header("Content-Type", media.mimeType);
       reply.header("Content-Length", String(stored.size));
       reply.header("Cache-Control", "private, no-store");
+      reply.header("X-Content-Type-Options", "nosniff");
+      if (media.mediaKind === "file") {
+        const filename = encodeURIComponent(media.originalFilename || "attachment");
+        reply.header("Content-Disposition", `attachment; filename*=UTF-8''${filename}`);
+      }
       return reply.send(stored.stream);
     },
   );
@@ -1733,7 +1743,7 @@ export const entryRoutes: FastifyPluginAsync = async (app) => {
                 AND membership.membership_status = 'accepted'
             )
           )
-        ORDER BY e.occurred_start DESC NULLS LAST, e.created_at DESC
+        ORDER BY COALESCE(e.occurred_start, e.created_at) DESC, e.created_at DESC, e.id DESC
         LIMIT $9 OFFSET $10
       `,
       [

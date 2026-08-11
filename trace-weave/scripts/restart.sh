@@ -88,14 +88,14 @@ stop_services() {
   pid_value="$(read_pid 2>/dev/null || true)"
 
   if launchd_job_exists; then
-    echo "正在停止 TraceWeave${pid_value:+（PID ${pid_value}）}…"
+    echo "正在停止织络${pid_value:+（PID ${pid_value}）}…"
     launchctl remove "${LAUNCHD_LABEL}"
 
     local launchd_attempt
     for launchd_attempt in {1..20}; do
       if [[ -z "$(discover_runner_pid 2>/dev/null || true)" ]]; then
         rm -f "${PID_FILE}"
-        echo "TraceWeave 已停止"
+        echo "织络已停止"
         return
       fi
       sleep 0.25
@@ -106,24 +106,24 @@ stop_services() {
 
   if [[ -z "${pid_value}" ]] || ! kill -0 "${pid_value}" 2>/dev/null; then
     rm -f "${PID_FILE}"
-    echo "TraceWeave 当前未运行"
+    echo "织络当前未运行"
     return
   fi
 
   if ! is_our_runner "${pid_value}"; then
-    echo "拒绝停止 PID ${pid_value}：PID 文件可能已过期，进程并非 TraceWeave runner" >&2
+    echo "拒绝停止 PID ${pid_value}：PID 文件可能已过期，进程并非织络 runner" >&2
     echo "请检查 ${PID_FILE} 后手动处理" >&2
     exit 1
   fi
 
-  echo "正在停止 TraceWeave（PID ${pid_value}）…"
+  echo "正在停止织络（PID ${pid_value}）…"
   kill -TERM "${pid_value}"
 
   local attempt
   for attempt in {1..20}; do
     if ! kill -0 "${pid_value}" 2>/dev/null; then
       rm -f "${PID_FILE}"
-      echo "TraceWeave 已停止"
+      echo "织络已停止"
       return
     fi
     sleep 0.25
@@ -160,7 +160,7 @@ start_services() {
   if is_running; then
     local running_pid
     running_pid="$(read_pid)"
-    echo "TraceWeave 已在运行（PID ${running_pid}）"
+    echo "织络已在运行（PID ${running_pid}）"
     return
   fi
 
@@ -187,7 +187,7 @@ start_services() {
       sleep 0.1
     done
     if [[ -z "${runner_pid}" ]]; then
-      echo "launchd 已接受任务，但未找到 TraceWeave runner" >&2
+      echo "launchd 已接受任务，但未找到织络 runner" >&2
       exit 1
     fi
   else
@@ -195,7 +195,7 @@ start_services() {
     runner_pid=$!
   fi
   printf '%s\n' "${runner_pid}" > "${PID_FILE}"
-  echo "正在启动 TraceWeave（PID ${runner_pid}）…"
+  echo "正在启动织络（PID ${runner_pid}）…"
 
   if ! wait_for_url "后端" "http://127.0.0.1:8787/api/health"; then
     tail -n 30 "${BACKEND_LOG}" >&2 || true
@@ -216,16 +216,16 @@ show_status() {
   if is_running; then
     local running_pid
     running_pid="$(read_pid)"
-    echo "TraceWeave 正在运行（PID ${running_pid}）"
+    echo "织络正在运行（PID ${running_pid}）"
     echo "前端：http://127.0.0.1:5173/"
     echo "后端：http://127.0.0.1:8787/api/health"
   elif curl -fsS --max-time 3 "http://127.0.0.1:8787/api/health" >/dev/null 2>&1 \
     && curl -fsS --max-time 3 "http://127.0.0.1:5173/" >/dev/null 2>&1; then
-    echo "TraceWeave 正在运行（当前环境无权读取 runner PID）"
+    echo "织络正在运行（当前环境无权读取 runner PID）"
     echo "前端：http://127.0.0.1:5173/"
     echo "后端：http://127.0.0.1:8787/api/health"
   else
-    echo "TraceWeave 当前未运行"
+    echo "织络当前未运行"
     return 1
   fi
 }

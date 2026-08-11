@@ -4,9 +4,11 @@ import { api, type AuthUser } from "./api";
 export function DataGovernanceView({
   user,
   onAccountDeleted,
+  embedded = false,
 }: {
   user: AuthUser;
   onAccountDeleted: () => void;
+  embedded?: boolean;
 }) {
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -49,11 +51,11 @@ export function DataGovernanceView({
   }
 
   return (
-    <section className="data-governance-page">
-      <div className="privacy-page-heading">
+    <section className={`data-governance-page ${embedded ? "embedded" : ""}`}>
+      {!embedded ? <div className="privacy-page-heading">
         <div><span className="eyebrow">可迁移、可删除、可审计</span><h1>我的数据</h1></div>
         <p>导出不会改变任何记录；账号删除会先冻结会话，再由可靠后台任务清除生活数据和附件。</p>
-      </div>
+      </div> : <div className="settings-section-intro"><div><strong>我的数据</strong><small>导出、迁移或永久删除当前账户的数据</small></div></div>}
 
       {message ? <div className="message">{message}</div> : null}
 

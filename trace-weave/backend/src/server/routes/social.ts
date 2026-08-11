@@ -8,7 +8,7 @@ import {
   getSocialMatches,
   setSocialDiscoverySetting,
 } from "../services/social-service";
-import { blockUser, getAnonymousCircleStats, getSocialFeed, listCircles, reportUser, setCircleMembership } from "../services/circle-service";
+import { blockUser, getAnonymousCircleStats, getCircleDetail, getSocialFeed, listCircles, reportUser, setCircleMembership } from "../services/circle-service";
 
 const settingsSchema = z.object({
   participateInDiscovery: z.boolean(),
@@ -65,6 +65,9 @@ export const socialRoutes: FastifyPluginAsync = async (app) => {
 
   app.get("/api/circles", async (request) => withTransaction((client) => listCircles(client, request.authUser.id)));
   app.get("/api/circles/stats", async (request) => withTransaction((client) => getAnonymousCircleStats(client, request.authUser.id)));
+  app.get<{ Params: { circleId: string } }>("/api/circles/:circleId", async (request) =>
+    withTransaction((client) => getCircleDetail(client, request.authUser.id, z.string().uuid().parse(request.params.circleId))),
+  );
   app.post<{ Params: { circleId: string } }>("/api/circles/:circleId/membership", async (request) => {
     const body = circleMembershipSchema.parse(request.body);
     await withTransaction((client) => setCircleMembership(client, request.authUser.id, z.string().uuid().parse(request.params.circleId), body.joined));

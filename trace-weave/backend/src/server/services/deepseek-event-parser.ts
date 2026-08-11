@@ -46,7 +46,7 @@ export type DeepSeekEventParserOptions = {
   fetchImpl?: FetchLike;
 };
 
-const SYSTEM_PROMPT = `你是 TraceWeave 的生活事件结构化引擎。你的唯一任务是把用户主动提交的中文生活记录转换成 JSON。
+const SYSTEM_PROMPT = `你是织络的生活事件结构化引擎。你的唯一任务是把用户主动提交的中文生活记录转换成 JSON。
 
 必须输出一个 JSON 对象，根字段只能是 events。events 是一个或多个事件数组。不要输出 Markdown、解释或额外文字。
 
