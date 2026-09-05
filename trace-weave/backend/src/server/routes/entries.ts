@@ -9,6 +9,7 @@ import {
   createMixedEntrySchema,
   createVoiceEntrySchema,
   type EventCandidatePayload,
+  type GraphParserContext,
 } from "../domain/event-candidate";
 import { pool } from "../db/pool";
 import { withTransaction } from "../db/transaction";
@@ -167,6 +168,8 @@ async function parseAndSaveCandidates(input: {
   location?: { label?: string; role: "occurred_at" | "recorded_at" };
   savedLocation?: SavedLocationObservation;
   candidateIndexOffset?: number;
+  eventGrouping?: "automatic" | "single_event";
+  graphContext?: GraphParserContext;
 }): Promise<{ candidates: SavedCandidate[]; resolvedModelVersion: string }> {
   try {
     const parseResult = await eventParser.parse({
@@ -174,6 +177,8 @@ async function parseAndSaveCandidates(input: {
       timezone: input.timezone,
       referenceTime: input.referenceTime,
       location: input.location,
+      eventGrouping: input.eventGrouping,
+      graphContext: input.graphContext,
     });
 
     const savedCandidates = await withTransaction(async (client) => {
@@ -513,10 +518,12 @@ export const entryRoutes: FastifyPluginAsync = async (app) => {
             input_locale,
             client_timezone,
             client_created_at,
-            draft_reminder_after
-          ) VALUES ($1, $2, 'parsing', $3, $4, $5::timestamptz, now() + interval '24 hours')
+            draft_reminder_after,
+            source_context
+          ) VALUES ($1, $2, 'parsing', $3, $4, $5::timestamptz, now() + interval '24 hours', $6::jsonb)
         `,
-        [rawEntryId, ownerUserId, body.inputLocale, body.clientTimezone, body.clientCreatedAt ?? null],
+        [rawEntryId, ownerUserId, body.inputLocale, body.clientTimezone, body.clientCreatedAt ?? null,
+          JSON.stringify(body.graphContext ? { graphContext: body.graphContext, eventGrouping: body.eventGrouping } : {})],
       );
       if (body.location) {
         savedLocation = await insertLocationObservation(client, {
@@ -555,6 +562,8 @@ export const entryRoutes: FastifyPluginAsync = async (app) => {
           JSON.stringify({
             text: true,
             attachments: false,
+            eventGrouping: body.eventGrouping,
+            graphContext: body.graphContext ? { provided: true, nodeCategories: body.graphContext.nodes.map((node) => node.category) } : null,
             locationLabel: Boolean(body.location?.label),
             preciseCoordinates: false,
           }),
@@ -569,6 +578,8 @@ export const entryRoutes: FastifyPluginAsync = async (app) => {
         timezone: body.clientTimezone,
         referenceTime: body.clientCreatedAt ? new Date(body.clientCreatedAt) : new Date(),
         location: parserLocationContext(body.location),
+        eventGrouping: body.eventGrouping,
+        graphContext: body.graphContext,
       });
 
       const savedCandidates = await withTransaction(async (client) => {
@@ -1132,10 +1143,12 @@ export const entryRoutes: FastifyPluginAsync = async (app) => {
     const entryId = request.params.entryId;
     const auditId = randomUUID();
     const prepared = await withTransaction(async (client) => {
-      const entryResult = await client.query<{ timezone: string; referenceTime: string; candidateIndexOffset: number }>(
+      const entryResult = await client.query<{ timezone: string; referenceTime: string; candidateIndexOffset: number; eventGrouping: "automatic" | "single_event"; graphContext: GraphParserContext | null }>(
         `SELECT entry.client_timezone AS timezone,
                 COALESCE(entry.client_created_at, entry.created_at)::text AS "referenceTime",
-                COALESCE((SELECT max(candidate_index) + 1 FROM ${schema}.event_candidates WHERE raw_entry_id = entry.id), 0)::int AS "candidateIndexOffset"
+                COALESCE((SELECT max(candidate_index) + 1 FROM ${schema}.event_candidates WHERE raw_entry_id = entry.id), 0)::int AS "candidateIndexOffset",
+                CASE WHEN entry.source_context->>'eventGrouping' = 'single_event' THEN 'single_event' ELSE 'automatic' END AS "eventGrouping",
+                entry.source_context->'graphContext' AS "graphContext"
          FROM ${schema}.raw_entries entry
          WHERE entry.id = $1 AND entry.owner_user_id = $2 AND entry.status = 'awaiting_confirmation' AND entry.deleted_at IS NULL
          FOR UPDATE`,
@@ -1157,8 +1170,10 @@ export const entryRoutes: FastifyPluginAsync = async (app) => {
       await client.query(
         `INSERT INTO ${schema}.ai_processing_audits (
            id, owner_user_id, raw_entry_id, operation, provider, model_version, data_scope, retention_policy, status
-         ) VALUES ($1,$2,$3,'event_extraction',$4,$5,'{"text":true,"attachments":false,"source":"draft_append"}'::jsonb,$6,'started')`,
-        [auditId, ownerUserId, entryId, eventParser.provider, eventParser.modelVersion, eventParser.retentionPolicy],
+         ) VALUES ($1,$2,$3,'event_extraction',$4,$5,$6::jsonb,$7,'started')`,
+        [auditId, ownerUserId, entryId, eventParser.provider, eventParser.modelVersion,
+          JSON.stringify({ text: true, attachments: false, source: "draft_append", eventGrouping: entry.eventGrouping, graphContext: Boolean(entry.graphContext) }),
+          eventParser.retentionPolicy],
       );
       const textResult = await client.query<{ text: string }>(
         `SELECT string_agg(COALESCE(content.text_content, transcript.transcript_text), E'\n' ORDER BY content.position) AS text
@@ -1172,6 +1187,8 @@ export const entryRoutes: FastifyPluginAsync = async (app) => {
     const parsed = await parseAndSaveCandidates({
       ownerUserId, rawEntryId: entryId, auditId, text: prepared.text, timezone: prepared.timezone,
       referenceTime: new Date(prepared.referenceTime), candidateIndexOffset: prepared.candidateIndexOffset,
+      eventGrouping: prepared.eventGrouping,
+      graphContext: prepared.graphContext ?? undefined,
     });
     return reply.code(201).send({ entry: { id: entryId, status: "awaiting_confirmation", text: prepared.text }, candidates: parsed.candidates, parser: { provider: eventParser.provider, model: parsed.resolvedModelVersion } });
   });

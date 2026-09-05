@@ -10,7 +10,7 @@ const schema = quoteIdentifier(config.DB_SCHEMA);
 
 type GraphNode = {
   id: string;
-  kind: "user" | "event" | "entity" | "person" | "location" | "match";
+  kind: "user" | "event" | "occurrence" | "entity" | "person" | "location" | "match";
   label: string;
   category: string;
   weight: number;
@@ -37,7 +37,7 @@ export const graphRoutes: FastifyPluginAsync = async (app) => {
   app.get("/api/graph", async (request) => {
     const ownerUserId = request.authUser.id;
     const rootId = `user:${ownerUserId}`;
-    const [eventResult, socialMatches] = await Promise.all([
+    const [eventResult, socialMatches, occurrenceResult] = await Promise.all([
       pool.query<{
       id: string;
       title: string;
@@ -81,10 +81,34 @@ export const graphRoutes: FastifyPluginAsync = async (app) => {
       [ownerUserId],
       ),
       withTransaction((client) => getSocialMatches(client, ownerUserId)),
+      pool.query<{
+        id: string;
+        occurredStart: string | null;
+        memberCount: number;
+        eventCount: number;
+      }>(
+        `SELECT occurrence.id,
+                occurrence.occurred_start AS "occurredStart",
+                count(DISTINCT member.user_id)::int AS "memberCount",
+                count(DISTINCT link.event_id)::int AS "eventCount"
+           FROM ${schema}.shared_occurrences occurrence
+           JOIN ${schema}.occurrence_memberships viewer
+             ON viewer.occurrence_id = occurrence.id AND viewer.user_id = $1
+            AND viewer.membership_status = 'accepted'
+           LEFT JOIN ${schema}.occurrence_memberships member
+             ON member.occurrence_id = occurrence.id AND member.membership_status = 'accepted'
+           LEFT JOIN ${schema}.event_occurrence_links link
+             ON link.occurrence_id = occurrence.id AND link.link_status = 'active'
+          WHERE occurrence.status = 'active'
+          GROUP BY occurrence.id
+          ORDER BY occurrence.updated_at DESC`,
+        [ownerUserId],
+      ),
     ]);
 
     const nodes = new Map<string, GraphNode>();
     const evidenceEdges: GraphEdge[] = [];
+    const occurrenceEdges: GraphEdge[] = [];
     const aggregate = new Map<
       string,
       { target: string; labels: Set<string>; eventIds: Set<string>; category: string }
@@ -97,6 +121,34 @@ export const graphRoutes: FastifyPluginAsync = async (app) => {
       weight: Math.max(1, eventResult.rows.length),
       metadata: { username: request.authUser.username },
     });
+
+    for (const occurrence of occurrenceResult.rows) {
+      const nodeId = `occurrence:${occurrence.id}`;
+      nodes.set(nodeId, {
+        id: nodeId,
+        kind: "occurrence",
+        label: occurrence.occurredStart
+          ? `${new Date(occurrence.occurredStart).toLocaleDateString("zh-CN")} 的共同经历`
+          : "共同经历",
+        category: "shared_occurrence",
+        weight: Math.max(1, occurrence.memberCount + occurrence.eventCount),
+        metadata: {
+          occurrenceId: occurrence.id,
+          occurredDate: occurrence.occurredStart,
+          memberCount: occurrence.memberCount,
+          eventCount: occurrence.eventCount,
+        },
+      });
+      occurrenceEdges.push({
+        id: `occurrence-membership:${occurrence.id}`,
+        source: rootId,
+        target: nodeId,
+        type: "relationship",
+        label: "共同经历成员",
+        weight: Math.max(1, occurrence.memberCount),
+        evidenceEventIds: [],
+      });
+    }
 
     for (const event of eventResult.rows) {
       const nodeId = `event:${event.id}`;
@@ -126,21 +178,25 @@ export const graphRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const eventIds = eventResult.rows.map((event) => event.id);
-    const [entityResult, participantResult, locationResult] = await Promise.all([
+    const [entityResult, participantResult, locationResult, eventRelationResult] = await Promise.all([
       pool.query<{
         eventId: string;
         entityId: string;
+        canonicalEntityId: string | null;
         name: string;
         entityType: string;
         role: string;
+        isOwned: boolean;
       }>(
         `
           SELECT
             eer.event_id AS "eventId",
             ue.id AS "entityId",
+            eer.canonical_entity_id AS "canonicalEntityId",
             CASE WHEN e.owner_user_id = $2 THEN ue.display_name ELSE ce.canonical_name END AS name,
             CASE WHEN e.owner_user_id = $2 THEN ue.entity_type ELSE ce.entity_type END AS "entityType",
-            eer.relation_role AS role
+            eer.relation_role AS role,
+            (e.owner_user_id = $2) AS "isOwned"
           FROM ${schema}.event_entity_relations eer
           JOIN ${schema}.events e ON e.id = eer.event_id
           JOIN ${schema}.user_entities ue ON ue.id = eer.user_entity_id
@@ -199,7 +255,47 @@ export const graphRoutes: FastifyPluginAsync = async (app) => {
         `,
         [eventIds, ownerUserId],
       ),
+      pool.query<{
+        id: string;
+        sourceEventId: string;
+        targetEventId: string;
+        relationType: string;
+      }>(
+        `SELECT relation.id,
+                relation.source_event_id AS "sourceEventId",
+                relation.target_event_id AS "targetEventId",
+                relation.relation_type AS "relationType"
+           FROM ${schema}.event_relations relation
+          WHERE relation.owner_user_id = $2
+            AND relation.source_event_id = ANY($1::uuid[])
+            AND relation.target_event_id = ANY($1::uuid[])
+          ORDER BY relation.created_at, relation.id`,
+        [eventIds, ownerUserId],
+      ),
     ]);
+
+    const eventRelationLabels: Record<string, string> = {
+      contains: "包含",
+      before: "早于",
+      after: "晚于",
+      simultaneous: "同时发生",
+      causes: "导致",
+      interrupts: "中断",
+      continues: "延续",
+      references: "关联",
+      repeats: "再次发生",
+    };
+    for (const relation of eventRelationResult.rows) {
+      evidenceEdges.push({
+        id: `event-relation:${relation.id}`,
+        source: `event:${relation.sourceEventId}`,
+        target: `event:${relation.targetEventId}`,
+        type: "evidence",
+        label: eventRelationLabels[relation.relationType] ?? relation.relationType,
+        weight: 1,
+        evidenceEventIds: [relation.sourceEventId, relation.targetEventId],
+      });
+    }
 
     const addEvidence = (input: {
       eventId: string;
@@ -229,7 +325,9 @@ export const graphRoutes: FastifyPluginAsync = async (app) => {
     };
 
     for (const entity of entityResult.rows) {
-      const nodeId = `entity:${entity.entityId}`;
+      const nodeId = entity.isOwned
+        ? `entity:${entity.entityId}`
+        : `canonical:${entity.canonicalEntityId}`;
       const existing = nodes.get(nodeId);
       nodes.set(nodeId, {
         id: nodeId,
@@ -242,7 +340,12 @@ export const graphRoutes: FastifyPluginAsync = async (app) => {
         label: entity.name,
         category: entity.entityType,
         weight: (existing?.weight ?? 0) + 1,
-        metadata: { entityId: entity.entityId, entityType: entity.entityType },
+        metadata: {
+          entityId: entity.isOwned ? entity.entityId : undefined,
+          canonicalEntityId: entity.canonicalEntityId,
+          entityType: entity.entityType,
+          isOwned: entity.isOwned,
+        },
       });
       addEvidence({
         eventId: entity.eventId,
@@ -303,6 +406,7 @@ export const graphRoutes: FastifyPluginAsync = async (app) => {
       weight: relationship.eventIds.size,
       evidenceEventIds: [...relationship.eventIds],
     }));
+    relationshipEdges.push(...occurrenceEdges);
 
     for (const match of socialMatches) {
       const nodeId = `match:${match.id}`;
@@ -342,6 +446,7 @@ export const graphRoutes: FastifyPluginAsync = async (app) => {
         people: values.filter((node) => node.kind === "person").length,
         locations: values.filter((node) => node.kind === "location").length,
         socialMatches: values.filter((node) => node.kind === "match").length,
+        occurrences: values.filter((node) => node.kind === "occurrence").length,
       },
     };
   });

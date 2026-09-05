@@ -512,3 +512,75 @@ export async function updateOccurrencePermissions(
   );
   if (!result.rows[0]) throw new SharedInviteError("共同经历不存在", 404);
 }
+
+export async function linkOwnedEventToOccurrenceFromGraph(
+  client: PoolClient,
+  userId: string,
+  eventId: string,
+  occurrenceId: string,
+): Promise<{ changed: boolean; linkId: string | null }> {
+  const membership = await client.query(
+    `SELECT 1
+       FROM ${schema}.occurrence_memberships membership
+       JOIN ${schema}.shared_occurrences occurrence ON occurrence.id = membership.occurrence_id
+      WHERE membership.occurrence_id = $1 AND membership.user_id = $2
+        AND membership.membership_status = 'accepted' AND occurrence.status = 'active'
+      FOR UPDATE OF membership`,
+    [occurrenceId, userId],
+  );
+  if (!membership.rows[0]) throw new SharedInviteError("你不是这个共同经历的有效成员", 403);
+  const event = await client.query(
+    `SELECT 1 FROM ${schema}.events
+      WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL FOR UPDATE`,
+    [eventId, userId],
+  );
+  if (!event.rows[0]) throw new SharedInviteError("只能关联属于你的有效事件", 404);
+  const conflicting = await client.query<{ occurrenceId: string }>(
+    `SELECT occurrence_id AS "occurrenceId" FROM ${schema}.event_occurrence_links
+      WHERE event_id = $1 AND link_status = 'active' AND occurrence_id <> $2 LIMIT 1`,
+    [eventId, occurrenceId],
+  );
+  if (conflicting.rows[0]) throw new SharedInviteError("这条事件已经关联到另一个共同经历", 409);
+  const existing = await client.query<{ id: string; linkStatus: string }>(
+    `SELECT id, link_status AS "linkStatus" FROM ${schema}.event_occurrence_links
+      WHERE event_id = $1 AND occurrence_id = $2 FOR UPDATE`,
+    [eventId, occurrenceId],
+  );
+  if (existing.rows[0]?.linkStatus === "active") return { changed: false, linkId: null };
+  const linkId = existing.rows[0]?.id ?? randomUUID();
+  await client.query(
+    `INSERT INTO ${schema}.event_occurrence_links (id,event_id,occurrence_id,owner_user_id,link_status)
+     VALUES ($1,$2,$3,$4,'active')
+     ON CONFLICT (event_id,occurrence_id) DO UPDATE SET link_status = 'active'`,
+    [linkId, eventId, occurrenceId, userId],
+  );
+  await client.query(
+    `UPDATE ${schema}.shared_occurrences
+        SET version = version + 1, updated_at = now()
+      WHERE id = $1`,
+    [occurrenceId],
+  );
+  await refreshSocialProjectionsForUser(client, userId);
+  return { changed: true, linkId };
+}
+
+export async function undoGraphOccurrenceLink(
+  client: PoolClient,
+  userId: string,
+  linkId: string,
+  occurrenceId: string,
+): Promise<void> {
+  const result = await client.query(
+    `UPDATE ${schema}.event_occurrence_links
+        SET link_status = 'withdrawn'
+      WHERE id = $1 AND occurrence_id = $2 AND owner_user_id = $3 AND link_status = 'active'
+      RETURNING event_id`,
+    [linkId, occurrenceId, userId],
+  );
+  if (!result.rows[0]) throw new SharedInviteError("共同经历关联已经变化，不能再撤销", 409);
+  await client.query(
+    `UPDATE ${schema}.shared_occurrences SET version = version + 1, updated_at = now() WHERE id = $1`,
+    [occurrenceId],
+  );
+  await refreshSocialProjectionsForUser(client, userId);
+}

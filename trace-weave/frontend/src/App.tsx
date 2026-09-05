@@ -12,6 +12,7 @@ import {
   type EntityMemory,
   type EventDetail,
   type EventPrivacySettings,
+  type GraphActionResult,
   type LocationObservation,
   type MediaAttachment,
   type NotificationPreferences,
@@ -1131,6 +1132,7 @@ function WorkspaceApp({
   const [view, setView] = useState<View>(initialView);
   const [text, setText] = useState("");
   const [entryId, setEntryId] = useState<string | null>(null);
+  const [graphQuickEntry, setGraphQuickEntry] = useState(false);
   const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
   const [sourceCandidates, setSourceCandidates] = useState<CandidateRecord[]>([]);
   const [rejectedCandidateIds, setRejectedCandidateIds] = useState<string[]>([]);
@@ -1423,6 +1425,63 @@ function WorkspaceApp({
     });
   }
 
+  function clearActiveEntry() {
+    setText("");
+    setEntryId(null);
+    setCandidates([]);
+    setSourceCandidates([]);
+    setRejectedCandidateIds([]);
+    setDraftAppendText("");
+    setExistingMediaAttachments([]);
+    setPersistedLocation(null);
+    voice.reset();
+    media.reset();
+    locationCapture.reset();
+  }
+
+  function keepGraphQuickEntryAsDraft() {
+    clearActiveEntry();
+    setGraphQuickEntry(false);
+  }
+
+  async function startGraphQuickRecord(
+    graphText: string,
+    graphContext: Extract<GraphActionResult, { type: "entry_template" }>["graphContext"],
+  ) {
+    const normalizedText = graphText.trim();
+    if (!normalizedText || busy) return;
+    if (entryId || text.trim() || voice.audioBlob || media.items.length) {
+      throw new Error("记录页还有未处理的内容，请先确认、删除或提交后再使用图谱快捷记录");
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await api.createEntry(normalizedText, undefined, { eventGrouping: "single_event", graphContext });
+      const parsedCandidates = result.candidates.map((candidate) => ({
+        ...candidate,
+        parserProvider: candidate.parserProvider ?? result.parser.provider,
+        parserModelVersion: candidate.parserModelVersion ?? result.parser.model,
+      }));
+      setText(normalizedText);
+      setEntryId(result.entry.id);
+      setPersistedLocation(result.location);
+      setCandidates(prepareCandidates(parsedCandidates));
+      setSourceCandidates(parsedCandidates);
+      setRejectedCandidateIds([]);
+      setExistingMediaAttachments([]);
+      voice.reset();
+      media.reset();
+      locationCapture.reset();
+      setGraphQuickEntry(true);
+      await loadData();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "无法创建图谱快捷记录");
+      throw error;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitEntry() {
     const aggregateText = text.trim();
     if (!aggregateText || busy) return;
@@ -1475,22 +1534,15 @@ function WorkspaceApp({
     if (!entryId || (!candidates.length && !rejectedCandidateIds.length) || busy) return;
     setBusy(true);
     setMessage(null);
+    const returnToGraph = graphQuickEntry;
 
     try {
       await api.confirmEntry(entryId, candidates, rejectedCandidateIds);
-      setText("");
-      setEntryId(null);
-      setCandidates([]);
-      setSourceCandidates([]);
-      setRejectedCandidateIds([]);
-      setExistingMediaAttachments([]);
-      setPersistedLocation(null);
-      voice.reset();
-      media.reset();
-      locationCapture.reset();
+      clearActiveEntry();
+      setGraphQuickEntry(false);
       setMessage("已经正式记入你的生活流水");
       await loadData();
-      setView("timeline");
+      if (!returnToGraph) setView("timeline");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "确认失败");
     } finally {
@@ -1518,6 +1570,7 @@ function WorkspaceApp({
     setExistingMediaAttachments(draft.attachments);
     setPersistedLocation(draft.location);
     locationCapture.reset();
+    setGraphQuickEntry(false);
     setView("record");
     setMessage(null);
   }
@@ -1612,15 +1665,8 @@ function WorkspaceApp({
     try {
       await api.deleteDraft(draftId);
       if (entryId === draftId) {
-        setEntryId(null);
-        setCandidates([]);
-        setSourceCandidates([]);
-        setRejectedCandidateIds([]);
-        setExistingMediaAttachments([]);
-        setPersistedLocation(null);
-        voice.reset();
-        media.reset();
-        locationCapture.reset();
+        clearActiveEntry();
+        setGraphQuickEntry(false);
       }
       await loadData();
     } catch (error) {
@@ -2711,7 +2757,84 @@ function WorkspaceApp({
 
         {view === "review" ? <ReviewView /> : null}
 
-        {view === "graph" && graph && globalGraph ? <GraphView personal={graph} global={globalGraph} /> : null}
+        {view === "graph" && graph && globalGraph ? (
+          <>
+            <GraphView
+              personal={graph}
+              global={globalGraph}
+              onQuickRecord={startGraphQuickRecord}
+              onOpenContacts={openContacts}
+              onOpenDiscovery={() => setView("discover")}
+              onOpenMemory={() => setView("memory")}
+              onOpenTimeline={() => setView("timeline")}
+              onDataChanged={loadData}
+            />
+            {graphQuickEntry && entryId ? (
+              <div className="graph-inline-record-backdrop">
+                <section className="graph-inline-record-panel" role="dialog" aria-modal="true" aria-label="图谱快捷记录确认">
+                  <header>
+                    <div>
+                      <span>图谱快捷记录</span>
+                      <h2>确认 AI 的理解</h2>
+                      <p>确认或暂存后会留在关系图，可以继续操作其他节点。</p>
+                    </div>
+                    <button type="button" aria-label="暂存并关闭快捷记录" disabled={busy} onClick={keepGraphQuickEntryAsDraft}>×</button>
+                  </header>
+                  <div className="graph-inline-record-body">
+                    <details className="source-entry-card">
+                      <summary>
+                        <span>原始记录</span>
+                        <strong>{text}</strong>
+                        <small>展开回看</small>
+                      </summary>
+                      <div className="source-entry-body"><p>{text}</p></div>
+                    </details>
+
+                    {candidates.map((candidate, index) => (
+                      <CandidateEditor
+                        key={candidate.resolutionId ?? candidate.id}
+                        candidate={candidate}
+                        index={index}
+                        canMergePrevious={index > 0}
+                        location={persistedLocation}
+                        entityMemory={entityMemory}
+                        onSplit={() => splitCandidate(index)}
+                        onMergePrevious={() => mergeCandidateWithPrevious(index)}
+                        onReject={() => rejectCandidate(index)}
+                        onChange={(next) => setCandidates((current) => current.map((item, itemIndex) => (itemIndex === index ? next : item)))}
+                      />
+                    ))}
+
+                    {rejectedCandidateIds.length ? (
+                      <section className="rejected-candidates-card">
+                        <div>
+                          <span className="eyebrow">不会入账</span>
+                          <strong>已拒绝 {rejectedCandidateIds.length} 个 AI 候选</strong>
+                        </div>
+                        <div className="rejected-candidate-list">
+                          {rejectedCandidateIds.map((sourceId) => {
+                            const source = sourceCandidates.find((candidate) => candidate.id === sourceId);
+                            return (
+                              <button className="text-button" type="button" key={sourceId} onClick={() => restoreRejectedCandidate(sourceId)}>
+                                恢复“{source?.payload.title ?? "候选事件"}”
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ) : null}
+                  </div>
+                  <footer>
+                    <button className="secondary-button" type="button" disabled={busy} onClick={keepGraphQuickEntryAsDraft}>稍后处理</button>
+                    <button className="primary-button" type="button" disabled={busy} onClick={confirm}>
+                      {busy ? "正在处理…" : candidates.length ? `确认并入账 ${candidates.length} 件` : "确认不记录这些事件"}
+                    </button>
+                  </footer>
+                </section>
+              </div>
+            ) : null}
+          </>
+        ) : null}
 
         {view === "discover" && social ? (
           <SocialDiscoveryView

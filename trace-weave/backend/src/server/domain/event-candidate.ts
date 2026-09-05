@@ -59,12 +59,28 @@ export const eventCandidatePayloadSchema = z.object({
 
 export type EventCandidatePayload = z.infer<typeof eventCandidatePayloadSchema>;
 
+export const graphParserContextSchema = z.object({
+  source: z.literal("graph_interaction"),
+  actionId: z.string().trim().min(3).max(100),
+  intent: z.string().trim().min(1).max(100),
+  relationHint: z.string().trim().max(500).nullable().default(null),
+  nodes: z.array(z.object({
+    label: z.string().trim().min(1).max(240),
+    kind: z.enum(["user", "person", "entity", "location", "event", "occurrence", "match"]),
+    category: z.string().trim().min(1).max(80),
+  })).min(1).max(12),
+});
+
+export type GraphParserContext = z.infer<typeof graphParserContextSchema>;
+
 export const createEntrySchema = z.object({
   text: z.string().trim().min(1).max(20_000),
   clientTimezone: z.string().trim().min(1).max(80).default("Asia/Shanghai"),
   clientCreatedAt: z.string().datetime({ offset: true }).optional(),
   inputLocale: z.string().trim().min(2).max(35).default("zh-CN"),
   location: locationInputSchema.optional(),
+  eventGrouping: z.enum(["automatic", "single_event"]).default("automatic"),
+  graphContext: graphParserContextSchema.optional(),
 });
 
 const multipartLocationSchema = z.preprocess((value) => {

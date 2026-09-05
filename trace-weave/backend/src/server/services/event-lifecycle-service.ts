@@ -85,6 +85,17 @@ async function loadEventSnapshot(client: PoolClient, eventId: string): Promise<R
           ) ORDER BY ell.created_at)
           FROM ${schema}.event_location_links ell
           WHERE ell.event_id = e.id
+        ), '[]'::jsonb),
+        'eventRelations', COALESCE((
+          SELECT jsonb_agg(jsonb_build_object(
+            'id', relation.id,
+            'sourceEventId', relation.source_event_id,
+            'targetEventId', relation.target_event_id,
+            'relationType', relation.relation_type,
+            'direction', CASE WHEN relation.source_event_id = e.id THEN 'outgoing' ELSE 'incoming' END
+          ) ORDER BY relation.created_at)
+          FROM ${schema}.event_relations relation
+          WHERE relation.source_event_id = e.id OR relation.target_event_id = e.id
         ), '[]'::jsonb)
       ) AS snapshot
       FROM ${schema}.events e
@@ -467,6 +478,324 @@ export async function replaceOwnedEventRelations(
   );
   await refreshSocialProjectionsForUser(client, ownerUserId);
   return { version: nextVersion, changedFields: ["participants", "entities", "locations"] };
+}
+
+type GraphEventMutationResult = {
+  changed: boolean;
+  eventIds: string[];
+  versions: Record<string, number>;
+  undo?: { type: "event_participant" | "event_entity" | "event_location" | "event_relation"; payload: Record<string, unknown> };
+};
+
+async function lockOwnedGraphEvents(
+  client: PoolClient,
+  ownerUserId: string,
+  eventIds: string[],
+): Promise<Array<{ id: string; version: number; rawEntryId: string }>> {
+  const uniqueIds = [...new Set(eventIds)].sort();
+  const result = await client.query<{ id: string; version: number; rawEntryId: string }>(
+    `SELECT id, version, raw_entry_id AS "rawEntryId"
+       FROM ${schema}.events
+      WHERE id = ANY($1::uuid[]) AND owner_user_id = $2 AND deleted_at IS NULL
+      ORDER BY id
+      FOR UPDATE`,
+    [uniqueIds, ownerUserId],
+  );
+  if (result.rows.length !== uniqueIds.length) {
+    throw new EventLifecycleError("只能修改属于你的有效事件", 404);
+  }
+  return result.rows;
+}
+
+async function finishGraphEventMutation(
+  client: PoolClient,
+  ownerUserId: string,
+  events: Array<{ id: string; version: number; rawEntryId: string }>,
+  before: Map<string, Record<string, unknown>>,
+  changedFields: string[],
+  operation: string,
+): Promise<GraphEventMutationResult> {
+  const versions: Record<string, number> = {};
+  for (const event of events) {
+    const nextVersion = event.version + 1;
+    versions[event.id] = nextVersion;
+    await client.query(
+      `UPDATE ${schema}.events SET version = $2, updated_at = now() WHERE id = $1`,
+      [event.id, nextVersion],
+    );
+    const after = await loadEventSnapshot(client, event.id);
+    await client.query(
+      `INSERT INTO ${schema}.event_revisions
+         (id,event_id,owner_user_id,version,operation,snapshot,changed_fields)
+       VALUES ($1,$2,$3,$4,'updated',$5::jsonb,$6::jsonb)`,
+      [randomUUID(), event.id, ownerUserId, nextVersion, JSON.stringify(after), JSON.stringify(changedFields)],
+    );
+    await client.query(
+      `INSERT INTO ${schema}.user_feedback
+         (id,owner_user_id,raw_entry_id,feedback_type,before_value,after_value)
+       VALUES ($1,$2,$3,'event_relation_correction',$4::jsonb,$5::jsonb)`,
+      [randomUUID(), ownerUserId, event.rawEntryId, JSON.stringify(before.get(event.id) ?? {}), JSON.stringify(after)],
+    );
+    await client.query(
+      `INSERT INTO ${schema}.outbox_events
+         (id,aggregate_type,aggregate_id,event_type,payload)
+       VALUES ($1,'event',$2,'event.updated',$3::jsonb)`,
+      [randomUUID(), event.id, JSON.stringify({
+        eventId: event.id,
+        ownerUserId,
+        version: nextVersion,
+        changedFields,
+        source: "graph_interaction",
+        operation,
+      })],
+    );
+  }
+  await refreshSocialProjectionsForUser(client, ownerUserId);
+  return { changed: true, eventIds: events.map((event) => event.id), versions };
+}
+
+export async function addGraphParticipantToOwnedEvent(
+  client: PoolClient,
+  ownerUserId: string,
+  eventId: string,
+  participant: { accountUserId?: string; userEntityId?: string; role: string; label: string },
+): Promise<GraphEventMutationResult> {
+  const events = await lockOwnedGraphEvents(client, ownerUserId, [eventId]);
+  const event = events[0];
+  const before = new Map([[eventId, await loadEventSnapshot(client, eventId)]]);
+  if (participant.accountUserId) {
+    const account = await client.query(
+      `SELECT 1 FROM ${schema}.users WHERE id = $1 AND status = 'active'`,
+      [participant.accountUserId],
+    );
+    if (!account.rows[0]) throw new EventLifecycleError("参与者账号已经不可用", 404);
+  } else if (participant.userEntityId) {
+    const entity = await client.query(
+      `SELECT 1 FROM ${schema}.user_entities
+        WHERE id = $1 AND owner_user_id = $2 AND entity_type = 'person' AND status = 'active'`,
+      [participant.userEntityId, ownerUserId],
+    );
+    if (!entity.rows[0]) throw new EventLifecycleError("人物实体已经不可用", 404);
+  } else {
+    throw new EventLifecycleError("缺少参与者身份");
+  }
+  const existing = await client.query(
+    `SELECT 1 FROM ${schema}.event_participants
+      WHERE event_id = $1
+        AND (($2::uuid IS NOT NULL AND account_user_id = $2)
+          OR ($3::uuid IS NOT NULL AND user_entity_id = $3))
+        AND participant_role = $4
+      LIMIT 1`,
+    [eventId, participant.accountUserId ?? null, participant.userEntityId ?? null, participant.role],
+  );
+  if (existing.rows[0]) return { changed: false, eventIds: [eventId], versions: { [eventId]: event.version } };
+  const participantId = randomUUID();
+  await client.query(
+    `INSERT INTO ${schema}.event_participants
+       (id,event_id,account_user_id,user_entity_id,participant_role,identity_confirmed,attributes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
+    [participantId, eventId, participant.accountUserId ?? null, participant.userEntityId ?? null,
+      participant.role, false, JSON.stringify({
+        mention: participant.label,
+        source: "graph_interaction",
+        identitySource: participant.accountUserId ? "owner_asserted_unconfirmed" : "private_person_entity",
+      })],
+  );
+  return {
+    ...await finishGraphEventMutation(client, ownerUserId, events, before, ["participants"], "add_participant"),
+    undo: { type: "event_participant", payload: { participantId, eventId } },
+  };
+}
+
+export async function addGraphEntityToOwnedEvent(
+  client: PoolClient,
+  ownerUserId: string,
+  eventId: string,
+  input: { userEntityId?: string; canonicalEntityId?: string; role: string },
+): Promise<GraphEventMutationResult> {
+  const events = await lockOwnedGraphEvents(client, ownerUserId, [eventId]);
+  const event = events[0];
+  const before = new Map([[eventId, await loadEventSnapshot(client, eventId)]]);
+  let userEntityId: string;
+  let canonicalEntityId: string | null;
+  if (input.userEntityId) {
+    const entityResult = await client.query<{ canonicalEntityId: string | null }>(
+      `SELECT canonical_entity_id AS "canonicalEntityId"
+         FROM ${schema}.user_entities
+        WHERE id = $1 AND owner_user_id = $2 AND status = 'active'`,
+      [input.userEntityId, ownerUserId],
+    );
+    const entity = entityResult.rows[0];
+    if (!entity) throw new EventLifecycleError("实体已经不可用", 404);
+    userEntityId = input.userEntityId;
+    canonicalEntityId = entity.canonicalEntityId;
+  } else if (input.canonicalEntityId) {
+    const canonicalResult = await client.query<{ name: string; entityType: string }>(
+      `SELECT canonical_name AS name, entity_type AS "entityType"
+         FROM ${schema}.canonical_entities
+        WHERE id = $1 AND status = 'active' AND sensitivity = 'normal'`,
+      [input.canonicalEntityId],
+    );
+    const canonical = canonicalResult.rows[0];
+    if (!canonical) throw new EventLifecycleError("公共实体已经不可用", 404);
+    const resolved = await resolveEventEntity(client, ownerUserId, {
+      mention: canonical.name,
+      entityType: canonical.entityType,
+      role: input.role,
+      confidence: 1,
+      attributes: { source: "graph_interaction", canonicalEntityId: input.canonicalEntityId },
+    });
+    userEntityId = resolved.userEntityId;
+    canonicalEntityId = resolved.canonicalEntityId;
+  } else {
+    throw new EventLifecycleError("缺少可关联的实体");
+  }
+  const existing = await client.query(
+    `SELECT 1 FROM ${schema}.event_entity_relations
+      WHERE event_id = $1 AND user_entity_id = $2 AND relation_role = $3 LIMIT 1`,
+    [eventId, userEntityId, input.role],
+  );
+  if (existing.rows[0]) return { changed: false, eventIds: [eventId], versions: { [eventId]: event.version } };
+  const relationId = randomUUID();
+  await client.query(
+    `INSERT INTO ${schema}.event_entity_relations
+       (id,event_id,user_entity_id,canonical_entity_id,relation_role,confidence,attributes)
+     VALUES ($1,$2,$3,$4,$5,1,'{"source":"graph_interaction"}'::jsonb)`,
+    [relationId, eventId, userEntityId, canonicalEntityId, input.role],
+  );
+  return {
+    ...await finishGraphEventMutation(client, ownerUserId, events, before, ["entities"], "add_entity"),
+    undo: { type: "event_entity", payload: { relationId, eventId } },
+  };
+}
+
+export async function addGraphLocationToOwnedEvent(
+  client: PoolClient,
+  ownerUserId: string,
+  eventId: string,
+  input: { geohashCell: string; role: "occurred_at" | "recorded_at" },
+): Promise<GraphEventMutationResult> {
+  const events = await lockOwnedGraphEvents(client, ownerUserId, [eventId]);
+  const event = events[0];
+  const before = new Map([[eventId, await loadEventSnapshot(client, eventId)]]);
+  const locationResult = await client.query<{ id: string; matchEligible: boolean; sensitivity: string }>(
+    `SELECT id, match_eligible AS "matchEligible", sensitivity
+       FROM ${schema}.location_observations
+      WHERE owner_user_id = $1 AND deleted_at IS NULL AND left(exact_geohash, 7) = $2
+      ORDER BY captured_at DESC LIMIT 1`,
+    [ownerUserId, input.geohashCell],
+  );
+  const location = locationResult.rows[0];
+  if (!location) throw new EventLifecycleError("地点定位来源已经不可用", 404);
+  const existing = await client.query(
+    `SELECT 1 FROM ${schema}.event_location_links link
+       JOIN ${schema}.location_observations observation ON observation.id = link.location_observation_id
+      WHERE link.event_id = $1 AND link.location_role = $2
+        AND left(observation.exact_geohash, 7) = $3 LIMIT 1`,
+    [eventId, input.role, input.geohashCell],
+  );
+  if (existing.rows[0]) return { changed: false, eventIds: [eventId], versions: { [eventId]: event.version } };
+  const locationLinkId = randomUUID();
+  await client.query(
+    `INSERT INTO ${schema}.event_location_links
+       (id,event_id,location_observation_id,location_role,user_confirmed,social_match_eligible,attributes)
+     VALUES ($1,$2,$3,$4,true,$5,'{"source":"graph_interaction"}'::jsonb)`,
+    [locationLinkId, eventId, location.id, input.role,
+      input.role === "occurred_at" && location.matchEligible && location.sensitivity === "normal"],
+  );
+  return {
+    ...await finishGraphEventMutation(client, ownerUserId, events, before, ["locations"], "add_location"),
+    undo: { type: "event_location", payload: { locationLinkId, eventId } },
+  };
+}
+
+export async function relateOwnedEventsFromGraph(
+  client: PoolClient,
+  ownerUserId: string,
+  sourceEventId: string,
+  targetEventId: string,
+  relationType: "contains" | "before" | "after" | "simultaneous" | "causes" | "interrupts" | "continues" | "references" | "repeats",
+): Promise<GraphEventMutationResult> {
+  if (sourceEventId === targetEventId) throw new EventLifecycleError("不能把事件关联到自身");
+  const events = await lockOwnedGraphEvents(client, ownerUserId, [sourceEventId, targetEventId]);
+  const before = new Map<string, Record<string, unknown>>();
+  for (const event of events) before.set(event.id, await loadEventSnapshot(client, event.id));
+  const existing = await client.query(
+    `SELECT 1 FROM ${schema}.event_relations
+      WHERE source_event_id = $1 AND target_event_id = $2 AND relation_type = $3 LIMIT 1`,
+    [sourceEventId, targetEventId, relationType],
+  );
+  if (existing.rows[0]) {
+    return {
+      changed: false,
+      eventIds: events.map((event) => event.id),
+      versions: Object.fromEntries(events.map((event) => [event.id, event.version])),
+    };
+  }
+  const eventRelationId = randomUUID();
+  await client.query(
+    `INSERT INTO ${schema}.event_relations
+       (id,owner_user_id,source_event_id,target_event_id,relation_type,attributes)
+     VALUES ($1,$2,$3,$4,$5,'{"source":"graph_interaction"}'::jsonb)`,
+    [eventRelationId, ownerUserId, sourceEventId, targetEventId, relationType],
+  );
+  return {
+    ...await finishGraphEventMutation(client, ownerUserId, events, before, ["eventRelations"], `relate_${relationType}`),
+    undo: { type: "event_relation", payload: { eventRelationId, eventIds: [sourceEventId, targetEventId] } },
+  };
+}
+
+export async function undoGraphEventMutation(
+  client: PoolClient,
+  ownerUserId: string,
+  undo: { type: "event_participant" | "event_entity" | "event_location" | "event_relation"; payload: Record<string, unknown> },
+): Promise<GraphEventMutationResult> {
+  const eventIds = undo.type === "event_relation"
+    ? (Array.isArray(undo.payload.eventIds) ? undo.payload.eventIds.filter((id): id is string => typeof id === "string") : [])
+    : typeof undo.payload.eventId === "string" ? [undo.payload.eventId] : [];
+  if (!eventIds.length) throw new EventLifecycleError("撤销信息不完整");
+  const events = await lockOwnedGraphEvents(client, ownerUserId, eventIds);
+  const before = new Map<string, Record<string, unknown>>();
+  for (const event of events) before.set(event.id, await loadEventSnapshot(client, event.id));
+  let removed = 0;
+  if (undo.type === "event_participant" && typeof undo.payload.participantId === "string") {
+    const result = await client.query(
+      `DELETE FROM ${schema}.event_participants participant
+        USING ${schema}.events event
+       WHERE participant.id = $1 AND participant.event_id = event.id AND event.owner_user_id = $2`,
+      [undo.payload.participantId, ownerUserId],
+    );
+    removed = result.rowCount ?? 0;
+  } else if (undo.type === "event_entity" && typeof undo.payload.relationId === "string") {
+    const result = await client.query(
+      `DELETE FROM ${schema}.event_entity_relations relation
+        USING ${schema}.events event
+       WHERE relation.id = $1 AND relation.event_id = event.id AND event.owner_user_id = $2`,
+      [undo.payload.relationId, ownerUserId],
+    );
+    removed = result.rowCount ?? 0;
+  } else if (undo.type === "event_location" && typeof undo.payload.locationLinkId === "string") {
+    const result = await client.query(
+      `DELETE FROM ${schema}.event_location_links link
+        USING ${schema}.events event
+       WHERE link.id = $1 AND link.event_id = event.id AND event.owner_user_id = $2`,
+      [undo.payload.locationLinkId, ownerUserId],
+    );
+    removed = result.rowCount ?? 0;
+  } else if (undo.type === "event_relation" && typeof undo.payload.eventRelationId === "string") {
+    const result = await client.query(
+      `DELETE FROM ${schema}.event_relations WHERE id = $1 AND owner_user_id = $2`,
+      [undo.payload.eventRelationId, ownerUserId],
+    );
+    removed = result.rowCount ?? 0;
+  }
+  if (!removed) throw new EventLifecycleError("相关内容已经变化，不能再撤销", 409);
+  return finishGraphEventMutation(client, ownerUserId, events, before, [
+    undo.type === "event_participant" ? "participants"
+      : undo.type === "event_entity" ? "entities"
+        : undo.type === "event_location" ? "locations"
+          : "eventRelations",
+  ], `undo_${undo.type}`);
 }
 
 export async function deleteOwnedEvent(

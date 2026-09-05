@@ -101,6 +101,48 @@ describe("DeepSeekEventParser", () => {
     expect(requestBody.messages[1].content).toContain("我在美团上点了个外卖");
   });
 
+  it("sends a strict single-event instruction for graph combinations", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      deepSeekResponse({
+        events: [{
+          schemaVersion: "event-candidate/v1",
+          eventType: "use_app",
+          title: "同时体验 B站和小红书",
+          factualStatus: "occurred",
+          time: { start: null, end: null, timezone: "Asia/Shanghai", precision: "unknown", sourceExpression: null },
+          participants: [{ mention: "我", role: "actor", isCurrentUser: true, confidence: 1 }],
+          entities: [
+            { mention: "B站", entityType: "app", role: "object", attributes: {}, confidence: 0.9 },
+            { mention: "小红书", entityType: "app", role: "object", attributes: {}, confidence: 0.9 },
+          ],
+          subjectiveExperience: {}, extensions: {}, confidence: 0.9,
+        }],
+      }),
+    );
+    const parser = createParser(fetchImpl);
+    const result = await parser.parse({
+      text: "我同时体验了B站和小红书",
+      timezone: "Asia/Shanghai",
+      referenceTime: new Date(),
+      eventGrouping: "single_event",
+      graphContext: {
+        source: "graph_interaction",
+        actionId: "record.pair.entities",
+        intent: "记录一起发生",
+        relationHint: "B站和小红书都是应用平台",
+        nodes: [
+          { label: "B站", kind: "entity", category: "app" },
+          { label: "小红书", kind: "entity", category: "app" },
+        ],
+      },
+    });
+    expect(result.candidates).toHaveLength(1);
+    const requestBody = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
+    expect(requestBody.messages[1].content).toContain('"eventGrouping":"single_event"');
+    expect(requestBody.messages[1].content).toContain('"category":"app"');
+    expect(requestBody.messages[1].content).toContain("events 必须且只能有一个事件");
+  });
+
   it("rejects output that does not match the event schema", async () => {
     const parser = createParser(
       vi.fn<typeof fetch>().mockResolvedValue(

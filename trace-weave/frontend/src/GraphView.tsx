@@ -2,12 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   Graph as G6Graph,
   GraphData as G6GraphData,
-  ID as G6ID,
   IElementDragEvent,
   IElementEvent,
   Point as G6Point,
 } from "@antv/g6";
-import type { GlobalGraph, GraphEdge, GraphNode, PersonalGraph } from "./api";
+import { api } from "./api";
+import type {
+  GlobalGraph,
+  GraphActionItem,
+  GraphActionResolution,
+  GraphActionResult,
+  GraphEdge,
+  GraphNode,
+  PersonalGraph,
+} from "./api";
 
 type GraphMode = "relationships" | "evidence";
 type GraphScope = "global" | "personal";
@@ -23,6 +31,27 @@ type GraphFilters = {
   minStrength: number;
   hideAnonymous: boolean;
   directOnly: boolean;
+};
+
+type GraphActionRequest = {
+  gesture: "node_context" | "node_drop" | "multi_select";
+  sourceNodeId: string;
+  targetNodeId?: string;
+  nodeIds?: string[];
+};
+
+type CollisionHint = {
+  sourceId: string;
+  targetId: string;
+  targetLabel: string;
+  ready: boolean;
+};
+
+type SpringMotion = {
+  id: string;
+  destination: G6Point;
+  vector: G6Point;
+  waveform: "release" | "return";
 };
 
 const allNodeGroups: GraphNodeGroup[] = ["people", "events", "locations", "entities"];
@@ -219,29 +248,92 @@ function graphNodeVisual(node: GraphNode): GraphNodeVisual {
   return { type: "circle", size };
 }
 
+function collisionRadius(node: GraphNode): number {
+  const size = graphNodeVisual(node).size;
+  return (Array.isArray(size) ? Math.max(...size) : size) / 2;
+}
+
+function interactionKind(node: GraphNode): "self" | "person" | "event" | "occurrence" | "entity" | "location" | "unsupported" {
+  if (node.category === "self") return "self";
+  if (node.kind === "user" || node.kind === "person") return "person";
+  if (node.kind === "event") return "event";
+  if (node.kind === "occurrence") return "occurrence";
+  if (node.kind === "location" || node.category === "place" || node.category === "geo_cell") return "location";
+  if (node.kind === "entity") return "entity";
+  return "unsupported";
+}
+
+function supportsDropInteraction(source: GraphNode, target: GraphNode): boolean {
+  if (source.id === target.id) return false;
+  const sourceKind = interactionKind(source);
+  const targetKind = interactionKind(target);
+  if (sourceKind === "unsupported" || targetKind === "unsupported") return false;
+  if (sourceKind === "self" || targetKind === "self") return true;
+  if (sourceKind === "event" || targetKind === "event") return true;
+  if (sourceKind === "occurrence" || targetKind === "occurrence") return false;
+  const pair = [sourceKind, targetKind].sort().join(":");
+  return ["entity:entity", "entity:location", "entity:person", "location:location", "location:person", "person:person"].includes(pair);
+}
+
 function GraphCanvas({
   data,
   mode,
   filters,
   includeIsolatedUsers = false,
   includeIsolatedCatalog = false,
+  onRequestActions,
+  onOpenTimeline,
+  layoutStorageKey,
 }: {
   data: PersonalGraph;
   mode: GraphMode;
   filters: GraphFilters;
   includeIsolatedUsers?: boolean;
   includeIsolatedCatalog?: boolean;
+  onRequestActions: (request: GraphActionRequest) => void;
+  onOpenTimeline: () => void;
+  layoutStorageKey: string;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [multiSelectedIds, setMultiSelectedIds] = useState<string[]>([]);
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [customPositions, setCustomPositions] = useState<Record<string, GraphPoint>>({});
+  const [customPositions, setCustomPositions] = useState<Record<string, GraphPoint>>(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem(layoutStorageKey) ?? "{}") as Record<string, GraphPoint>;
+    } catch {
+      return {};
+    }
+  });
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const [edgeContextMenu, setEdgeContextMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
+  const [hiddenEdgeIds, setHiddenEdgeIds] = useState<string[]>([]);
+  const [localNotice, setLocalNotice] = useState<string | null>(null);
+  const [collisionHint, setCollisionHint] = useState<CollisionHint | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<G6Graph | null>(null);
   const graphDataRef = useRef<G6GraphData>({ nodes: [], edges: [] });
   const topologyKeyRef = useRef("");
   const visualStatesRef = useRef<GraphVisualStates>({ nodes: {}, edges: {} });
   const lastRenderedTopologyRef = useRef("");
+  const positionedRef = useRef<PositionedNode[]>([]);
+  const requestActionsRef = useRef(onRequestActions);
+  const collisionRef = useRef<{
+    sourceId: string;
+    targetId: string | null;
+    ready: boolean;
+    targetOrigin: G6Point | null;
+    targetOffset: G6Point;
+    sourceNormal: G6Point;
+    impactStrength: number;
+  } | null>(null);
+  const dragKineticsRef = useRef<{
+    sourceId: string;
+    lastPosition: G6Point;
+    lastAt: number;
+    velocity: G6Point;
+  } | null>(null);
+  const collisionTimerRef = useRef<number | null>(null);
   const edges = mode === "relationships" ? data.relationshipEdges : data.evidenceEdges;
   const modeNodes = useMemo(
     () => mode === "relationships"
@@ -335,6 +427,8 @@ function GraphCanvas({
     [filters.directOnly, filters.hideAnonymous, filters.minStrength, filters.nodeGroups, filters.query, includeIsolatedCatalog, includeIsolatedUsers, modeNodes, rootId, structurallyFilteredEdges],
   );
   const positioned = useMemo(() => layoutNodes(visibleNodes, mode), [visibleNodes, mode]);
+  positionedRef.current = positioned;
+  requestActionsRef.current = onRequestActions;
   const positions = useMemo(
     () => new Map(positioned.map((node) => {
       const custom = customPositions[node.id];
@@ -345,20 +439,26 @@ function GraphCanvas({
 
   useEffect(() => {
     setSelectedId((current) => current && !positions.has(current) ? null : current);
+    setMultiSelectedIds((current) => current.filter((nodeId) => positions.has(nodeId)));
     setFocusedId((current) => current && !positions.has(current) ? null : current);
     setContextMenu((current) => current && !positions.has(current.nodeId) ? null : current);
   }, [positions]);
 
   const visibleEdges = useMemo(
     () => structurallyFilteredEdges.filter(
-      (edge) => positions.has(edge.source) && positions.has(edge.target),
+      (edge) => positions.has(edge.source) && positions.has(edge.target) && !hiddenEdgeIds.includes(edge.id),
     ),
-    [positions, structurallyFilteredEdges],
+    [hiddenEdgeIds, positions, structurallyFilteredEdges],
   );
+  useEffect(() => {
+    setSelectedEdgeId((current) => current && !visibleEdges.some((edge) => edge.id === current) ? null : current);
+    setEdgeContextMenu((current) => current && !visibleEdges.some((edge) => edge.id === current.edgeId) ? null : current);
+  }, [visibleEdges]);
   const selected = selectedId ? positions.get(selectedId) : undefined;
   const selectedEdges = selected
     ? visibleEdges.filter((edge) => edge.source === selected.id || edge.target === selected.id)
     : [];
+  const selectedEdge = selectedEdgeId ? visibleEdges.find((edge) => edge.id === selectedEdgeId) : undefined;
   const focusedNodeIds = useMemo(() => {
     if (!focusedId) return null;
     const ids = new Set([focusedId]);
@@ -370,6 +470,7 @@ function GraphCanvas({
   }, [focusedId, visibleEdges]);
   const focused = focusedId ? positions.get(focusedId) : undefined;
   const menuNode = contextMenu ? positions.get(contextMenu.nodeId) : undefined;
+  const menuEdge = edgeContextMenu ? visibleEdges.find((edge) => edge.id === edgeContextMenu.edgeId) : undefined;
 
   const graphData = useMemo<G6GraphData>(() => ({
     nodes: positioned.map((defaultNode) => {
@@ -442,6 +543,7 @@ function GraphCanvas({
     for (const node of positioned) {
       const states: string[] = [];
       if (selectedId === node.id) states.push("selected");
+      if (multiSelectedIds.includes(node.id)) states.push("multiSelected");
       if (focusedId) {
         if (node.id === focusedId) states.push("focused");
         else if (focusedNodeIds?.has(node.id)) states.push("neighbor");
@@ -454,21 +556,28 @@ function GraphCanvas({
       const relatedToSelection = selectedId === edge.source || selectedId === edge.target;
       const relatedToFocus = focusedId === edge.source || focusedId === edge.target;
       if (relatedToSelection || relatedToFocus) states.push("highlighted");
+      if (selectedEdgeId === edge.id) states.push("selected");
       if (focusedId && !relatedToFocus) states.push("dimmed");
       graphEdges[edge.id] = states;
     }
     return { nodes, edges: graphEdges };
-  }, [focusedId, focusedNodeIds, positioned, selectedId, visibleEdges]);
+  }, [focusedId, focusedNodeIds, multiSelectedIds, positioned, selectedEdgeId, selectedId, visibleEdges]);
 
   graphDataRef.current = graphData;
   topologyKeyRef.current = topologyKey;
   visualStatesRef.current = visualStates;
 
   useEffect(() => {
-    const closeMenu = () => setContextMenu(null);
+    const closeMenu = (event: PointerEvent) => {
+      if (event.button === 0) {
+        setContextMenu(null);
+        setEdgeContextMenu(null);
+      }
+    };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setContextMenu(null);
+        setEdgeContextMenu(null);
         setFocusedId(null);
       }
     };
@@ -486,11 +595,16 @@ function GraphCanvas({
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
 
-    void import("./g6-runtime").then(async ({ CanvasEvent, CanvasRenderer, Graph, GraphEvent, NodeEvent }) => {
+    void import("./g6-runtime").then(async ({ CanvasRenderer, EdgeEvent, Graph, GraphEvent, NodeEvent }) => {
       if (disposed) return;
       const initialData = graphDataRef.current;
       let paintFrame: number | null = null;
       let transformSettleTimer: number | null = null;
+      let springFrame: number | null = null;
+      let springGeneration = 0;
+      let activeSpringMotions: SpringMotion[] = [];
+      let lastCollisionPaintAt = 0;
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const paint = () => {
         if (disposed) return;
         for (const layer of Object.values(graph.getCanvas().getLayers())) layer.render();
@@ -511,6 +625,57 @@ function GraphCanvas({
           transformSettleTimer = null;
           schedulePaint();
         }, 150);
+      };
+      const runSpring = (motions: SpringMotion[], duration: number, onFinish: () => void) => {
+        springGeneration += 1;
+        const generation = springGeneration;
+        if (springFrame !== null) {
+          window.cancelAnimationFrame(springFrame);
+          if (activeSpringMotions.length) {
+            const priorDestinations = Object.fromEntries(activeSpringMotions.map((motion) => [motion.id, motion.destination]));
+            void graph.translateElementTo(priorDestinations, false).then(schedulePaint);
+          }
+        }
+        activeSpringMotions = motions;
+        const finish = () => {
+          const positions = Object.fromEntries(motions.map((motion) => [motion.id, motion.destination]));
+          void graph.translateElementTo(positions, false).then(schedulePaint);
+          springFrame = null;
+          activeSpringMotions = [];
+          onFinish();
+        };
+        if (reducedMotion) {
+          finish();
+          return;
+        }
+        const startedAt = performance.now();
+        let lastRenderedAt = startedAt - 34;
+        const step = (now: number) => {
+          if (disposed || generation !== springGeneration) return;
+          const progress = Math.min(1, (now - startedAt) / duration);
+          if (progress >= 1) {
+            finish();
+            return;
+          }
+          if (now - lastRenderedAt < 30) {
+            springFrame = window.requestAnimationFrame(step);
+            return;
+          }
+          lastRenderedAt = now;
+          const positions: Record<string, G6Point> = {};
+          for (const motion of motions) {
+            const damping = motion.waveform === "return" ? 6.6 : 7.8;
+            const frequency = motion.waveform === "return" ? 12.5 : 9.5;
+            const wave = Math.exp(-damping * progress) * Math.cos(frequency * progress);
+            positions[motion.id] = [
+              motion.destination[0] + motion.vector[0] * wave,
+              motion.destination[1] + motion.vector[1] * wave,
+            ];
+          }
+          void graph.translateElementTo(positions, false).then(schedulePaint);
+          springFrame = window.requestAnimationFrame(step);
+        };
+        springFrame = window.requestAnimationFrame(step);
       };
       const graph = new Graph({
         container,
@@ -537,18 +702,6 @@ function GraphCanvas({
             hideEdge: "none",
             shadow: false,
             cursor: { default: "default", grab: "grab", grabbing: "grabbing" },
-            onFinish: (ids: G6ID[]) => {
-              const currentGraph = graphRef.current;
-              if (!currentGraph) return;
-              setCustomPositions((current) => {
-                const next = { ...current };
-                for (const id of ids) {
-                  const [x, y] = currentGraph.getElementPosition(id);
-                  next[String(id)] = { x, y };
-                }
-                return next;
-              });
-            },
           },
           { type: "optimize-viewport-transform", key: "optimize-viewport", debounce: 120 },
         ],
@@ -563,6 +716,14 @@ function GraphCanvas({
               haloStrokeOpacity: 0.45,
               haloLineWidth: 9,
             },
+            multiSelected: {
+              stroke: "#4e7967",
+              lineWidth: 5,
+              halo: true,
+              haloStroke: "#4e7967",
+              haloStrokeOpacity: 0.36,
+              haloLineWidth: 10,
+            },
             focused: {
               stroke: "#bd4e32",
               lineWidth: 5,
@@ -570,6 +731,31 @@ function GraphCanvas({
               haloStroke: "#bd4e32",
               haloStrokeOpacity: 0.52,
               haloLineWidth: 10,
+            },
+            collisionCandidate: {
+              halo: true,
+              haloStroke: "#d79a59",
+              haloStrokeOpacity: 0.32,
+              haloLineWidth: 8,
+            },
+            dropReady: {
+              stroke: "#fff7ef",
+              lineWidth: 5,
+              halo: true,
+              haloStroke: "#bd4e32",
+              haloStrokeOpacity: 0.72,
+              haloLineWidth: 12,
+            },
+            dragging: {
+              stroke: "#fff7ef",
+              lineWidth: 5,
+              halo: true,
+              haloStroke: "#bd4e32",
+              haloStrokeOpacity: 0.24,
+              haloLineWidth: 8,
+              shadowColor: "rgba(37, 35, 31, 0.3)",
+              shadowBlur: 18,
+              shadowOffsetY: 7,
             },
             neighbor: { opacity: 1, labelOpacity: 1 },
             dimmed: { opacity: 0.13, labelOpacity: 0.13 },
@@ -580,6 +766,7 @@ function GraphCanvas({
           animation: false,
           state: {
             highlighted: { stroke: "rgba(189, 78, 50, 0.78)", opacity: 1 },
+            selected: { stroke: "#bd4e32", lineWidth: 4, opacity: 1 },
             dimmed: { opacity: 0.06 },
           },
         },
@@ -590,27 +777,247 @@ function GraphCanvas({
       graph.on(GraphEvent.AFTER_TRANSFORM, scheduleTransformPaint);
       graph.on(GraphEvent.AFTER_SIZE_CHANGE, schedulePaint);
 
+      const applyCollisionState = (nodeId: string, state?: "collisionCandidate" | "dropReady") => {
+        const baseStates = visualStatesRef.current.nodes[nodeId] ?? [];
+        void graph.setElementState(nodeId, state ? [...baseStates, state] : baseStates, false).then(schedulePaint);
+      };
+      const applyDraggingState = (nodeId: string, active: boolean) => {
+        const baseStates = visualStatesRef.current.nodes[nodeId] ?? [];
+        void graph.setElementState(nodeId, active ? [...baseStates, "dragging"] : baseStates, false).then(schedulePaint);
+      };
+      const clearCollisionTarget = (restorePosition = true) => {
+        if (collisionTimerRef.current !== null) window.clearTimeout(collisionTimerRef.current);
+        collisionTimerRef.current = null;
+        const current = collisionRef.current;
+        if (current?.targetId) {
+          applyCollisionState(current.targetId);
+          if (restorePosition && current.targetOrigin) {
+            void graph.translateElementTo(current.targetId, current.targetOrigin, false).then(schedulePaint);
+          }
+        }
+        if (current) {
+          current.targetId = null;
+          current.ready = false;
+          current.targetOrigin = null;
+          current.targetOffset = [0, 0];
+          current.impactStrength = 0;
+        }
+        setCollisionHint(null);
+      };
+
+      graph.on(NodeEvent.DRAG_START, (event: IElementDragEvent) => {
+        const sourceId = String(event.target.id);
+        const source = positionedRef.current.find((node) => node.id === sourceId);
+        if (!source) return;
+        springGeneration += 1;
+        if (springFrame !== null) {
+          window.cancelAnimationFrame(springFrame);
+          if (activeSpringMotions.length) {
+            const destinations = Object.fromEntries(activeSpringMotions.map((motion) => [motion.id, motion.destination]));
+            void graph.translateElementTo(destinations, false).then(schedulePaint);
+          }
+        }
+        springFrame = null;
+        activeSpringMotions = [];
+        const sourcePosition = graph.getElementPosition(sourceId);
+        dragKineticsRef.current = {
+          sourceId,
+          lastPosition: sourcePosition,
+          lastAt: performance.now(),
+          velocity: [0, 0],
+        };
+        lastCollisionPaintAt = 0;
+        applyDraggingState(sourceId, true);
+        clearCollisionTarget();
+        collisionRef.current = {
+          sourceId,
+          targetId: null,
+          ready: false,
+          targetOrigin: null,
+          targetOffset: [0, 0],
+          sourceNormal: [0, 0],
+          impactStrength: 0,
+        };
+      });
+
+      graph.on(NodeEvent.DRAG, (event: IElementDragEvent) => {
+        const sourceId = String(event.target.id);
+        const now = performance.now();
+        const kinetics = dragKineticsRef.current;
+        const sourcePosition = graph.getElementPosition(sourceId);
+        if (kinetics?.sourceId === sourceId) {
+          const elapsed = Math.max(4, Math.min(40, now - kinetics.lastAt));
+          const instantX = (sourcePosition[0] - kinetics.lastPosition[0]) * 16 / elapsed;
+          const instantY = (sourcePosition[1] - kinetics.lastPosition[1]) * 16 / elapsed;
+          kinetics.velocity = [
+            kinetics.velocity[0] * 0.55 + instantX * 0.45,
+            kinetics.velocity[1] * 0.55 + instantY * 0.45,
+          ];
+          kinetics.lastPosition = sourcePosition;
+          kinetics.lastAt = now;
+        }
+        const current = collisionRef.current;
+        if (!current || current.sourceId !== sourceId) return;
+        const source = positionedRef.current.find((node) => node.id === sourceId);
+        if (!source) return;
+        const [sourceX, sourceY] = sourcePosition;
+        let closest: { node: PositionedNode; distance: number; threshold: number; contact: number } | null = null;
+        for (const target of positionedRef.current) {
+          if (!supportsDropInteraction(source, target)) continue;
+          const [targetX, targetY] = graph.getElementPosition(target.id);
+          const distance = Math.hypot(sourceX - targetX, sourceY - targetY);
+          const radii = collisionRadius(source) + collisionRadius(target);
+          const threshold = radii * 1.5;
+          if (distance > threshold) continue;
+          if (!closest || distance / threshold < closest.distance / closest.threshold) {
+            closest = { node: target, distance, threshold, contact: radii * 0.96 };
+          }
+        }
+        const nextTarget = closest?.node ?? null;
+        if (nextTarget?.id !== current.targetId) {
+          clearCollisionTarget();
+        }
+        if (!nextTarget) return;
+        if (nextTarget.id !== current.targetId) {
+          current.targetId = nextTarget.id;
+          current.ready = false;
+          current.targetOrigin = graph.getElementPosition(nextTarget.id);
+          collisionRef.current = current;
+          applyCollisionState(nextTarget.id, "collisionCandidate");
+          setCollisionHint({ sourceId, targetId: nextTarget.id, targetLabel: nextTarget.label, ready: false });
+        }
+        const origin = current.targetOrigin ?? graph.getElementPosition(nextTarget.id);
+        const deltaX = origin[0] - sourceX;
+        const deltaY = origin[1] - sourceY;
+        const normalLength = Math.max(1, Math.hypot(deltaX, deltaY));
+        const normal: G6Point = [deltaX / normalLength, deltaY / normalLength];
+        const contactProgress = closest ? Math.max(0, Math.min(1, (closest.contact - closest.distance) / closest.contact)) : 0;
+        const attractionProgress = closest && closest.distance > closest.contact
+          ? Math.max(0, Math.min(1, (closest.threshold - closest.distance) / Math.max(1, closest.threshold - closest.contact)))
+          : 0;
+        const push = contactProgress > 0 ? 4 + contactProgress * 12 : -attractionProgress * 5;
+        const targetOffset: G6Point = [normal[0] * push, normal[1] * push];
+        current.sourceNormal = normal;
+        current.targetOffset = targetOffset;
+        current.impactStrength = Math.max(contactProgress, attractionProgress * 0.35);
+        if (now - lastCollisionPaintAt >= 30) {
+          lastCollisionPaintAt = now;
+          void graph.translateElementTo(nextTarget.id, [origin[0] + targetOffset[0], origin[1] + targetOffset[1]], false).then(schedulePaint);
+        }
+
+        if (closest && closest.distance <= closest.contact && collisionTimerRef.current === null && !current.ready) {
+          collisionTimerRef.current = window.setTimeout(() => {
+            const active = collisionRef.current;
+            if (!active || active.sourceId !== sourceId || active.targetId !== nextTarget.id) return;
+            collisionTimerRef.current = null;
+            active.ready = true;
+            applyCollisionState(nextTarget.id, "dropReady");
+            setCollisionHint({ sourceId, targetId: nextTarget.id, targetLabel: nextTarget.label, ready: true });
+            if (typeof navigator.vibrate === "function") navigator.vibrate(12);
+          }, 460);
+        } else if (closest && closest.distance > closest.contact && collisionTimerRef.current !== null) {
+          window.clearTimeout(collisionTimerRef.current);
+          collisionTimerRef.current = null;
+        }
+      });
+
+      graph.on(NodeEvent.DRAG_END, (event: IElementDragEvent) => {
+        const sourceId = String(event.target.id);
+        applyDraggingState(sourceId, false);
+        const kinetics = dragKineticsRef.current?.sourceId === sourceId ? dragKineticsRef.current : null;
+        dragKineticsRef.current = null;
+        const [x, y] = graph.getElementPosition(sourceId);
+        const velocity = kinetics?.velocity ?? [0, 0];
+        const speed = Math.hypot(velocity[0], velocity[1]);
+        const velocityScale = speed > 16 ? 16 / speed : 1;
+        const coastDestination: G6Point = [x + velocity[0] * velocityScale * 0.9, y + velocity[1] * velocityScale * 0.9];
+        const coastMotion: SpringMotion = {
+          id: sourceId,
+          destination: coastDestination,
+          vector: [x - coastDestination[0], y - coastDestination[1]],
+          waveform: "release",
+        };
+        const current = collisionRef.current;
+        if (!current || current.sourceId !== sourceId) {
+          runSpring([coastMotion], 220, () => {
+            setCustomPositions((positions) => ({ ...positions, [sourceId]: { x: coastDestination[0], y: coastDestination[1] } }));
+          });
+          return;
+        }
+        const activeTargetId = current.targetId;
+        const targetId = current.ready ? current.targetId : null;
+        const targetOrigin = current.targetOrigin;
+        const targetPosition = activeTargetId ? graph.getElementPosition(activeTargetId) : null;
+        const normal = current.sourceNormal;
+        const impact = current.impactStrength;
+        clearCollisionTarget(false);
+        collisionRef.current = null;
+        if (!targetId || !targetOrigin || !targetPosition) {
+          if (activeTargetId && targetOrigin && targetPosition) {
+            runSpring([
+              coastMotion,
+              { id: activeTargetId, destination: targetOrigin, vector: [targetPosition[0] - targetOrigin[0], targetPosition[1] - targetOrigin[1]], waveform: "return" },
+            ], 240, () => {
+              setCustomPositions((positions) => ({ ...positions, [sourceId]: { x: coastDestination[0], y: coastDestination[1] } }));
+            });
+          } else {
+            runSpring([coastMotion], 220, () => {
+              setCustomPositions((positions) => ({ ...positions, [sourceId]: { x: coastDestination[0], y: coastDestination[1] } }));
+            });
+          }
+          return;
+        }
+        const recoil = 9 + impact * 9;
+        const sourceDestination: G6Point = [x - normal[0] * recoil, y - normal[1] * recoil];
+        runSpring([
+          { id: sourceId, destination: sourceDestination, vector: [x - sourceDestination[0], y - sourceDestination[1]], waveform: "release" },
+          { id: targetId, destination: targetOrigin, vector: [targetPosition[0] - targetOrigin[0], targetPosition[1] - targetOrigin[1]], waveform: "return" },
+        ], 280, () => {
+          setCustomPositions((positions) => ({ ...positions, [sourceId]: { x: sourceDestination[0], y: sourceDestination[1] } }));
+          requestActionsRef.current({ gesture: "node_drop", sourceNodeId: sourceId, targetNodeId: targetId });
+        });
+      });
+
       graph.on(NodeEvent.CLICK, (event: IElementEvent) => {
-        setSelectedId(String(event.target.id));
-        setContextMenu(null);
+        const nodeId = String(event.target.id);
+        if (event.shiftKey) {
+          setMultiSelectedIds((current) => current.includes(nodeId)
+            ? current.filter((id) => id !== nodeId)
+            : current.length < 12 ? [...current, nodeId] : current);
+        } else {
+          setSelectedId(nodeId);
+          setSelectedEdgeId(null);
+        }
       });
       graph.on(NodeEvent.CONTEXT_MENU, (event: IElementEvent) => {
-        event.preventDefault();
         const nodeId = String(event.target.id);
         const rect = container.getBoundingClientRect();
         const clientX = Number.isFinite(event.clientX) ? event.clientX : rect.left + rect.width / 2;
         const clientY = Number.isFinite(event.clientY) ? event.clientY : rect.top + rect.height / 2;
         setSelectedId(nodeId);
+        setEdgeContextMenu(null);
         setContextMenu({
           nodeId,
           x: Math.max(8, Math.min(clientX, window.innerWidth - 208)),
           y: Math.max(8, Math.min(clientY, window.innerHeight - 230)),
         });
       });
-      graph.on(CanvasEvent.CLICK, () => setContextMenu(null));
-      graph.on(CanvasEvent.CONTEXT_MENU, (event: IElementEvent) => {
-        event.preventDefault();
+      graph.on(EdgeEvent.CLICK, (event: IElementEvent) => {
+        setSelectedEdgeId(String(event.target.id));
+        setSelectedId(null);
+      });
+      graph.on(EdgeEvent.CONTEXT_MENU, (event: IElementEvent) => {
+        const edgeId = String(event.target.id);
+        const rect = container.getBoundingClientRect();
+        const clientX = Number.isFinite(event.clientX) ? event.clientX : rect.left + rect.width / 2;
+        const clientY = Number.isFinite(event.clientY) ? event.clientY : rect.top + rect.height / 2;
+        setSelectedEdgeId(edgeId);
         setContextMenu(null);
+        setEdgeContextMenu({
+          edgeId,
+          x: Math.max(8, Math.min(clientX, window.innerWidth - 224)),
+          y: Math.max(8, Math.min(clientY, window.innerHeight - 240)),
+        });
       });
 
       const handleVisibilityChange = () => {
@@ -647,8 +1054,12 @@ function GraphCanvas({
         document.removeEventListener("visibilitychange", handleVisibilityChange);
         if (paintFrame !== null) window.cancelAnimationFrame(paintFrame);
         if (transformSettleTimer !== null) window.clearTimeout(transformSettleTimer);
+        if (springFrame !== null) window.cancelAnimationFrame(springFrame);
+        if (collisionTimerRef.current !== null) window.clearTimeout(collisionTimerRef.current);
         paintFrame = null;
         transformSettleTimer = null;
+        springFrame = null;
+        collisionTimerRef.current = null;
       });
     }).catch((error) => {
       console.error("关系图渲染器加载失败", error);
@@ -701,9 +1112,49 @@ function GraphCanvas({
     setCustomPositions({});
     setFocusedId(null);
     setContextMenu(null);
+    window.localStorage.removeItem(layoutStorageKey);
     if (graph) {
       void graph.translateElementTo(defaults, false).then(() => graph.fitView({ when: "always", direction: "both" }, false));
     }
+  };
+
+  const saveLayout = () => {
+    window.localStorage.setItem(layoutStorageKey, JSON.stringify(customPositions));
+    setLocalNotice("当前布局已保存在这台设备上");
+  };
+
+  const exportVisibleGraph = () => {
+    const source = containerRef.current?.querySelector("canvas");
+    if (!source) {
+      setLocalNotice("画布还没有准备好，请稍后再试");
+      return;
+    }
+    const output = document.createElement("canvas");
+    output.width = source.width;
+    output.height = source.height;
+    const context = output.getContext("2d");
+    if (!context) return;
+    context.fillStyle = "#fffdf8";
+    context.fillRect(0, 0, output.width, output.height);
+    context.drawImage(source, 0, 0);
+    const stamp = `织络关系图 · 当前可见范围 · ${new Date().toLocaleString("zh-CN")}`;
+    context.font = `${Math.max(12, Math.round(output.width / 90))}px sans-serif`;
+    const metrics = context.measureText(stamp);
+    context.fillStyle = "rgba(255,253,248,0.88)";
+    context.fillRect(output.width - metrics.width - 28, output.height - 38, metrics.width + 20, 28);
+    context.fillStyle = "rgba(55,49,40,0.72)";
+    context.fillText(stamp, output.width - metrics.width - 18, output.height - 19);
+    const anchor = document.createElement("a");
+    anchor.download = `织络关系图-${new Date().toISOString().slice(0, 10)}.png`;
+    anchor.href = output.toDataURL("image/png");
+    anchor.click();
+    setLocalNotice("已按当前筛选和隐私范围导出图片");
+  };
+
+  const toggleMultiSelection = (nodeId: string) => {
+    setMultiSelectedIds((current) => current.includes(nodeId)
+      ? current.filter((id) => id !== nodeId)
+      : current.length < 12 ? [...current, nodeId] : current);
   };
 
   return (
@@ -718,8 +1169,27 @@ function GraphCanvas({
               </>
             ) : <span>显示 {visibleNodes.length}/{modeNodes.length} 个节点 · 拖拽节点 · 滚轮缩放 · 右键更多</span>}
           </div>
+          {collisionHint ? (
+            <div className={`graph-collision-hint ${collisionHint.ready ? "ready" : ""}`}>
+              <span>{collisionHint.ready ? "松开以组合节点" : "靠近并停留以组合"}</span>
+              <strong>{shortLabel(collisionHint.targetLabel, 18)}</strong>
+            </div>
+          ) : null}
+          {multiSelectedIds.length ? (
+            <div className="graph-multi-selection" role="status">
+              <span>已选 {multiSelectedIds.length}/12 个节点</span>
+              <button type="button" disabled={multiSelectedIds.length < 2} onClick={() => onRequestActions({
+                gesture: "multi_select",
+                sourceNodeId: multiSelectedIds[0],
+                nodeIds: multiSelectedIds,
+              })}>组合记录</button>
+              <button type="button" onClick={() => setMultiSelectedIds([])}>清除</button>
+            </div>
+          ) : null}
           <div className="graph-viewport-actions" aria-label="图谱视图操作">
             <button type="button" onClick={fitGraph}>适应画布</button>
+            <button type="button" onClick={saveLayout}>保存布局</button>
+            <button type="button" onClick={exportVisibleGraph}>导出视图</button>
             <button type="button" onClick={resetAllPositions}>重置布局</button>
           </div>
           <details className="graph-shape-legend">
@@ -742,7 +1212,13 @@ function GraphCanvas({
           />
           <div className="graph-a11y-node-list" aria-label="可见图谱节点">
             {positioned.map((node) => (
-              <button key={node.id} type="button" onClick={() => setSelectedId(node.id)}>{node.label}</button>
+              <button
+                key={node.id}
+                type="button"
+                aria-pressed={multiSelectedIds.includes(node.id)}
+                onClick={() => setSelectedId(node.id)}
+                onKeyDown={(event) => { if (event.key === " ") { event.preventDefault(); toggleMultiSelection(node.id); } }}
+              >{node.label}</button>
             ))}
           </div>
         </div>
@@ -767,6 +1243,14 @@ function GraphCanvas({
                   <dd>{selectedEdges.length}</dd>
                 </div>
               </dl>
+              <div className="graph-inspector-actions">
+                <button type="button" onClick={() => toggleMultiSelection(selected.id)}>
+                  {multiSelectedIds.includes(selected.id) ? "移出组合" : "加入组合"}
+                </button>
+                {selected.category !== "self" ? (
+                  <button type="button" onClick={() => onRequestActions({ gesture: "node_context", sourceNodeId: selected.id })}>快捷操作</button>
+                ) : null}
+              </div>
               {selectedEdges.length ? (
                 <div className="graph-evidence-list">
                   <strong>关系与证据</strong>
@@ -782,6 +1266,25 @@ function GraphCanvas({
                   ))}
                 </div>
               ) : null}
+            </>
+          ) : selectedEdge ? (
+            <>
+              <span className="eyebrow">关系详情</span>
+              <h2>{relationLabel(selectedEdge.label)}</h2>
+              <div className="graph-node-type">
+                {positions.get(selectedEdge.source)?.label} → {positions.get(selectedEdge.target)?.label}
+              </div>
+              <dl>
+                <div><dt>关联强度</dt><dd>{selectedEdge.weight}</dd></div>
+                <div><dt>证据事件</dt><dd>{selectedEdge.evidenceEventIds.length}</dd></div>
+              </dl>
+              <div className="graph-inspector-actions">
+                <button type="button" onClick={() => {
+                  setFocusedId(selectedEdge.source);
+                  void graphRef.current?.focusElement(selectedEdge.source, false);
+                }}>聚焦关系</button>
+                {selectedEdge.evidenceEventIds.length ? <button type="button" onClick={onOpenTimeline}>查看时间线</button> : null}
+              </div>
             </>
           ) : (
             <div className="graph-inspector-empty">
@@ -820,19 +1323,88 @@ function GraphCanvas({
               setContextMenu(null);
             }}>重置此节点位置</button>
           ) : null}
+          {menuNode.category !== "self" && ["user", "person", "entity", "location", "event"].includes(menuNode.kind) ? (
+            <button type="button" role="menuitem" onClick={() => {
+              setContextMenu(null);
+              requestActionsRef.current({ gesture: "node_context", sourceNodeId: menuNode.id });
+            }}>更多快捷操作…</button>
+          ) : null}
           <button type="button" role="menuitem" onClick={resetAllPositions}>恢复默认布局</button>
+        </div>
+      ) : null}
+      {edgeContextMenu && menuEdge ? (
+        <div
+          className="graph-context-menu graph-edge-context-menu"
+          style={{ left: edgeContextMenu.x, top: edgeContextMenu.y }}
+          role="menu"
+          aria-label="关系操作"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <strong>{relationLabel(menuEdge.label)}</strong>
+          <button type="button" role="menuitem" onClick={() => { setSelectedEdgeId(menuEdge.id); setEdgeContextMenu(null); }}>查看关系证据</button>
+          <button type="button" role="menuitem" onClick={() => {
+            setFocusedId(menuEdge.source);
+            setEdgeContextMenu(null);
+            void graphRef.current?.focusElement(menuEdge.source, false);
+          }}>聚焦两端节点</button>
+          {menuEdge.evidenceEventIds.length ? <button type="button" role="menuitem" onClick={() => { setEdgeContextMenu(null); onOpenTimeline(); }}>在时间线查看</button> : null}
+          <button type="button" role="menuitem" onClick={() => {
+            setHiddenEdgeIds((current) => [...current, menuEdge.id]);
+            setSelectedEdgeId(null);
+            setEdgeContextMenu(null);
+            setLocalNotice("已在当前视图隐藏这条关系");
+          }}>隐藏这条关系</button>
+        </div>
+      ) : null}
+      {localNotice ? (
+        <div className="graph-local-notice" role="status">
+          <span>{localNotice}</span>
+          {hiddenEdgeIds.length ? <button type="button" onClick={() => { setHiddenEdgeIds([]); setLocalNotice("隐藏的关系已恢复"); }}>撤销隐藏</button> : null}
+          <button type="button" aria-label="关闭提示" onClick={() => setLocalNotice(null)}>×</button>
         </div>
       ) : null}
     </>
   );
 }
 
-export function GraphView({ personal, global }: { personal: PersonalGraph; global: GlobalGraph }) {
+export function GraphView({
+  personal,
+  global,
+  onQuickRecord,
+  onOpenContacts,
+  onOpenDiscovery,
+  onOpenMemory,
+  onOpenTimeline,
+  onDataChanged,
+}: {
+  personal: PersonalGraph;
+  global: GlobalGraph;
+  onQuickRecord: (text: string, graphContext: Extract<GraphActionResult, { type: "entry_template" }>["graphContext"]) => Promise<void>;
+  onOpenContacts: (tab: "friends" | "messages") => void;
+  onOpenDiscovery: () => void;
+  onOpenMemory: () => void;
+  onOpenTimeline: () => void;
+  onDataChanged: () => Promise<void>;
+}) {
   const [scope, setScope] = useState<GraphScope>("global");
   const [mode, setMode] = useState<GraphMode>("relationships");
   const [worldEntityScope, setWorldEntityScope] = useState<WorldEntityScope>("catalog");
   const [filters, setFilters] = useState<GraphFilters>(defaultGraphFilters);
+  const [actionResolution, setActionResolution] = useState<GraphActionResolution | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionNote, setActionNote] = useState("");
+  const [dangerConfirmed, setDangerConfirmed] = useState(false);
+  const [undoNotice, setUndoNotice] = useState<{ id: string; message: string; expiresAt: string } | null>(null);
   const data = scope === "global" ? global : personal;
+  useEffect(() => {
+    setActionResolution(null);
+    setActionError(null);
+    setActionMessage(null);
+    setActionNote("");
+    setDangerConfirmed(false);
+  }, [scope, mode]);
   const activeFilterCount = [
     mode !== "relationships",
     filters.query.trim().length > 0,
@@ -850,6 +1422,78 @@ export function GraphView({ personal, global }: { personal: PersonalGraph; globa
         ? current.nodeGroups.filter((item) => item !== group)
         : [...current.nodeGroups, group],
     }));
+  };
+  const requestActions = async (request: GraphActionRequest) => {
+    if (actionBusy) return;
+    setActionBusy(true);
+    setActionError(null);
+    setActionMessage(null);
+    setActionNote("");
+    setDangerConfirmed(false);
+    try {
+      const resolution = await api.resolveGraphActions({
+        scope: scope === "global" ? "world" : "personal",
+        mode,
+        ...request,
+      });
+      setActionResolution(resolution);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "无法读取快捷操作");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+  const executeAction = async (action: GraphActionItem) => {
+    if (!actionResolution || actionBusy || !action.enabled) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const result = await api.executeGraphAction({
+        contextId: actionResolution.contextId,
+        actionId: action.id,
+        message: action.presentation === "contact" ? actionNote.trim() || undefined : undefined,
+      });
+      if (result.type === "entry_template") {
+        const text = actionNote.trim() ? `${result.text}，${actionNote.trim()}` : result.text;
+        await onQuickRecord(text, result.graphContext);
+        setActionResolution(null);
+      } else if (result.type === "friend_request") {
+        setActionMessage(`已经向 ${result.user.label} 发送好友申请`);
+        await onDataChanged();
+      } else if (result.type === "conversation") {
+        setActionResolution(null);
+        onOpenContacts("messages");
+      } else if (result.type === "navigation") {
+        setActionResolution(null);
+        if (result.destination === "contacts") onOpenContacts(result.tab as "friends" | "messages");
+        else if (result.destination === "discover") onOpenDiscovery();
+        else onOpenMemory();
+      } else if (result.type === "graph_mutation") {
+        setActionResolution(null);
+        setActionMessage(null);
+        if (result.undo) setUndoNotice({ id: result.undo.id, expiresAt: result.undo.expiresAt, message: result.changed ? "关系已经写入图谱" : "这条关系已经存在" });
+        else setUndoNotice({ id: "", expiresAt: "", message: result.changed ? "关系已经写入图谱" : "这条关系已经存在" });
+        await onDataChanged();
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "快捷操作失败");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+  const undoLastAction = async () => {
+    if (!undoNotice?.id || actionBusy) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      await api.undoGraphAction(undoNotice.id);
+      setUndoNotice({ id: "", expiresAt: "", message: "操作已撤销" });
+      await onDataChanged();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "撤销失败");
+    } finally {
+      setActionBusy(false);
+    }
   };
   return (
     <section className="graph-page">
@@ -1001,7 +1645,99 @@ export function GraphView({ personal, global }: { personal: PersonalGraph; globa
         filters={filters}
         includeIsolatedUsers={scope === "global"}
         includeIsolatedCatalog={scope === "global" && worldEntityScope === "catalog"}
+        layoutStorageKey={`trace-weave:graph-layout:${scope}:${mode}`}
+        onOpenTimeline={onOpenTimeline}
+        onRequestActions={(request) => void requestActions(request)}
       />
+
+      {actionBusy && !actionResolution ? (
+        <div className="graph-action-loading" role="status">正在读取可用操作…</div>
+      ) : null}
+      {actionError && !actionResolution ? (
+        <div className="graph-action-toast" role="status">
+          <span>{actionError}</span>
+          <button type="button" onClick={() => setActionError(null)}>关闭</button>
+        </div>
+      ) : null}
+      {actionResolution ? (
+        <div className="graph-action-backdrop" role="presentation" onPointerDown={(event) => {
+          if (event.target === event.currentTarget && !actionBusy) setActionResolution(null);
+        }}>
+          <section className="graph-action-sheet" role="dialog" aria-modal="true" aria-label="图谱快捷操作">
+            <header>
+              <div>
+                <span>{actionResolution.nodes.length > 1 && !actionResolution.target ? "多节点组合" : actionResolution.target ? "组合操作" : "节点操作"}</span>
+                <h2>{actionResolution.nodes.length > 1 && !actionResolution.target
+                  ? actionResolution.nodes.map((node) => node.label).join(" × ")
+                  : actionResolution.target
+                  ? `${actionResolution.source.label} × ${actionResolution.target.label}`
+                  : actionResolution.source.label}</h2>
+              </div>
+              <button type="button" aria-label="关闭快捷操作" disabled={actionBusy} onClick={() => setActionResolution(null)}>×</button>
+            </header>
+            {actionResolution.relationship ? (
+              <div className="graph-action-relationship">
+                <span>{({
+                  none: "还不认识",
+                  friend: "已经是好友",
+                  incoming: "对方向你发送了申请",
+                  outgoing: "好友申请等待处理中",
+                  blocked: "当前无法建立联系",
+                } as const)[actionResolution.relationship]}</span>
+                {actionResolution.commonPoints.length ? <small>共同点：{actionResolution.commonPoints.join("、")}</small> : <small>暂时没有公开共同点</small>}
+              </div>
+            ) : null}
+            {actionResolution.actions.some((action) => action.id === "contact.request") ? (
+              <label className="graph-action-note">
+                <span>好友申请留言</span>
+                <textarea value={actionNote} maxLength={240} onChange={(event) => setActionNote(event.target.value)} placeholder="介绍一下自己，或者说说为什么想认识对方（可选）" />
+              </label>
+            ) : actionResolution.actions.some((action) => action.presentation === "quick_record") ? (
+              <label className="graph-action-note compact">
+                <span>补充一句</span>
+                <textarea value={actionNote} maxLength={500} onChange={(event) => setActionNote(event.target.value)} placeholder="可以补充原因、感受或时间（可选）" />
+              </label>
+            ) : null}
+            {actionResolution.actions.some((action) => action.presentation === "graph_mutation") ? (
+              <div className="graph-action-mutation-note">
+                <span>直接更新图谱</span>
+                <small>只会修改属于你的事件；操作会生成事件新版本，可在时间线中继续编辑。</small>
+              </div>
+            ) : null}
+            {actionResolution.actions.some((action) => action.id === "entity.merge") ? (
+              <label className="graph-action-danger-confirm">
+                <input type="checkbox" checked={dangerConfirmed} onChange={(event) => setDangerConfirmed(event.target.checked)} />
+                <span>我确认这两个条目代表同一个实体。合并会迁移别名、事件证据与隐私策略。</span>
+              </label>
+            ) : null}
+            <div className="graph-action-list">
+              {actionResolution.actions.map((action) => (
+                <button
+                  key={action.id}
+                  className={action.tone ?? "default"}
+                  type="button"
+                  disabled={actionBusy || !action.enabled || Boolean(actionMessage) || (action.id === "entity.merge" && !dangerConfirmed)}
+                  onClick={() => void executeAction(action)}
+                >
+                  <span><strong>{action.label}</strong><small>{action.description}</small></span>
+                  <i aria-hidden="true">→</i>
+                </button>
+              ))}
+            </div>
+            {actionError ? <div className="graph-action-status error">{actionError}</div> : null}
+            {actionMessage ? <div className="graph-action-status success">{actionMessage}</div> : null}
+          </section>
+        </div>
+      ) : null}
+      {undoNotice ? (
+        <div className="graph-undo-notice" role="status">
+          <span>{undoNotice.message}</span>
+          {undoNotice.id && new Date(undoNotice.expiresAt).getTime() > Date.now() ? (
+            <button type="button" disabled={actionBusy} onClick={() => void undoLastAction()}>撤销</button>
+          ) : null}
+          <button type="button" aria-label="关闭提示" onClick={() => setUndoNotice(null)}>×</button>
+        </div>
+      ) : null}
     </section>
   );
 }

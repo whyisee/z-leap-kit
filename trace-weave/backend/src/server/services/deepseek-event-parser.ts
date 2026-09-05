@@ -2,6 +2,7 @@ import { z } from "zod";
 import { eventCandidatePayloadSchema } from "../domain/event-candidate";
 import {
   AiProviderError,
+  applyEventParserConstraints,
   type EventParser,
   type EventParserContext,
   type EventParserResult,
@@ -62,8 +63,11 @@ const SYSTEM_PROMPT = `你是织络的生活事件结构化引擎。你的唯一
 9. 数量、单位、金额、币种分别写入 quantity、unit、amount、currency；没有就省略。
 10. title 用简洁自然语言保留用户原意，不增加用户没有说过的事实。
 11. confidence 为 0 到 1。字段不确定时降低置信度，不要用臆测填充。
-12. 一句话包含先后独立行为时拆成多个事件；同一行为的地点、同行人、对象和评价保留在同一事件。
+12. 一句话包含先后独立行为时拆成多个事件；同一行为的地点、同行人、多个对象和评价保留在同一事件。“A 和 B”“同时涉及 A、B”不代表两个事件。
 13. locationContext 是用户主动附加的位置上下文，不是原文。如果 role=occurred_at 且存在 label，可以把 label 作为 place 实体；如果 role=recorded_at，它只表示记录时位置，绝不能当作事件发生地。没有 label 时禁止根据坐标或“当前位置”编造地点名。
+14. eventGrouping="single_event" 表示用户已明确把整段内容定义为同一件事。此时 events 必须且只能返回 1 项；即使涉及多个事物、人物或地点，也要把它们作为同一事件的实体与参与者，禁止按对象拆分。
+15. graphContext 来自用户主动选择的图谱节点，是可信的消歧上下文：节点 label 和 category 必须保留，不能把 app/platform 当成食物或地点，也不能把 food 当成 app。根据用户原文、actionId、intent 和 relationHint 推断节点在同一事件中的合理角色，但不要编造时间、金额、数量或未表达的人物。
+16. 常见平台语义：外卖/电商/内容平台通常是 platform，用户同时选择平台与食物/商品/内容时，优先理解为“通过该平台获取、下单或体验对象”；例如“饿了么(app/platform)+牛排(food)”在 record.pair.entities 的同一事件上下文中，应理解为“通过饿了么点/买了牛排”，而不是“体验了牛排和饿了么”两个并列对象。若用户补充文字明确表达其他关系，以用户文字为准。
 
 每个事件对象需要包含：schemaVersion、eventType、title、factualStatus、time、participants、entities、subjectiveExperience、extensions、confidence。
 每个 entity 需要包含：mention、entityType、role、attributes；其他字段按需添加。`;
@@ -132,7 +136,11 @@ export class DeepSeekEventParser implements EventParser {
                   referenceTime: context.referenceTime.toISOString(),
                   timezone: context.timezone,
                   locationContext: context.location ?? null,
-                  outputInstruction: "返回符合约束的 JSON 对象",
+                  eventGrouping: context.eventGrouping ?? "automatic",
+                  graphContext: context.graphContext ?? null,
+                  outputInstruction: context.eventGrouping === "single_event"
+                    ? "返回符合约束的 JSON 对象，events 必须且只能有一个事件"
+                    : "返回符合约束的 JSON 对象",
                 }),
               },
             ],
@@ -169,7 +177,7 @@ export class DeepSeekEventParser implements EventParser {
         );
 
         return {
-          candidates: parsedOutput.events,
+          candidates: applyEventParserConstraints(parsedOutput.events, context),
           providerRequestId: apiResponse.id,
           resolvedModelVersion: apiResponse.model,
           usage: apiResponse.usage

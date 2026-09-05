@@ -269,6 +269,63 @@ export type GraphEdge = {
   evidenceEventIds: string[];
 };
 
+export type GraphActionNode = {
+  id: string;
+  label: string;
+  kind: "user" | "person" | "entity" | "location" | "event" | "occurrence" | "match";
+  category: string;
+  resourceId: string;
+  ownership?: "owned" | "shared" | "public" | "catalog";
+};
+
+export type GraphActionItem = {
+  id: string;
+  label: string;
+  description: string;
+  presentation: "quick_record" | "contact" | "navigation" | "graph_mutation";
+  enabled: boolean;
+  tone?: "default" | "primary" | "danger";
+};
+
+export type GraphActionResolution = {
+  contextId: string;
+  expiresAt: string;
+  source: GraphActionNode;
+  target: GraphActionNode | null;
+  nodes: GraphActionNode[];
+  relationship: "none" | "friend" | "incoming" | "outgoing" | "blocked" | null;
+  commonPoints: string[];
+  actions: GraphActionItem[];
+};
+
+export type GraphActionResult =
+  | {
+      type: "entry_template";
+      text: string;
+      actionId: string;
+      entity: GraphActionNode;
+      graphContext: {
+        source: "graph_interaction";
+        actionId: string;
+        intent: string;
+        relationHint: string | null;
+        nodes: Array<Pick<GraphActionNode, "label" | "kind" | "category">>;
+      };
+    }
+  | { type: "friend_request"; requestId: string; status: "pending"; user: GraphActionNode }
+  | { type: "conversation"; conversationId: string; user: GraphActionNode }
+  | { type: "navigation"; destination: "contacts" | "discover" | "memory"; tab: string; nodeIds?: string[] }
+  | {
+      type: "graph_mutation";
+      actionId: string;
+      changed: boolean;
+      eventIds: string[];
+      versions: Record<string, number>;
+      source: GraphActionNode;
+      target: GraphActionNode;
+      undo?: { id: string; expiresAt: string };
+    };
+
 export type PersonalGraph = {
   nodes: GraphNode[];
   evidenceEdges: GraphEdge[];
@@ -556,7 +613,16 @@ export const api = {
     });
   },
 
-  createEntry(text: string, location?: LocationInput) {
+  createEntry(text: string, location?: LocationInput, options?: {
+    eventGrouping?: "automatic" | "single_event";
+    graphContext?: {
+      source: "graph_interaction";
+      actionId: string;
+      intent: string;
+      relationHint: string | null;
+      nodes: Array<{ label: string; kind: GraphActionNode["kind"]; category: string }>;
+    };
+  }) {
     return request<{
       entry: { id: string; status: string; text: string };
       location: LocationObservation | null;
@@ -569,6 +635,8 @@ export const api = {
         clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         clientCreatedAt: new Date().toISOString(),
         location,
+        eventGrouping: options?.eventGrouping ?? "automatic",
+        graphContext: options?.graphContext,
       }),
     });
   },
@@ -1013,6 +1081,39 @@ export const api = {
 
   getGlobalGraph() {
     return request<GlobalGraph>("/api/graph/global");
+  },
+
+  resolveGraphActions(input: {
+    scope: "world" | "personal";
+    mode: "relationships" | "evidence";
+    gesture: "node_context" | "node_drop" | "multi_select";
+    sourceNodeId: string;
+    targetNodeId?: string;
+    nodeIds?: string[];
+  }) {
+    return request<GraphActionResolution>("/api/graph/actions/resolve", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  executeGraphAction(input: {
+    contextId: string;
+    actionId: string;
+    idempotencyKey?: string;
+    message?: string;
+  }) {
+    return request<GraphActionResult>("/api/graph/actions/execute", {
+      method: "POST",
+      body: JSON.stringify({ ...input, idempotencyKey: input.idempotencyKey ?? crypto.randomUUID() }),
+    });
+  },
+
+  undoGraphAction(undoId: string) {
+    return request<{ type: "graph_undo"; undoId: string; status: "undone" }>("/api/graph/actions/undo", {
+      method: "POST",
+      body: JSON.stringify({ undoId }),
+    });
   },
 
   getSocial() {

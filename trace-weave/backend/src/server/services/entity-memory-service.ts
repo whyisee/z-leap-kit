@@ -214,7 +214,7 @@ export async function mergeEntityMemory(
   ownerUserId: string,
   sourceEntityId: string,
   targetEntityId: string,
-): Promise<void> {
+): Promise<string> {
   if (sourceEntityId === targetEntityId) throw new EntityMemoryError("不能把实体合并到自身");
   await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [ownerUserId]);
   const orderedEntityIds = [sourceEntityId, targetEntityId].sort();
@@ -338,6 +338,7 @@ export async function mergeEntityMemory(
   );
   await enqueueEntityRefresh(client, ownerUserId, target.id, "merged");
   await refreshSocialProjectionsForUser(client, ownerUserId);
+  return operationId;
 }
 
 type SplitEntityInput = {

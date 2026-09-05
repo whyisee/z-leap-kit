@@ -1,5 +1,5 @@
 import type { EventCandidatePayload } from "../domain/event-candidate";
-import type { EventParser, EventParserContext, EventParserResult } from "./event-parser";
+import { applyEventParserConstraints, type EventParser, type EventParserContext, type EventParserResult } from "./event-parser";
 
 type EntityHint = EventCandidatePayload["entities"][number];
 
@@ -229,8 +229,7 @@ export class MockEventParser implements EventParser {
   async parse(context: EventParserContext): Promise<EventParserResult> {
     const eventType = inferActivityType(context.text);
 
-    return {
-      candidates: [{
+    const candidates: EventCandidatePayload[] = [{
         schemaVersion: "event-candidate/v1",
         eventType,
         title: context.text,
@@ -241,7 +240,9 @@ export class MockEventParser implements EventParser {
         subjectiveExperience: {},
         extensions: { parserMode: "development-fallback" },
         confidence: eventType === "activity" ? 0.48 : 0.78,
-      }],
+      }];
+    return {
+      candidates: applyEventParserConstraints(candidates, context),
       resolvedModelVersion: this.modelVersion,
     };
   }

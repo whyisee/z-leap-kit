@@ -11,6 +11,7 @@ import { entityRoutes } from "./routes/entities";
 import { DraftLimitError, EntryConflictError, entryRoutes } from "./routes/entries";
 import { eventRoutes } from "./routes/events";
 import { graphRoutes } from "./routes/graph";
+import { graphActionRoutes } from "./routes/graph-actions";
 import { notificationRoutes } from "./routes/notifications";
 import { privacyRoutes } from "./routes/privacy";
 import { reviewRoutes } from "./routes/review";
@@ -32,6 +33,7 @@ import { PrivacyManagementError } from "./services/privacy-management-service";
 import { SocialMatchError } from "./services/social-service";
 import { SharedInviteError } from "./services/shared-occurrence-service";
 import { ContactError } from "./services/contact-service";
+import { GraphActionError } from "./services/graph-action-service";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -126,6 +128,10 @@ export async function buildApp() {
       return reply.code(error.statusCode).send({ message: error.message, code: error.code });
     }
 
+    if (error instanceof GraphActionError) {
+      return reply.code(error.statusCode).send({ message: error.message, code: error.code });
+    }
+
     if (error instanceof AiConfigurationError) {
       return reply.code(503).send({ message: error.message, code: "AI_NOT_CONFIGURED" });
     }
@@ -180,6 +186,7 @@ export async function buildApp() {
   await app.register(entryRoutes);
   await app.register(eventRoutes);
   await app.register(graphRoutes);
+  await app.register(graphActionRoutes);
   await app.register(notificationRoutes);
   await app.register(privacyRoutes);
   await app.register(reviewRoutes);

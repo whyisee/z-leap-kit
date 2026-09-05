@@ -159,10 +159,11 @@ async function ensureUserEntity(
   return id;
 }
 
-async function upsertDemoEvent(client: PoolClient, event: DemoEvent): Promise<string> {
-  const rawEntryId = stableUuid(`raw-entry:${event.key}`);
-  const rawContentId = stableUuid(`raw-content:${event.key}`);
-  const eventId = stableUuid(`event:${event.key}`);
+async function upsertDemoEvent(client: PoolClient, event: DemoEvent, seedNamespace: string): Promise<string> {
+  const eventSeedKey = `${seedNamespace}:${event.key}`;
+  const rawEntryId = stableUuid(`raw-entry:${eventSeedKey}`);
+  const rawContentId = stableUuid(`raw-content:${eventSeedKey}`);
+  const eventId = stableUuid(`event:${eventSeedKey}`);
   await client.query(
     `
       INSERT INTO ${schema}.raw_entries (
@@ -214,7 +215,7 @@ async function upsertDemoEvent(client: PoolClient, event: DemoEvent): Promise<st
       ON CONFLICT (event_id, version) DO NOTHING
     `,
     [
-      stableUuid(`event-revision:${event.key}`),
+      stableUuid(`event-revision:${eventSeedKey}`),
       eventId,
       event.owner.id,
       JSON.stringify({ title: event.title, eventType: event.eventType, occurredStart: event.occurredAt, demoDataset: dataset }),
@@ -241,7 +242,7 @@ async function upsertDemoEvent(client: PoolClient, event: DemoEvent): Promise<st
             attributes = EXCLUDED.attributes
       `,
       [
-        stableUuid(`event-entity:${event.key}:${index}`),
+        stableUuid(`event-entity:${eventSeedKey}:${index}`),
         eventId,
         userEntityId,
         canonicalId,
@@ -268,7 +269,7 @@ async function upsertDemoEvent(client: PoolClient, event: DemoEvent): Promise<st
             attributes = EXCLUDED.attributes
       `,
       [
-        stableUuid(`event-participant:${event.key}:${index}`),
+        stableUuid(`event-participant:${eventSeedKey}:${index}`),
         eventId,
         participant.id,
         JSON.stringify({ demoDataset: dataset, identitySource: "demo_confirmed" }),
@@ -277,7 +278,7 @@ async function upsertDemoEvent(client: PoolClient, event: DemoEvent): Promise<st
   }
 
   if (event.location) {
-    const observationId = stableUuid(`location:${event.key}`);
+    const observationId = stableUuid(`location:${eventSeedKey}`);
     await client.query(
       `
         INSERT INTO ${schema}.location_observations (
@@ -319,7 +320,7 @@ async function upsertDemoEvent(client: PoolClient, event: DemoEvent): Promise<st
             social_match_eligible = true,
             attributes = EXCLUDED.attributes
       `,
-      [stableUuid(`event-location:${event.key}`), eventId, observationId, JSON.stringify({ demoDataset: dataset })],
+      [stableUuid(`event-location:${eventSeedKey}`), eventId, observationId, JSON.stringify({ demoDataset: dataset })],
     );
   }
 
@@ -339,13 +340,14 @@ async function upsertDemoEvent(client: PoolClient, event: DemoEvent): Promise<st
           revoked_at = NULL,
           updated_at = now()
     `,
-    [stableUuid(`event-privacy:${event.key}`), event.owner.id, eventId],
+    [stableUuid(`event-privacy:${eventSeedKey}`), event.owner.id, eventId],
   );
   return eventId;
 }
 
 async function upsertOccurrence(
   client: PoolClient,
+  seedNamespace: string,
   key: string,
   creator: DemoUser,
   occurredAt: string,
@@ -353,7 +355,8 @@ async function upsertOccurrence(
   members: DemoUser[],
   eventIds: Array<{ eventId: string; ownerId: string }>,
 ): Promise<void> {
-  const occurrenceId = stableUuid(`occurrence:${key}`);
+  const occurrenceSeedKey = `${seedNamespace}:${key}`;
+  const occurrenceId = stableUuid(`occurrence:${occurrenceSeedKey}`);
   await client.query(
     `
       INSERT INTO ${schema}.shared_occurrences (
@@ -380,7 +383,7 @@ async function upsertOccurrence(
             shared_fact_permissions = EXCLUDED.shared_fact_permissions,
             responded_at = now()
       `,
-      [stableUuid(`occurrence-member:${key}:${member.id}`), occurrenceId, member.id, permissions, creator.id],
+      [stableUuid(`occurrence-member:${occurrenceSeedKey}:${member.id}`), occurrenceId, member.id, permissions, creator.id],
     );
   }
   for (const item of eventIds) {
@@ -391,7 +394,7 @@ async function upsertOccurrence(
         ) VALUES ($1, $2, $3, $4, 'active')
         ON CONFLICT (event_id, occurrence_id) DO UPDATE SET link_status = 'active'
       `,
-      [stableUuid(`occurrence-event:${key}:${item.eventId}`), item.eventId, occurrenceId, item.ownerId],
+      [stableUuid(`occurrence-event:${occurrenceSeedKey}:${item.eventId}`), item.eventId, occurrenceId, item.ownerId],
     );
   }
 }
@@ -530,13 +533,14 @@ async function seed(): Promise<void> {
     ];
 
     const eventIds = new Map<string, string>();
-    for (const event of events) eventIds.set(event.key, await upsertDemoEvent(client, event));
-    await upsertOccurrence(client, "cafe-brunch", viewer, "2026-08-08T03:30:00.000Z", "梧桐咖啡馆早午餐", [viewer, lin, chen], [
+    const seedNamespace = `viewer:${viewer.id}`;
+    for (const event of events) eventIds.set(event.key, await upsertDemoEvent(client, event, seedNamespace));
+    await upsertOccurrence(client, seedNamespace, "cafe-brunch", viewer, "2026-08-08T03:30:00.000Z", "梧桐咖啡馆早午餐", [viewer, lin, chen], [
       { eventId: eventIds.get("viewer-brunch")!, ownerId: viewer.id },
       { eventId: eventIds.get("lin-brunch")!, ownerId: lin.id },
       { eventId: eventIds.get("chen-brunch")!, ownerId: chen.id },
     ]);
-    await upsertOccurrence(client, "noodle-dinner", viewer, "2026-08-09T10:30:00.000Z", "兰亭面馆晚餐", [viewer, su], [
+    await upsertOccurrence(client, seedNamespace, "noodle-dinner", viewer, "2026-08-09T10:30:00.000Z", "兰亭面馆晚餐", [viewer, su], [
       { eventId: eventIds.get("viewer-dinner")!, ownerId: viewer.id },
       { eventId: eventIds.get("su-dinner")!, ownerId: su.id },
     ]);
