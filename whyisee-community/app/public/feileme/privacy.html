@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>废了么 · 隐私政策</title>
+<style>
+  :root{
+    --bg:#F5F5F3; --card:#FFFFFF; --text:#191919; --muted:#6B6B6B; --faint:#9B9B9B;
+    --line:#E6E4E0; --accent:#E93323;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#111110; --card:#1B1B1A; --text:#F2F1EF; --muted:#A3A19D; --faint:#7A7874;
+           --line:#2C2B29; --accent:#FF4A38; }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text); line-height:1.75;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:680px; margin:0 auto; padding:48px 20px 80px}
+  h1{font-size:22px; margin:0 0 6px}
+  .sub{color:var(--faint); font-size:13px; margin:0 0 30px}
+  h2{font-size:16px; margin:34px 0 10px}
+  p,li{font-size:14.5px; color:var(--muted)}
+  b{color:var(--text)}
+  ul{padding-left:20px; margin:8px 0}
+  li{margin:5px 0}
+  table{width:100%; border-collapse:collapse; margin:12px 0; font-size:13.5px}
+  th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{color:var(--faint); font-weight:500; font-size:12.5px}
+  td{color:var(--muted)}
+  td:first-child{color:var(--text); white-space:nowrap}
+  .box{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin:14px 0}
+  a{color:var(--accent); text-decoration:none; border-bottom:1px solid currentColor}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>隐私政策</h1>
+  <p class="sub">适用于 Android 应用「废了么」 · 更新日期：__DATE__</p>
+
+  <div class="box">
+    <p style="margin:0"><b>一句话概括：</b>这个应用没有账号、没有服务器数据库。你的使用记录全部存在你自己的手机里，
+    只有在你主动填写了 AI 接口密钥时，才会把对话内容发给你指定的接口。</p>
+  </div>
+
+  <h2>一、我们处理哪些信息</h2>
+  <table>
+    <tr><th>类型</th><th>内容</th><th>存在哪里</th></tr>
+    <tr><td>应用列表</td><td>你手机上已安装应用的名称与包名，用于让你挑选要约束的应用</td><td>仅本机</td></tr>
+    <tr><td>使用情况</td><td>各应用的前台使用时长、打开次数</td><td>仅本机</td></tr>
+    <tr><td>你写的内容</td><td>你输入的理由、留言、备注、给行动起的名字</td><td>仅本机</td></tr>
+    <tr><td>语音</td><td>你在会话里录制的语音，转成文字后保存</td><td>仅本机</td></tr>
+    <tr><td>拦截与完成记录</td><td>拦截次数、替代动作的完成情况、连续天数</td><td>仅本机</td></tr>
+  </table>
+  <p>我们<b>不收集</b>：通讯录、短信、位置、相册、通话记录、设备识别码（IMEI / OAID / 广告 ID）、剪贴板内容，也不读取任何应用内的屏幕文字。</p>
+
+  <h2>二、权限与用途</h2>
+  <ul>
+    <li><b>无障碍服务</b>：判断当前切换到哪个应用，据此决定是否弹出确认页。不读取窗口内容，不模拟点击，不代替你操作其它应用。</li>
+    <li><b>使用情况访问</b>：读取各应用的前台时长，用于「连续使用提醒」。仅在本机统计。</li>
+    <li><b>悬浮窗</b>：在你打开受约束的应用时，展示本应用自己的确认页面。</li>
+    <li><b>通知</b>：长时间使用提醒、每日小结。可随时在系统设置里关闭。</li>
+    <li><b>开机自启动</b>：重启后恢复使用统计，不需要你每次手动打开。</li>
+    <li><b>录音</b>：仅在你按住说话时录音，用于把语音转成文字。</li>
+    <li><b>网络</b>：仅用于你主动开启的 AI 功能。</li>
+  </ul>
+
+  <h2>三、第三方</h2>
+  <p>应用内不集成广告、统计、推送类 SDK。唯一可能的外部请求是 AI 功能：</p>
+  <ul>
+    <li>你在设置里填写接口地址与密钥并开启后，你对 AI 说的话、以及应用生成的使用摘要，会发送到<b>你填写的那个接口</b>（默认是 DeepSeek 的开放平台）。</li>
+    <li>发送内容不含你的姓名、手机号、设备标识，只含对话文本和用量数字。</li>
+    <li>不填密钥时，应用不发出任何网络请求，AI 相关功能自动退回本地规则。</li>
+    <li>第三方接口对数据的处理适用其自身隐私政策，请自行确认。</li>
+  </ul>
+
+  <h2>四、保存期限与删除</h2>
+  <p>数据保存在应用私有目录，随应用卸载一并删除。你也可以在应用内「我 → 记录」里逐条删除，或用「清空记录」一次性清掉。我们不保留任何副本。</p>
+
+  <h2>五、你的权利</h2>
+  <ul>
+    <li>随时关闭任一权限，应用会在缺少权限时提示哪些功能不可用，其余功能照常。</li>
+    <li>随时导出或删除自己的记录。</li>
+    <li>卸载即撤回全部授权并删除全部数据。</li>
+  </ul>
+
+  <h2>六、未成年人</h2>
+  <p>本应用不面向 14 周岁以下儿童单独提供服务。若你是未成年人，请在监护人指导下使用。</p>
+
+  <h2>七、关于功能的边界</h2>
+  <p>本应用是一个<b>自我约束工具</b>，不提供医疗、心理诊断或治疗建议，也不能替代专业帮助。如果你觉得自己已经无法控制使用行为并影响到生活，请寻求专业机构帮助。</p>
+
+  <h2>八、变更与联系</h2>
+  <p>本政策如有变更，会在本页更新并修改顶部日期。有疑问可通过 __EMAIL__ 联系开发者 __OWNER__。</p>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,499 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+
+const downloadHref = "/feileme/download/feileme-1.1.0.apk";
+const version = "1.1.0";
+const sizeLabel = "24 MB";
+
+const nav = [
+  { id: "intro", label: "它是什么" },
+  { id: "features", label: "它做的事" },
+  { id: "install", label: "下载安装" },
+  { id: "permissions", label: "权限说明" },
+  { id: "changelog", label: "更新记录" },
+];
+
+const features = [
+  {
+    mark: "一",
+    title: "打开之前拦一下",
+    body: "你选中的应用，每次打开先停在这里：今天第几次、用了多久，然后问你要做什么。",
+  },
+  {
+    mark: "二",
+    title: "拦下之后给一件事",
+    body: "不是让你干等着。按你的时间、地点和最近的记录，推一件两分钟能做完的小事。",
+  },
+  {
+    mark: "三",
+    title: "记录都在这台手机里",
+    body: "拦截次数、用时、做过的事，只存在本地。没有账号，不上传，卸载即清空。",
+  },
+];
+
+const permissions = [
+  [
+    "无障碍服务",
+    "判断当前切到了哪个应用，据此决定要不要弹出确认页。1.1.0 起，你主动开启后也用于识别当前界面上的可点区域。",
+    "不读取你上传的任何内容；屏幕识别全程在手机上完成，不上传。",
+  ],
+  [
+    "使用情况访问",
+    "统计各应用用时，用来提醒你「连续用了多久」。",
+    "只在本机计算。",
+  ],
+  [
+    "网络",
+    "只有你自己填了 AI 接口的密钥，才会联网。",
+    "不填也能完整使用，只是推荐和判理由改为本地规则。",
+  ],
+];
+---
+
+<BaseLayout
+  title={`废了么 - 一个 Android 端的自我约束工具 - whyisee.xyz`}
+  description="废了么是一个自我约束工具：在你打开容易上瘾的应用之前拦一下，问清你要做什么，再给你一件能立刻做完的小事。数据全部留在手机里。"
+>
+  <section class="article-page guidelines-page app-page">
+    <aside class="guidelines-nav" aria-label="目录">
+      <strong>目录</strong>
+      {nav.map((item) => <a href={`#${item.id}`}>{item.label}</a>)}
+    </aside>
+
+    <div class="guidelines-content">
+      <section id="intro" class="guidelines-section">
+        <div class="app-hero">
+          <div class="app-logo" aria-hidden="true">废</div>
+          <div>
+            <p class="eyebrow">Android App</p>
+            <h1>废了么</h1>
+            <p class="app-tagline">打开之前，先给自己十秒。</p>
+          </div>
+        </div>
+
+        <p class="app-lead">
+          你在它里面选几个容易上瘾的应用。之后每次打开这些应用，它会先停一下：显示今天第几次、已经用了多久，
+          然后问你要做什么。回答完，再给你一件两分钟能做完的小事——不是让你干等着。
+        </p>
+        <p class="app-lead">
+          所有记录只存在这台手机上。没有账号，不用注册，不上传，卸载即清空。
+        </p>
+
+        <div class="app-download">
+          <a class="app-download-button" id="app-download" href={downloadHref} download>
+            下载 Android 版
+          </a>
+          <p class="app-download-meta" id="app-download-meta">
+            v{version} · {sizeLabel} · Android 8.0 及以上 · 不用注册
+          </p>
+          <p class="app-download-note">
+            未上架应用商店，安装包由本站直接提供。
+            <a href="/feileme/privacy.html">隐私政策</a>
+          </p>
+        </div>
+      </section>
+
+      <section id="features" class="guidelines-rule-block">
+        <h3>它做的事</h3>
+        <div class="app-rows">
+          {features.map((feature) => (
+            <article class="app-row">
+              <span class="app-row-mark" aria-hidden="true">{feature.mark}</span>
+              <div>
+                <strong>{feature.title}</strong>
+                <p>{feature.body}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section id="install" class="guidelines-rule-block">
+        <h3>下载安装</h3>
+        <ol class="app-steps">
+          <li><b>下载安装包</b>，在通知栏或文件管理器里点开它。</li>
+          <li>系统提示「未知来源」时，<b>允许本次安装</b>。华为、小米等机型需要先关闭「纯净模式」。</li>
+          <li>打开应用，按引导<b>开启无障碍服务</b>，再选择要约束的应用。</li>
+        </ol>
+        <p class="app-note">升级新版本时直接覆盖安装，记录不会丢。</p>
+      </section>
+
+      <section id="permissions" class="guidelines-rule-block">
+        <h3>关于权限</h3>
+        <div class="guidelines-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>权限</th>
+                <th>用来做什么</th>
+                <th>边界</th>
+              </tr>
+            </thead>
+            <tbody>
+              {permissions.map((row) => (
+                <tr>{row.map((cell) => <td>{cell}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="app-note">完整说明见 <a href="/feileme/privacy.html">隐私政策</a>。</p>
+      </section>
+
+      <section id="changelog" class="guidelines-rule-block">
+        <h3>更新记录</h3>
+        <div id="app-changelog" class="app-changelog">
+          <div class="app-release">
+            <div class="app-release-head"><b>1.0.0</b><span>2026-11-12</span></div>
+            <ul><li>首个对外版本</li></ul>
+          </div>
+        </div>
+      </section>
+
+      <p class="app-disclaimer">
+        本站不提供任何医疗建议。这是一个自我约束工具，不是治疗方案。
+      </p>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .app-hero {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 22px;
+  }
+
+  .app-logo {
+    display: flex;
+    flex: 0 0 64px;
+    align-items: center;
+    justify-content: center;
+    height: 64px;
+    border-radius: 17px;
+    background: #e93323;
+    color: #fff;
+    font-size: 29px;
+    font-weight: 600;
+    box-shadow: 0 8px 20px rgba(233, 51, 35, 0.22);
+  }
+
+  .app-hero .eyebrow {
+    margin-bottom: 4px;
+  }
+
+  .app-hero h1 {
+    margin: 0;
+    line-height: 1.15;
+  }
+
+  .app-tagline {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 15px;
+    font-weight: 720;
+  }
+
+  .app-lead {
+    max-width: 780px;
+    margin: 0 0 12px;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.8;
+  }
+
+  .app-download {
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 12px;
+    margin-top: 26px;
+    padding: 22px;
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .app-download-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+    border-radius: 10px;
+    padding: 0 32px;
+    background: #e93323;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 900;
+    text-decoration: none;
+  }
+
+  .app-download-button:hover,
+  .app-download-button:focus-visible {
+    background: #f0412f;
+    outline: 0;
+  }
+
+  .app-download-meta {
+    margin: 12px 0 0;
+    color: var(--subtle);
+    font-size: 13px;
+    font-weight: 720;
+  }
+
+  .app-download-note {
+    margin: 6px 0 0;
+    color: var(--subtle);
+    font-size: 13px;
+  }
+
+  .app-download-note a,
+  .app-note a {
+    color: var(--blue);
+    text-decoration: none;
+  }
+
+  .app-rows {
+    display: grid;
+    gap: 14px;
+  }
+
+  .app-row {
+    display: flex;
+    gap: 13px;
+    align-items: flex-start;
+  }
+
+  .app-row-mark {
+    display: flex;
+    flex: 0 0 30px;
+    align-items: center;
+    justify-content: center;
+    height: 30px;
+    border-radius: 8px;
+    background: rgba(233, 51, 35, 0.12);
+    color: #ff7b6d;
+    font-size: 13px;
+    font-weight: 900;
+  }
+
+  .app-row strong {
+    display: block;
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 950;
+  }
+
+  .app-row p {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 720;
+    line-height: 1.7;
+  }
+
+  .app-steps {
+    display: grid;
+    gap: 12px;
+    counter-reset: app-step;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .app-steps li {
+    counter-increment: app-step;
+    position: relative;
+    margin: 0;
+    padding-left: 34px;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 720;
+    line-height: 1.7;
+  }
+
+  .app-steps li::before {
+    content: counter(app-step);
+    position: absolute;
+    top: 2px;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(233, 51, 35, 0.12);
+    color: #ff7b6d;
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  .app-steps b {
+    color: var(--text);
+    font-weight: 950;
+  }
+
+  .app-note {
+    margin: 14px 0 0;
+    color: var(--subtle);
+    font-size: 13px;
+  }
+
+  .app-changelog {
+    display: grid;
+    gap: 16px;
+  }
+
+  .app-release-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  .app-release-head b {
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 950;
+  }
+
+  .app-release-head span {
+    color: var(--subtle);
+    font-size: 12px;
+    font-weight: 720;
+  }
+
+  .app-release ul {
+    margin: 0;
+    padding-left: 18px;
+  }
+
+  .app-release li {
+    margin: 5px 0;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 720;
+    line-height: 1.7;
+  }
+
+  .app-release li::marker {
+    color: var(--subtle);
+  }
+
+  .app-disclaimer {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    margin-top: 32px;
+    padding-top: 18px;
+    color: var(--subtle);
+    font-size: 13px;
+  }
+
+  @media (max-width: 640px) {
+    .app-hero {
+      gap: 14px;
+    }
+
+    .app-logo {
+      flex-basis: 54px;
+      height: 54px;
+      border-radius: 14px;
+      font-size: 24px;
+    }
+
+    .app-download {
+      padding: 18px;
+    }
+
+    .app-download-button {
+      width: 100%;
+    }
+  }
+</style>
+
+<script>
+  const VERSION_URL = "/feileme/version.json";
+  const CHANGELOG_URL = "/feileme/changelog.json";
+
+  function formatSize(bytes) {
+    return bytes ? `${Math.round(bytes / 1024 / 1024)} MB` : "";
+  }
+
+  async function syncVersion() {
+    try {
+      const response = await fetch(VERSION_URL, { cache: "no-store" });
+      if (!response.ok) return;
+
+      const version = await response.json();
+      if (!version?.versionName) return;
+
+      const button = document.getElementById("app-download");
+      if (button) {
+        button.href = version.url || `/feileme/download/feileme-${version.versionName}.apk`;
+      }
+
+      const meta = document.getElementById("app-download-meta");
+      if (meta) {
+        const size = formatSize(Number(version.size));
+        meta.textContent = [
+          `v${version.versionName}`,
+          size,
+          version.minSdk ? "Android 8.0 及以上" : "",
+          "不用注册",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+      }
+    } catch {
+      // 拿不到就用服务端写死的当前版本，不影响下载按钮
+    }
+  }
+
+  async function syncChangelog() {
+    try {
+      const response = await fetch(CHANGELOG_URL, { cache: "no-store" });
+      if (!response.ok) return;
+
+      const list = await response.json();
+      if (!Array.isArray(list) || list.length === 0) return;
+
+      const box = document.getElementById("app-changelog");
+      if (!box) return;
+
+      box.textContent = "";
+
+      list.slice(0, 8).forEach((entry) => {
+        const notes = Array.isArray(entry.notes)
+          ? entry.notes.map(String)
+          : entry.notes
+            ? [String(entry.notes)]
+            : [];
+
+        const release = document.createElement("div");
+        release.className = "app-release";
+
+        const head = document.createElement("div");
+        head.className = "app-release-head";
+        const name = document.createElement("b");
+        name.textContent = entry.versionName || "";
+        const date = document.createElement("span");
+        date.textContent = entry.date || "";
+        head.append(name, date);
+        release.append(head);
+
+        if (notes.length) {
+          const ul = document.createElement("ul");
+          notes.forEach((note) => {
+            const li = document.createElement("li");
+            li.textContent = note;
+            ul.append(li);
+          });
+          release.append(ul);
+        }
+
+        box.append(release);
+      });
+    } catch {
+      // 拉不到就保留服务端渲染的那一条
+    }
+  }
+
+  syncVersion();
+  syncChangelog();
+</script>
