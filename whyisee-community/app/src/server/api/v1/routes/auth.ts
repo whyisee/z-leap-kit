@@ -1,0 +1,165 @@
+import { Hono } from "hono";
+import {
+  appSessionMaxAgeSeconds,
+  authCookieName,
+  authenticateUser,
+  revokeSession,
+  type AuthSession,
+} from "@lib/auth";
+import { queryOne } from "@server/db/client";
+import { promoteSessionToApp, rotateAppSession } from "@server/services/appSessions";
+import { clientIpOf, takeToken } from "@lib/rateLimit";
+import { fail, ok, type ApiEnv } from "../http";
+import { requireAuth } from "../middleware";
+
+const auth = new Hono<ApiEnv>();
+
+const loginRateLimit = { limit: 10, windowMs: 5 * 60 * 1000 };
+
+auth.use("/me", requireAuth);
+auth.use("/logout", requireAuth);
+
+auth.post("/login", async (c) => {
+  const ip = clientIpOf(c.req.raw);
+  const limit = takeToken(`login:${ip}`, loginRateLimit.limit, loginRateLimit.windowMs);
+
+  if (!limit.allowed) {
+    c.header("retry-after", String(limit.retryAfterSeconds));
+    return fail(c, "rate_limited", "尝试太频繁，稍后再试");
+  }
+
+  const body = await readJson<{ identifier?: string; password?: string; deviceName?: string; platform?: string }>(c.req.raw);
+  const identifier = String(body?.identifier || "").trim();
+  const password = String(body?.password || "");
+
+  if (!identifier || !password) {
+    return fail(c, "validation_failed", "账号和密码都要填");
+  }
+
+  const session = await authenticateUser(identifier, password, {
+    client: "app",
+    ttlSeconds: appSessionMaxAgeSeconds,
+    clientVersion: c.req.header("x-app-version") ?? null,
+    userAgent: describeDevice(body?.platform, body?.deviceName),
+  });
+
+  if (!session) {
+    return fail(c, "unauthorized", "账号或密码不对");
+  }
+
+  return ok(c, {
+    token: session.sessionId,
+    expiresAt: expiresAtIso(appSessionMaxAgeSeconds),
+    user: toUserDto(session),
+  });
+});
+
+auth.post("/refresh", async (c) => {
+  const header = c.req.header("authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+
+  if (!token) {
+    return fail(c, "unauthorized", "缺少 token");
+  }
+
+  const session = await rotateAppSession(token, {
+    clientVersion: c.req.header("x-app-version") ?? null,
+  });
+
+  if (!session) {
+    return fail(c, "token_expired", "登录已失效，请重新登录");
+  }
+
+  return ok(c, {
+    token: session.sessionId,
+    expiresAt: expiresAtIso(appSessionMaxAgeSeconds),
+    user: toUserDto(session),
+  });
+});
+
+/**
+ * 网页登录成功后由 WebView 里的注入脚本调用（只认 cookie，不认 Bearer）。
+ * 它把网页那条会话标记为 app 会话并延长到 90 天，再把同一个 sessionId 当 token 交给原生。
+ * 好处：网页退登，app 立刻失效，不用额外同步。
+ */
+auth.post("/session-from-cookie", async (c) => {
+  const cookieToken = parseCookie(c.req.header("cookie") || "", authCookieName);
+
+  if (!cookieToken) {
+    return fail(c, "unauthorized", "没有登录 cookie");
+  }
+
+  const expiresAt = await promoteSessionToApp(cookieToken, {
+    clientVersion: c.req.header("x-app-version") ?? null,
+  });
+
+  if (!expiresAt) {
+    return fail(c, "token_expired", "网页会话已失效");
+  }
+
+  return ok(c, { token: cookieToken, expiresAt });
+});
+
+auth.post("/logout", async (c) => {
+  const header = c.req.header("authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+
+  await revokeSession(token);
+
+  return ok(c, { loggedOut: true });
+});
+
+auth.get("/me", async (c) => {
+  const session = c.get("session");
+  if (!session) return fail(c, "unauthorized", "请先登录");
+
+  const unread = await queryOne<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM notifications WHERE user_id = $1 AND read_at IS NULL",
+    [session.userId],
+  );
+
+  return ok(c, {
+    user: toUserDto(session),
+    unreadCount: Number(unread?.count || 0),
+  });
+});
+
+function toUserDto(session: AuthSession) {
+  return {
+    id: session.userId,
+    username: session.username,
+    displayName: session.displayName,
+    avatarUrl: session.avatarUrl,
+    email: session.email,
+    role: session.role,
+    status: session.status,
+  };
+}
+
+function expiresAtIso(ttlSeconds: number) {
+  return new Date(Date.now() + ttlSeconds * 1000).toISOString();
+}
+
+function describeDevice(platform?: string, deviceName?: string) {
+  const parts = [platform, deviceName].filter(Boolean);
+  return parts.length ? parts.join(" / ").slice(0, 200) : "app";
+}
+
+async function readJson<T>(request: Request): Promise<T | undefined> {
+  try {
+    return (await request.json()) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseCookie(header: string, name: string) {
+  const hit = header
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(`${name}=`));
+
+  return hit?.slice(name.length + 1);
+}
+
+export default auth;

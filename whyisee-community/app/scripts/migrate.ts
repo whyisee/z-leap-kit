@@ -1431,6 +1431,48 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_agent_skills_package_version ON agent_skills(package_key, owner_username, version);
     `,
   },
+  {
+    version: "029_app_mobile_api",
+    sql: `
+      -- 会话来源：web 走 7 天 cookie，app 走 90 天 Bearer，两端共用同一张表，吊销逻辑天然一致
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS client TEXT NOT NULL DEFAULT 'web';
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS client_version TEXT;
+
+      CREATE INDEX IF NOT EXISTS idx_sessions_user_client
+        ON sessions (user_id, client) WHERE revoked_at IS NULL;
+
+      -- 写操作幂等：弱网下"点了没反应再点一次"不能变成两条回复
+      CREATE TABLE IF NOT EXISTS app_idempotency_keys (
+        key TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        scope TEXT NOT NULL,
+        response_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_app_idempotency_user
+        ON app_idempotency_keys (user_id, created_at DESC);
+
+      -- 推送设备表：P2 接推送时才写，表先建好避免二次迁移
+      CREATE TABLE IF NOT EXISTS app_devices (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        platform TEXT NOT NULL,
+        push_token TEXT NOT NULL UNIQUE,
+        app_version TEXT,
+        device_model TEXT,
+        push_provider TEXT NOT NULL DEFAULT 'fcm',
+        last_seen_at TEXT NOT NULL,
+        revoked_at TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_app_devices_user
+        ON app_devices (user_id) WHERE revoked_at IS NULL;
+    `,
+  },
 ];
 
 for (const migration of migrations) {

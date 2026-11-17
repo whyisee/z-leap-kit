@@ -7,6 +7,18 @@ export const authCookieName = "whyisee_session";
 
 const sessionMaxAgeSeconds = 60 * 60 * 24 * 7;
 
+/** app 端会话有效期：走长期 token，靠轮换维持，避免用户每周重登 */
+export const appSessionMaxAgeSeconds = 60 * 60 * 24 * 90;
+
+export type SessionClient = "web" | "app";
+
+export interface SessionCreateOptions {
+  client?: SessionClient;
+  clientVersion?: string | null;
+  ttlSeconds?: number;
+  userAgent?: string | null;
+}
+
 export interface AuthSession {
   userId: number;
   username: string;
@@ -46,7 +58,11 @@ export function shouldUseSecureAuthCookie(defaultSecure: boolean) {
   return defaultSecure;
 }
 
-export async function authenticateUser(identifier: string, password: string): Promise<AuthSession | undefined> {
+export async function authenticateUser(
+  identifier: string,
+  password: string,
+  options: SessionCreateOptions = {},
+): Promise<AuthSession | undefined> {
   const user = await queryOne<UserAuthRow>(
     `
     SELECT id, username, display_name, avatar_url, email, role, status, password_hash
@@ -69,20 +85,32 @@ export async function authenticateUser(identifier: string, password: string): Pr
 
   await execute("UPDATE users SET last_login_at = $1, last_seen_at = $1 WHERE id = $2", [new Date().toISOString(), user.id]);
 
-  return createUserSession(user);
+  return createUserSession(user, options);
 }
 
-export async function createUserSession(user: UserSessionSource): Promise<AuthSession> {
+export async function createUserSession(
+  user: UserSessionSource,
+  options: SessionCreateOptions = {},
+): Promise<AuthSession> {
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + sessionMaxAgeSeconds * 1000).toISOString();
+  const ttlSeconds = options.ttlSeconds ?? sessionMaxAgeSeconds;
+  const expiresAt = new Date(now.getTime() + ttlSeconds * 1000).toISOString();
   const sessionId = randomBytes(32).toString("base64url");
 
   await execute(
     `
-    INSERT INTO sessions (id, user_id, expires_at, created_at, last_seen_at)
-    VALUES ($1, $2, $3, $4, $4)
+    INSERT INTO sessions (id, user_id, expires_at, created_at, last_seen_at, client, client_version, user_agent)
+    VALUES ($1, $2, $3, $4, $4, $5, $6, $7)
     `,
-    [sessionId, user.id, expiresAt, now.toISOString()],
+    [
+      sessionId,
+      user.id,
+      expiresAt,
+      now.toISOString(),
+      options.client ?? "web",
+      options.clientVersion ?? null,
+      options.userAgent ?? null,
+    ],
   );
 
   return mapSession(user, sessionId);
@@ -123,7 +151,15 @@ export async function readSessionId(sessionId: string | undefined): Promise<Auth
     return undefined;
   }
 
-  await execute("UPDATE sessions SET last_seen_at = $1 WHERE id = $2", [new Date().toISOString(), sessionId]);
+  // last_seen_at 只在超过 5 分钟时才写：app 一个 feed 页会并发多个请求，
+  // 每个请求都写库等于把读接口变成写接口
+  const touchedAt = new Date().toISOString();
+  const staleBefore = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  await execute("UPDATE sessions SET last_seen_at = $1 WHERE id = $2 AND last_seen_at < $3", [
+    touchedAt,
+    sessionId,
+    staleBefore,
+  ]);
 
   return mapSession(row, row.session_id);
 }

@@ -3,8 +3,12 @@ import { getLangFromRequest, t } from "@lib/i18n";
 import type { TopicType } from "@lib/types";
 import { listCategories, listTags } from "@server/services/categories";
 import { getTopicById, listTopics } from "@server/services/topics";
+import v1 from "./v1/index";
 
 const app = new Hono();
+
+// app 专用协议层。与下面这些老端点并存：老的给网页和外部 agent 用，不改。
+app.route("/api/v1", v1);
 
 app.get("/api/health", (context) => {
   return context.json({

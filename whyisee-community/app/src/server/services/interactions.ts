@@ -69,8 +69,42 @@ export async function countTargetLikes(targetType: "topic" | "post", targetId: n
   return Number(row?.count || 0);
 }
 
-export async function userLikedTarget(targetType: "topic" | "post", targetId: number, userId?: number) {
-  if (!userId) {
+/**
+ * 批量取回帖的点赞数与"我是否赞过"。
+ *
+ * 详情页用：网页版是每个 post 各查两次（countTargetLikes + userLikedTarget），
+ * 30 个回帖就是 60 次查询。app 端必须一条 SQL 拿完。
+ */
+export async function listPostInteractionStats(postIds: number[], userId?: number) {
+  const stats = new Map<number, { likeCount: number; liked: boolean }>();
+
+  if (postIds.length === 0) {
+    return stats;
+  }
+
+  const rows = await query<{ target_id: number; like_count: string; liked: boolean }>(
+    `
+    SELECT target_id,
+           COUNT(*) FILTER (WHERE reaction_type = 'like')::text AS like_count,
+           BOOL_OR(user_id = $2::int) FILTER (WHERE reaction_type = 'like') AS liked
+    FROM reactions
+    WHERE target_type = 'post' AND target_id = ANY($1::int[])
+    GROUP BY target_id
+    `,
+    [postIds, userId ?? -1],
+  );
+
+  for (const row of rows) {
+    stats.set(Number(row.target_id), {
+      likeCount: Number(row.like_count || 0),
+      liked: Boolean(row.liked),
+    });
+  }
+
+  return stats;
+}
+
+export async function userLikedTarget(targetType: "topic" | "post", targetId: number, userId?: number) {  if (!userId) {
     return false;
   }
 

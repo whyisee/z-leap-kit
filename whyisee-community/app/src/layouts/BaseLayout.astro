@@ -1,6 +1,7 @@
 ---
 import SiteHeader from "@components/SiteHeader.astro";
 import SiteFooter from "@components/SiteFooter.astro";
+import AppTokenBridge from "@components/AppTokenBridge.astro";
 import { getLangFromAstro, t } from "@lib/i18n";
 import "@styles/global.css";
 
@@ -101,7 +102,8 @@ function buildJsonLd() {
 <html lang={lang === "en" ? "en" : "zh-CN"}>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- viewport-fit=cover 是 app WebView 安全区生效的前提；缺失时 env(safe-area-inset-*) 恒为 0 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>{title}</title>
     <meta name="description" content={description} />
     {robots && <meta name="robots" content={robots} />}
@@ -402,5 +404,6 @@ function buildJsonLd() {
       </main>
       <SiteFooter lang={lang} />
     </div>
+    <AppTokenBridge />
   </body>
 </html>
