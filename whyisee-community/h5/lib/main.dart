@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'app.dart';
@@ -19,5 +20,7 @@ void main() {
 
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  runApp(const WhyiseeApp());
+  // 少了这层，所有 provider 一被读就抛 "No ProviderScope found"，
+  // 表现为首帧红屏、网络请求一个都不发。
+  runApp(const ProviderScope(child: WhyiseeApp()));
 }

@@ -1,17 +1,19 @@
 import 'dart:convert';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../core/env.dart';
+import '../../core/providers.dart';
 import '../errors/error_view.dart';
 import 'web_registry.dart';
 
 /// P0 的页面容器：远程 URL + 错误兜底 + 外链拦截 + JS 桥。
 ///
 /// P1 起只有「看见」「帖子详情」会换成原生页，其余页面继续用这个容器。
-class WebTabPage extends StatefulWidget {
+class WebTabPage extends ConsumerStatefulWidget {
   const WebTabPage({
     super.key,
     required this.tabIndex,
@@ -28,10 +30,10 @@ class WebTabPage extends StatefulWidget {
   final bool showLoadingBar;
 
   @override
-  State<WebTabPage> createState() => WebTabPageState();
+  ConsumerState<WebTabPage> createState() => WebTabPageState();
 }
 
-class WebTabPageState extends State<WebTabPage> {
+class WebTabPageState extends ConsumerState<WebTabPage> {
   late final WebViewController _controller;
   bool _failed = false;
   String _errorMessage = '';
@@ -112,7 +114,15 @@ class WebTabPageState extends State<WebTabPage> {
           );
         }
         break;
-      // token / share / haptic 在 P1 接入，P0 收到也不处理，避免半成品逻辑
+      case 'token':
+        // 网页登录成功后由 AppTokenBridge 推过来，落盘后原生页立刻是登录态
+        final payload = (decoded['payload'] as Map?)?.cast<String, dynamic>();
+        final token = payload?['token'] as String?;
+        if (token == null || token.isEmpty) break;
+        final expiresAt = DateTime.tryParse(payload?['expiresAt'] as String? ?? '');
+        ref.read(sessionProvider.notifier).adopt(token, expiresAt);
+        break;
+      // share / haptic 在 P2 接入，收到也不处理，避免半成品逻辑
       default:
         break;
     }

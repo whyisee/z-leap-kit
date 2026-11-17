@@ -40,6 +40,15 @@ dependencies:
   webview_flutter: ^4.14.1
   url_launcher: ^6.3.3
   intl: ^0.20.3
+  dio: ^5.11.1
+  shared_preferences: ^2.5.6
+  webview_flutter_android: ^4.14.1
+
+# macOS 上只有 CommandLineTools、没有完整 Xcode 时，shared_preferences_foundation
+# 2.6.x 的 objective_c 构建钩子会调 xcodebuild 失败，连带 flutter test 跑不起来。
+# 这个包只影响 iOS/macOS 实现，锁到 2.5.3 不影响 Android。
+dependency_overrides:
+  shared_preferences_foundation: 2.5.3
 
 dev_dependencies:
   flutter_test:

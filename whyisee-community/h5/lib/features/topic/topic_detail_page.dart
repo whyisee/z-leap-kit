@@ -1,0 +1,739 @@
+import 'dart:async';
+
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/api/api_exception.dart';
+import '../../core/api/models.dart';
+import '../../core/env.dart';
+import '../../core/format.dart';
+import '../../core/providers.dart';
+import '../errors/error_view.dart';
+import '../feed/feed_controller.dart';
+import 'topic_repository.dart';
+import 'widgets/article_webview.dart';
+import 'widgets/float_dock.dart';
+import 'widgets/post_tile.dart';
+import 'widgets/reader_top_bar.dart';
+import 'widgets/topic_ai_sheet.dart';
+
+/// 帖子详情，交互对齐网页版的沉浸阅读器：
+///
+/// - 滚动后顶栏变毛玻璃、文章标题浮出（ReaderTopBar）；
+/// - 右下角竖排操作条（FloatDock），AI/点赞/收藏/回复/分享/关注作者；
+/// - 已读到底后继续上滑，切到服务端推荐的下一篇；
+/// - 正文用 WebView 保真渲染，回帖降级成纯文本。
+class TopicDetailPage extends ConsumerStatefulWidget {
+  const TopicDetailPage({super.key, required this.topicId});
+
+  final int topicId;
+
+  @override
+  ConsumerState<TopicDetailPage> createState() => _TopicDetailPageState();
+}
+
+class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
+  /// 网页版参数：剩余滚动 ≤28px 算到底；触摸累计 108px 触发切篇。
+  static const _boundaryDistance = 28.0;
+  static const _switchThreshold = 108.0;
+
+  final _scroll = ScrollController();
+  final _offset = ValueNotifier<double>(0);
+  final _repliesKey = GlobalKey();
+
+  TopicDetail? _detail;
+  ApiException? _error;
+  bool _loading = true;
+  bool _topicLikeBusy = false;
+  bool _bookmarkBusy = false;
+  bool _followBusy = false;
+  final Set<int> _postLikeBusy = {};
+
+  /// 到底后继续拖的累计距离，够了就切篇。
+  double _overscroll = 0;
+  bool _switching = false;
+  Timer? _overscrollReset;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _overscrollReset?.cancel();
+    _scroll
+      ..removeListener(_onScroll)
+      ..dispose();
+    _offset.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    _offset.value = _scroll.offset;
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final detail = await ref.read(topicRepositoryProvider).detail(widget.topicId);
+      if (!mounted) return;
+      setState(() {
+        _detail = detail;
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = ApiException(code: 'unknown', message: '加载失败，稍后重试。');
+        _loading = false;
+      });
+    }
+  }
+
+  bool get _signedIn => ref.read(sessionProvider).isSignedIn;
+
+  bool _needLogin() {
+    _toast('登录后才能操作，可在「我」里登录');
+    return false;
+  }
+
+  void _toast(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(text),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
+  // ---------------------------------------------------------------- 互动
+
+  Future<void> _toggleTopicLike() async {
+    final detail = _detail;
+    if (detail == null || _topicLikeBusy) return;
+    if (!_signedIn) {
+      _needLogin();
+      return;
+    }
+
+    final before = detail.interactions;
+    final optimisticLiked = !before.liked;
+
+    setState(() {
+      _topicLikeBusy = true;
+      _detail = detail.copyWith(
+        interactions: before.copyWith(
+          liked: optimisticLiked,
+          likeCount: (before.likeCount + (optimisticLiked ? 1 : -1)).clamp(0, 1 << 30),
+        ),
+      );
+    });
+
+    try {
+      final result = await ref.read(topicRepositoryProvider).toggleLike(
+            targetType: 'topic',
+            targetId: widget.topicId,
+          );
+      if (!mounted) return;
+      setState(() {
+        _detail = _detail!.copyWith(
+          interactions: _detail!.interactions.copyWith(
+            liked: result.liked,
+            likeCount: result.likeCount,
+          ),
+        );
+      });
+      ref.read(feedControllerProvider.notifier).patchLike(widget.topicId, likeCount: result.likeCount);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _detail = _detail!.copyWith(interactions: before));
+      _toast(e.isRateLimited ? '手太快了，歇一下' : e.message);
+    } finally {
+      if (mounted) setState(() => _topicLikeBusy = false);
+    }
+  }
+
+  Future<void> _toggleBookmark() async {
+    final detail = _detail;
+    if (detail == null || _bookmarkBusy) return;
+    if (!_signedIn) {
+      _needLogin();
+      return;
+    }
+
+    final before = detail.interactions;
+    final next = !before.bookmarked;
+
+    setState(() {
+      _bookmarkBusy = true;
+      _detail = detail.copyWith(
+        interactions: before.copyWith(
+          bookmarked: next,
+          bookmarkCount: (before.bookmarkCount + (next ? 1 : -1)).clamp(0, 1 << 30),
+        ),
+      );
+    });
+
+    try {
+      final bookmarked = await ref.read(topicRepositoryProvider).toggleBookmark(widget.topicId);
+      if (!mounted) return;
+      setState(() {
+        _detail = _detail!.copyWith(
+          interactions: _detail!.interactions.copyWith(bookmarked: bookmarked),
+        );
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _detail = _detail!.copyWith(interactions: before));
+      _toast(e.message);
+    } finally {
+      if (mounted) setState(() => _bookmarkBusy = false);
+    }
+  }
+
+  Future<void> _toggleFollow() async {
+    final detail = _detail;
+    if (detail == null || _followBusy) return;
+    if (!_signedIn) {
+      _needLogin();
+      return;
+    }
+
+    final authorId = detail.topic.author.id;
+    if (authorId <= 0) return;
+
+    final before = detail.interactions;
+    setState(() {
+      _followBusy = true;
+      _detail = detail.copyWith(
+        interactions: before.copyWith(followed: !before.followed),
+      );
+    });
+
+    try {
+      final following = await ref.read(topicRepositoryProvider).toggleFollowUser(authorId);
+      if (!mounted) return;
+      setState(() {
+        _detail = _detail!.copyWith(
+          interactions: _detail!.interactions.copyWith(followed: following),
+        );
+      });
+      _toast(following ? '已关注' : '已取消关注');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _detail = _detail!.copyWith(interactions: before));
+      _toast(e.message);
+    } finally {
+      if (mounted) setState(() => _followBusy = false);
+    }
+  }
+
+  void _scrollToReplies() {
+    final ctx = _repliesKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      alignment: 0.02,
+    );
+  }
+
+  Future<void> _share() async {
+    final url = '${Env.siteBase}/t/${widget.topicId}';
+    await Clipboard.setData(ClipboardData(text: url));
+    _toast('链接已复制');
+  }
+
+  void _openInBrowser() {
+    launchUrl(Env.uri('/t/${widget.topicId}'), mode: LaunchMode.externalApplication);
+  }
+
+  /// AI 菜单走服务端鉴权（`/api/v1/ai/topic` 要登录），未登录先提示再退出。
+  void _openAi() {
+    if (!_signedIn) {
+      _needLogin();
+      return;
+    }
+    showTopicAiSheet(context, topicId: widget.topicId);
+  }
+
+  Future<void> _togglePostLike(TopicPost post) async {
+    if (_postLikeBusy.contains(post.id)) return;
+    if (!_signedIn) {
+      _needLogin();
+      return;
+    }
+
+    final detail = _detail;
+    if (detail == null) return;
+
+    final index = detail.posts.indexWhere((p) => p.id == post.id);
+    if (index < 0) return;
+
+    final optimistic = post.copyWith(
+      liked: !post.liked,
+      likeCount: (post.likeCount + (post.liked ? -1 : 1)).clamp(0, 1 << 30),
+    );
+
+    setState(() {
+      _postLikeBusy.add(post.id);
+      _detail = detail.copyWith(posts: _replacePost(detail.posts, index, optimistic));
+    });
+
+    try {
+      final result = await ref.read(topicRepositoryProvider).toggleLike(
+            targetType: 'post',
+            targetId: post.id,
+          );
+      if (!mounted) return;
+      final current = _detail;
+      if (current == null) return;
+      final at = current.posts.indexWhere((p) => p.id == post.id);
+      if (at < 0) return;
+      setState(() {
+        _detail = current.copyWith(
+          posts: _replacePost(
+            current.posts,
+            at,
+            current.posts[at].copyWith(liked: result.liked, likeCount: result.likeCount),
+          ),
+        );
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      final current = _detail;
+      if (current == null) return;
+      final at = current.posts.indexWhere((p) => p.id == post.id);
+      if (at >= 0) {
+        setState(() {
+          _detail = current.copyWith(posts: _replacePost(current.posts, at, post));
+        });
+      }
+      _toast(e.message);
+    } finally {
+      if (mounted) setState(() => _postLikeBusy.remove(post.id));
+    }
+  }
+
+  static List<TopicPost> _replacePost(List<TopicPost> posts, int index, TopicPost next) {
+    final copy = List<TopicPost>.of(posts);
+    copy[index] = next;
+    return copy;
+  }
+
+  // ---------------------------------------------------------------- 切篇
+
+  bool _onScrollNotification(ScrollNotification n) {
+    if (_switching) return false;
+
+    if (n is OverscrollNotification) {
+      // 只有「已到底还继续往上看」才算，顶部回弹不算
+      final atBottom = n.metrics.pixels >= n.metrics.maxScrollExtent - _boundaryDistance;
+      if (atBottom && n.overscroll > 0) {
+        _overscroll += n.overscroll;
+        _overscrollReset?.cancel();
+        _overscrollReset = Timer(const Duration(milliseconds: 600), () => _overscroll = 0);
+        if (_overscroll >= _switchThreshold) {
+          _overscroll = 0;
+          _goNext();
+        }
+      } else {
+        _overscroll = 0;
+      }
+    } else if (n is ScrollEndNotification) {
+      _overscroll = 0;
+    }
+    return false;
+  }
+
+  Future<void> _goNext() async {
+    if (_switching) return;
+    final next = _detail?.next;
+    if (next == null || next.id <= 0) {
+      _toast('下面没有了');
+      return;
+    }
+
+    _switching = true;
+    context.pushReplacement('/t/${next.id}');
+    // 新页面接管后本 State 会被销毁；这里延迟复位，兜底替换失败的情况
+    Timer(const Duration(milliseconds: 400), () {
+      if (mounted) _switching = false;
+    });
+  }
+
+  // ---------------------------------------------------------------- 构建
+
+  @override
+  Widget build(BuildContext context) {
+    final topInset = MediaQuery.of(context).padding.top;
+
+    return Scaffold(
+      backgroundColor: const Color(Env.bg),
+      body: _buildBody(topInset),
+    );
+  }
+
+  Widget _buildBody(double topInset) {
+    if (_loading) {
+      return _SkeletonBody(topInset: topInset);
+    }
+
+    final error = _error;
+    if (error != null || _detail == null) {
+      return Padding(
+        padding: EdgeInsets.only(top: topInset),
+        child: ErrorView(
+          title: error?.isNetwork == true ? '网络不通' : '打不开这篇',
+          message: error?.message ?? '内容不存在。',
+          onRetry: _load,
+        ),
+      );
+    }
+
+    final detail = _detail!;
+    final topic = detail.topic;
+
+    return Stack(
+      children: [
+        // 列表顶部留出顶栏高度，顶栏浮在上面做毛玻璃
+        Positioned.fill(
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _onScrollNotification,
+            child: RefreshIndicator(
+              color: const Color(Env.blue),
+              backgroundColor: const Color(Env.surface),
+              onRefresh: _load,
+              child: ListView(
+                controller: _scroll,
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.only(top: topInset + kToolbarHeight),
+                children: [
+                  _Header(topic: topic),
+                  if (topic.contentHtml.trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                      child: ArticleWebView(html: topic.contentHtml),
+                    ),
+                  if (topic.tags.isNotEmpty) _Tags(tags: topic.tags),
+                  _RepliesHeader(key: _repliesKey, count: detail.posts.length),
+                  if (detail.posts.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 26),
+                      child: Center(
+                        child: Text(
+                          '还没有回复，去做第一个',
+                          style: TextStyle(fontSize: 13, color: Color(Env.muted)),
+                        ),
+                      ),
+                    )
+                  else
+                    for (var i = 0; i < detail.posts.length; i++)
+                      PostTile(
+                        post: detail.posts[i],
+                        floor: i + 1,
+                        likeBusy: _postLikeBusy.contains(detail.posts[i].id),
+                        onLike: () => _togglePostLike(detail.posts[i]),
+                      ),
+                  _NextHint(next: detail.next),
+                  const SizedBox(height: 96),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // 右下角竖排操作条
+        Positioned(
+          right: 10,
+          bottom: 42,
+          child: FloatDock(
+            author: topic.author,
+            interactions: detail.interactions,
+            replyCount: detail.posts.length,
+            likeBusy: _topicLikeBusy,
+            followBusy: _followBusy,
+            onLike: _toggleTopicLike,
+            onBookmark: _toggleBookmark,
+            onReply: _scrollToReplies,
+            onShare: _share,
+            onFollow: _toggleFollow,
+            onAi: _openAi,
+          ),
+        ),
+        // 顶栏放最上层，遮住滚上来的内容并做模糊
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: ValueListenableBuilder<double>(
+            valueListenable: _offset,
+            builder: (_, offset, _) => ReaderTopBar(
+              offset: offset,
+              title: topic.title,
+              topInset: topInset,
+              onBack: () => context.pop(),
+              onOpenBrowser: _openInBrowser,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 加载骨架：顶栏 + 标题占位，避免深色背景上一片空白被误认为卡死。
+class _SkeletonBody extends StatelessWidget {
+  const _SkeletonBody({required this.topInset});
+
+  final double topInset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(height: topInset + kToolbarHeight),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _bar(64, 12),
+              const SizedBox(height: 10),
+              _bar(double.infinity, 20),
+              const SizedBox(height: 8),
+              _bar(220, 20),
+              const SizedBox(height: 18),
+              _bar(120, 12),
+              const SizedBox(height: 22),
+              _bar(double.infinity, 14),
+              const SizedBox(height: 10),
+              _bar(double.infinity, 14),
+              const SizedBox(height: 10),
+              _bar(260, 14),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _bar(double width, double height) => Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1F28),
+          borderRadius: BorderRadius.circular(4),
+        ),
+      );
+}
+
+class _Header extends StatelessWidget {
+  const _Header({required this.topic});
+
+  final TopicSummary topic;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (topic.category != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                topic.category!.name,
+                style: const TextStyle(fontSize: 11.5, color: Color(Env.blue)),
+              ),
+            ),
+          Padding(
+            // 给右侧浮动操作条让位，标题不撞到点赞按钮
+            padding: const EdgeInsets.only(right: 34),
+            child: Text(
+              topic.title,
+              style: const TextStyle(
+                fontSize: 21,
+                height: 1.38,
+                fontWeight: FontWeight.w700,
+                color: Color(Env.text),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _Avatar(author: topic.author),
+              const SizedBox(width: 8),
+              Text(
+                topic.author.displayName,
+                style: const TextStyle(fontSize: 12.5, color: Color(Env.text)),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                relativeTime(topic.publishedAt),
+                style: const TextStyle(fontSize: 12, color: Color(0xFF6E7887)),
+              ),
+              const Spacer(),
+              const Icon(Icons.visibility_outlined, size: 13, color: Color(0xFF5C6675)),
+              const SizedBox(width: 4),
+              Text(
+                compactCount(topic.viewCount),
+                style: const TextStyle(fontSize: 11.5, color: Color(0xFF5C6675)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Tags extends StatelessWidget {
+  const _Tags({required this.tags});
+
+  final List<TagRef> tags;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final tag in tags)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(Env.panel),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '#${tag.name}',
+                style: const TextStyle(fontSize: 11.5, color: Color(Env.muted)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RepliesHeader extends StatelessWidget {
+  const _RepliesHeader({super.key, required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+      child: Row(
+        children: [
+          Text(
+            count == 0 ? '回复' : '$count 条回复',
+            style: const TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: Color(Env.text),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 列表末尾的「继续下滑」提示，呼应网页的滑到底切篇。
+class _NextHint extends StatelessWidget {
+  const _NextHint({required this.next});
+
+  final TopicRef? next;
+
+  @override
+  Widget build(BuildContext context) {
+    final target = next;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 26, 16, 0),
+      child: Column(
+        children: [
+          Icon(
+            Icons.keyboard_double_arrow_down,
+            size: 18,
+            color: const Color(Env.muted).withValues(alpha: 0.7),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            target == null ? '下面没有了' : '继续下滑 · ${target.title}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: const Color(Env.muted).withValues(alpha: 0.8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  const _Avatar({required this.author});
+
+  final Author author;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = author.avatarUrl;
+    if (url != null && url.isNotEmpty) {
+      return ClipOval(
+        child: Image.network(
+          url,
+          width: 24,
+          height: 24,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _fallback(),
+        ),
+      );
+    }
+    return _fallback();
+  }
+
+  Widget _fallback() => Container(
+        width: 24,
+        height: 24,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          color: Color(Env.panel),
+          shape: BoxShape.circle,
+        ),
+        child: Text(
+          author.initial,
+          style: const TextStyle(fontSize: 10.5, color: Color(Env.muted)),
+        ),
+      );
+}

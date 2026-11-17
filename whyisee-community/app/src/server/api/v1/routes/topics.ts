@@ -3,7 +3,7 @@ import { isAdmin } from "@lib/auth";
 import { getTopicById, listRelatedTopics } from "@server/services/topics";
 import { getPostForEdit, listPostsForTopic, topicHref, createPost } from "@server/services/posts";
 import { getTopicInteractionState, listPostInteractionStats } from "@server/services/interactions";
-import { recordUserContentEvent } from "@server/services/recommendations";
+import { recordUserContentEvent, listReadingRecommendations } from "@server/services/recommendations";
 import { withIdempotency } from "@server/services/appIdempotency";
 import { takeToken } from "@lib/rateLimit";
 import { fail, intParam, langOf, ok, type ApiEnv } from "../http";
@@ -35,10 +35,12 @@ topics.get("/:id", optionalAuth, async (c) => {
     return c.body(null, 304);
   }
 
-  const [posts, interaction, related] = await Promise.all([
+  const [posts, interaction, related, readingNext] = await Promise.all([
     listPostsForTopic(topic.id, session?.userId, lang),
     getTopicInteractionState(topic.id, session?.userId),
     listRelatedTopics(topic, 4, lang),
+    // 客户端「滑到底继续滑切下一篇」用，和网页版共用同一套推荐算法
+    listReadingRecommendations({ topic, userId: session?.userId, lang, limit: 1 }),
   ]);
 
   const stats = await listPostInteractionStats(
@@ -73,6 +75,10 @@ topics.get("/:id", optionalAuth, async (c) => {
       tags: (item.tags || []).map(toTag),
       author: toAuthor(item.author),
     })),
+    // 下一篇：没有就是 null，客户端据此提示「下面没有了」
+    next: readingNext[0]
+      ? { id: readingNext[0].topic.id, title: readingNext[0].topic.title }
+      : null,
   });
 });
 

@@ -7,6 +7,7 @@ import topicRoutes from "./routes/topics";
 import interactionRoutes from "./routes/interactions";
 import uploadRoutes from "./routes/uploads";
 import eventRoutes from "./routes/events";
+import aiRoutes from "./routes/ai";
 import metaRoutes from "./routes/meta";
 
 /**
@@ -26,6 +27,7 @@ v1.route("/topics", topicRoutes);
 v1.route("/interactions", interactionRoutes);
 v1.route("/uploads", uploadRoutes);
 v1.route("/events", eventRoutes);
+v1.route("/ai", aiRoutes);
 v1.route("/meta", metaRoutes);
 
 v1.notFound((c) => fail(c, "not_found", "接口不存在"));

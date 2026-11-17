@@ -1320,3 +1320,59 @@ git reset --hard <上一个提交> && npm run build && systemctl restart whyisee
 - `deploy/whyisee-community.service` 里 `DB_PASSWORD=123456` 明文且极弱，unit 文件权限建议 `600`；数据库端口 `15432` 公网可达（本地开发就是这么连的），至少应限制安全组来源 IP。
 - 单实例重启有 1~2 秒 502，可接受；要做零停机得上 nginx upstream + 双端口滚动，不是现在的优先级。
 
+## 14. 客户端 P1 实现状态（2026-11-17）
+
+### 14.1 做完了什么
+
+| 模块 | 实现 | 关键决策 |
+|---|---|---|
+| 原生 feed | `features/feed/`，四种排序（推荐/最新/热门/精选）、下拉刷新、游标翻页、骨架屏、空态、触底预取 | 分页用 offset 游标 + 按 id 去重（服务端排序是查询时实时算的，做不了稳定 keyset） |
+| 原生详情 | `features/topic/topic_detail_page.dart`，一次请求拿 topic+posts+interactions+related | 点赞乐观更新，失败回滚；本地计数回写 feed 列表，返回时数字已更新 |
+| 正文渲染 | `widgets/article_webview.dart`，内联深色样式的 HTML 文档 | 注入 JS 测 `scrollHeight` 经 `ContentMetrics` 通道回传，父级按高度展开，避免 WebView 内部滚动 |
+| 回帖渲染 | `widgets/post_tile.dart`，HTML 降级成纯文本 | 30 条回复 = 30 个 WebView 太重；只保留段落换行和 `[图:alt]` 占位 |
+| 认证 | `core/api/token_store.dart` + `core/providers.dart` | token 落 SharedPreferences；401 由 ApiClient 统一清 token 并回调，页面不各写一遍登出 |
+| 网页登录交接 | WebView JS 桥 `token` 分支 → `session.adopt()` | 沿用 `AppTokenBridge.astro`，网页退登 app 立刻失效 |
+
+路由：`/` → 原生 feed，`/t/:id` 挂在第一个 branch 下（从 feed 进详情再返回，tab 状态不丢）；其余三个 tab 仍是 WebView。
+
+### 14.2 实测（真机 OnePlus PKG110 / Android 16）
+
+用 debug 包 + `adb` 断言，不用截图：
+
+```
+[api] GET /api/v1/feed?sort=recommend&limit=20&surface=see -> 200   # 首屏
+[api] GET /api/v1/feed?sort=latest&limit=20&surface=see -> 200      # 点「最新」
+[api] GET /api/v1/feed -> 200  ×2                                    # 滑到底翻页
+[api] GET /api/v1/topics/31 -> 200                                   # 点卡片进详情
+[article] height=750                                                 # 正文高度上报成功
+```
+
+`flutter analyze` 无 issue，`flutter test` 15 个用例全过（`format_test.dart`、`models_test.dart` 用线上真实响应做 fixture 锁字段名）。
+
+### 14.3 P1 踩的三个坑（都已修，别再犯）
+
+1. **`main.dart` 缺 `ProviderScope`**。表现极具误导性：app 能启动、不崩溃、界面正常，但所有 provider 读不到，网络请求一个都不发。排查方法是先看有没有 `[api]` 日志，没有就从 provider 初始化查起。
+2. **Riverpod 3 不允许在 `build()` 同步链里写 `state`**。`unawaited(_load())` 会同步执行到第一个 `await`，如果第一句是 `state = ...` 就抛 `Bad state: Tried to read the state of an uninitialized provider`。改用 `Future.microtask` 推迟。
+3. **`shared_preferences_foundation` 2.6.x 让 `flutter test` 直接失败**。它依赖 `objective_c`，其构建钩子要调 `xcodebuild`，本机只有 CommandLineTools 就报 `Bad state: No element`。已在 `pubspec.yaml` 用 `dependency_overrides` 锁 2.5.3（只影响 iOS/macOS 实现，Android 不受影响）。
+
+### 14.4 还没做（P2）
+
+- 发帖 / 回复输入框、配图上传：现在点「回复」提示走浏览器。要做需要在 dio 的 multipart 请求上带 `Origin: https://whyisee.xyz`（Astro `checkOrigin` 会拦，见 §3.4）。
+- 收藏写入：按钮已渲染，`onTap` 为空。
+- 「关注」流的 JSON：服务端 `surface!=see` 时直接拒绝，因为关注流服务层没有作者与计数，拼不出完整 DTO。
+- 推送、深链、iOS 构建（缺完整 Xcode）。
+
+### 14.5 详情页正文空白：根因与修复（2026-11-17 夜）
+
+真机上详情页偶发「标题在、正文区整片黑」，且时好时坏。用 WebView 调试端口（`adb forward` + DevTools Protocol）抓到关键证据：**DOM 里文字在（243 个字符）、尺寸正常（328×604），但屏幕像素一个都没画出来**。同时高度日志暴露第二个问题：同一篇文章先报 `7680` 再报 `750`，有时最终停在 `7680`。
+
+两个独立缺陷，都要修：
+
+| 缺陷 | 根因 | 修法 |
+|---|---|---|
+| 正文区域全黑 | 插件默认把 WebView 渲染到 SurfaceTexture（Texture Layer Hybrid Composition），再当 Flutter 图层合成。该路径在部分设备上不刷新纹理，DOM 有内容但画面不更新 | `WebViewWidget.fromPlatformCreationParams(AndroidWebViewWidgetCreationParams(displayWithHybridComposition: true))`，改用 SurfaceView |
+| 高度报成十倍 | WebView 首次 attach 时宽度未定型，文字按极窄宽度换行；且 `Math.max(body.scrollHeight, documentElement.scrollHeight)` 里的 `documentElement` 至少等于视口高度，父级一旦撑高就把视口高度报回来，形成只增不减的自锁 | JS 只量 `body`，且 `window.innerWidth < 60` 时不报；Dart 侧攒 120ms 取最后一次（debounce） |
+
+验证方式：截图后取正文核心区（y 34%~86%）统计亮像素占比。空白页是 **0.00%**，正常页 5%~8%。修复后连测 3 篇不同文章 + 同一篇反复进出 5 次，全部稳定在 8% 左右；高度日志每次只报一次正确值（714/577/549），不再出现四位数。
+
+副作用检查：Hybrid Composition 是 SurfaceView，z-order 在 Flutter 之上，实测滚动时底部 tab 栏没有被盖住。代价是滚动时正文与 Flutter 内容可能有轻微不同步，只读长文可接受。
