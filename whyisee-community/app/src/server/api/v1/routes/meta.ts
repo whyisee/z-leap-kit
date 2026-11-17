@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { ok, type ApiEnv } from "../http";
+import { listCategories } from "@server/services/categories";
+import { langOf, ok, type ApiEnv } from "../http";
 
 const meta = new Hono<ApiEnv>();
 
@@ -18,6 +19,29 @@ meta.get("/", (c) => {
       inAppNotifications: false,
       push: false,
     },
+  });
+});
+
+/**
+ * 列表页的分类筛选项。和网页左侧栏同源（categories 表），只返回空分类之外的部分，
+ * 手机上一行长条也不至于塞进十几个点不出内容的分类。
+ */
+meta.get("/filters", async (c) => {
+  const categories = await listCategories(langOf(c));
+
+  // 分类很少变，让客户端和 CDN 缓存 5 分钟，不必每次进列表都拉
+  c.header("cache-control", "public, max-age=300");
+
+  return ok(c, {
+    categories: categories
+      .filter((category) => (category.topicCount ?? 0) > 0)
+      .map((category) => ({
+        id: category.id,
+        name: category.name,
+        slug: category.slug,
+        color: category.color,
+        topicCount: category.topicCount ?? 0,
+      })),
   });
 });
 

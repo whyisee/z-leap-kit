@@ -372,8 +372,8 @@ class TopicAiResult {
 }
 
 /// feed 一页结果。游标语义由服务端决定，客户端只负责原样回传。
-class FeedPage {
-  const FeedPage({
+class FeedPageResult {
+  const FeedPageResult({
     required this.items,
     required this.hasMore,
     this.nextCursor,
@@ -383,8 +383,8 @@ class FeedPage {
   final bool hasMore;
   final String? nextCursor;
 
-  factory FeedPage.fromJson(Map<String, dynamic> data, Map<String, dynamic>? meta) =>
-      FeedPage(
+  factory FeedPageResult.fromJson(Map<String, dynamic> data, Map<String, dynamic>? meta) =>
+      FeedPageResult(
         items: ((data['items'] as List?) ?? const [])
             .whereType<Map>()
             .map((e) => TopicSummary.fromJson(e.cast<String, dynamic>()))

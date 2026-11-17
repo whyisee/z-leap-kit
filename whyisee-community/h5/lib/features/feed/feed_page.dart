@@ -2,7 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../core/api/models.dart';
 import '../../core/env.dart';
+import '../../core/format.dart';
 import '../errors/error_view.dart';
 import 'feed_controller.dart';
 import 'feed_repository.dart';
@@ -61,6 +63,11 @@ class _FeedPageState extends ConsumerState<FeedPage> {
     );
   }
 
+  /// 换排序/分类后列表内容整体换了，还留在旧偏移会停在半空中，直接回到顶部。
+  void _resetScroll() {
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(feedControllerProvider);
@@ -72,7 +79,16 @@ class _FeedPageState extends ConsumerState<FeedPage> {
         children: [
           _Header(
             sort: state.sort,
-            onSortChanged: controller.changeSort,
+            onSortChanged: (sort) {
+              _resetScroll();
+              controller.changeSort(sort);
+            },
+            categorySlug: state.categorySlug,
+            categories: state.categories,
+            onCategoryChanged: (slug) {
+              _resetScroll();
+              controller.changeCategory(slug);
+            },
           ),
           Expanded(
             child: Stack(
@@ -149,17 +165,26 @@ class _FeedPageState extends ConsumerState<FeedPage> {
   }
 }
 
-/// 头部：大标题 + 等分分段控件。不做滚动收缩，避免每帧重建和高度跳变。
+/// 头部：大标题 + 等分分段控件 + 分类横向条。不做滚动收缩，避免每帧重建和高度跳变。
 class _Header extends StatelessWidget {
-  const _Header({required this.sort, required this.onSortChanged});
+  const _Header({
+    required this.sort,
+    required this.onSortChanged,
+    required this.categorySlug,
+    required this.categories,
+    required this.onCategoryChanged,
+  });
 
   final FeedSort sort;
   final ValueChanged<FeedSort> onSortChanged;
+  final String? categorySlug;
+  final List<CategoryRef> categories;
+  final ValueChanged<String?> onCategoryChanged;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 6, 0, 7),
       decoration: const BoxDecoration(
         color: Color(Env.bg),
         border: Border(bottom: BorderSide(color: Color(Env.line), width: 1)),
@@ -168,11 +193,11 @@ class _Header extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
-            padding: EdgeInsets.only(left: 2, bottom: 10),
+            padding: EdgeInsets.only(left: 2, bottom: 9),
             child: Text(
               '看见',
               style: TextStyle(
-                fontSize: 24,
+                fontSize: 22,
                 height: 1.2,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.2,
@@ -180,12 +205,129 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
-          _SortBar(sort: sort, onSortChanged: onSortChanged),
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: _SortBar(sort: sort, onSortChanged: onSortChanged),
+          ),
+          // 没有分类数据（接口没返回/还没部署）就整行不占位，不留一条空条
+          if (categories.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            _CategoryBar(
+              categories: categories,
+              activeSlug: categorySlug,
+              onChanged: onCategoryChanged,
+            ),
+          ],
         ],
       ),
     );
   }
 }
+
+/// 分类横向条：「全部」+ 各分类，一行放不下横向滚。
+///
+/// 网页版这块是左侧栏常驻列表，手机没有侧栏，所以压成一行 chip；
+/// 选中项用蓝色描边 + 分类色圆点，和列表卡片里的分类色保持同一套语义。
+class _CategoryBar extends StatelessWidget {
+  const _CategoryBar({
+    required this.categories,
+    required this.activeSlug,
+    required this.onChanged,
+  });
+
+  final List<CategoryRef> categories;
+  final String? activeSlug;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 30,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.only(right: 16),
+        itemCount: categories.length + 1,
+        separatorBuilder: (_, _) => const SizedBox(width: 7),
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return _CategoryChip(
+              label: '全部',
+              selected: activeSlug == null,
+              onTap: () => onChanged(null),
+            );
+          }
+
+          final category = categories[index - 1];
+          return _CategoryChip(
+            label: category.name,
+            dotColor: colorFromHex(category.color),
+            selected: activeSlug == category.slug,
+            onTap: () => onChanged(category.slug),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.dotColor,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color? dotColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.symmetric(horizontal: 11),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? const Color(0x268AB4F8) : const Color(0x0DFFFFFF),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color: selected ? const Color(0x558AB4F8) : const Color(0x14FFFFFF),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (dotColor != null) ...[
+              Container(
+                width: 5,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: dotColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 5),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected ? const Color(Env.blue) : const Color(0xFF8A939F),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 
 /// 等分分段控件：4 个选项一次全可见，比横向滚动的小胶囊更好点、也更整齐。
 class _SortBar extends StatelessWidget {

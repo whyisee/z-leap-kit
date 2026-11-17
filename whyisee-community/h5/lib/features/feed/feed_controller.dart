@@ -9,6 +9,8 @@ import 'feed_repository.dart';
 class FeedState {
   const FeedState({
     required this.sort,
+    this.categorySlug,
+    this.categories = const [],
     this.items = const [],
     this.cursor,
     this.hasMore = false,
@@ -18,6 +20,13 @@ class FeedState {
   });
 
   final FeedSort sort;
+
+  /// 当前分类。null = 全部，服务端就不带 `category` 参数。
+  final String? categorySlug;
+
+  /// 分类筛选项，启动时拉一次；拉不到就只有「全部」。
+  final List<CategoryRef> categories;
+
   final List<TopicSummary> items;
   final String? cursor;
   final bool hasMore;
@@ -32,6 +41,7 @@ class FeedState {
 
   FeedState copyWith({
     FeedSort? sort,
+    List<CategoryRef>? categories,
     List<TopicSummary>? items,
     String? cursor,
     bool? hasMore,
@@ -42,6 +52,9 @@ class FeedState {
   }) =>
       FeedState(
         sort: sort ?? this.sort,
+        // 分类只由 changeCategory 换，这里原样带过，避免 copyWith 传 null 时被误判成「全部」
+        categorySlug: categorySlug,
+        categories: categories ?? this.categories,
         items: items ?? this.items,
         cursor: cursor ?? this.cursor,
         hasMore: hasMore ?? this.hasMore,
@@ -59,34 +72,63 @@ class FeedController extends Notifier<FeedState> {
   FeedState build() {
     // 不能在 build() 同步链里写 state（Riverpod 3 会抛 "uninitialized provider"），
     // 推到微任务里跑，那时本 provider 已经初始化完。
-    Future.microtask(() => _loadFirstPage(FeedSort.recommend));
+    Future.microtask(_bootstrap);
     return const FeedState(sort: FeedSort.recommend, loadingFirst: true);
   }
 
   FeedRepository get _repo => ref.read(feedRepositoryProvider);
 
+  Future<void> _bootstrap() async {
+    // 分类和首屏并行拉，别让分类接口把首屏拖慢
+    unawaited(_loadCategories());
+    await _loadFirstPage();
+  }
+
+  Future<void> _loadCategories() async {
+    final categories = await _repo.categories();
+    if (categories.isEmpty || !ref.mounted) return;
+    state = state.copyWith(categories: categories);
+  }
+
   /// 下拉刷新：保留当前列表，失败时只在顶部提示，不清空已有内容。
-  Future<void> refresh() => _loadFirstPage(state.sort, keepItems: true);
+  Future<void> refresh() => _loadFirstPage(keepItems: true);
 
   Future<void> changeSort(FeedSort sort) async {
     if (sort == state.sort) return;
-    state = FeedState(sort: sort, loadingFirst: true);
-    await _loadFirstPage(sort);
+    state = FeedState(
+      sort: sort,
+      categorySlug: state.categorySlug,
+      categories: state.categories,
+      loadingFirst: true,
+    );
+    await _loadFirstPage();
   }
 
-  Future<void> _loadFirstPage(FeedSort sort, {bool keepItems = false}) async {
-    final kept = keepItems ? state.items : const <TopicSummary>[];
+  /// 切分类。null = 全部。切了就从头拿，游标作废。
+  Future<void> changeCategory(String? slug) async {
+    if (slug == state.categorySlug) return;
+    state = FeedState(
+      sort: state.sort,
+      categorySlug: slug,
+      categories: state.categories,
+      loadingFirst: true,
+    );
+    await _loadFirstPage();
+  }
+
+  Future<void> _loadFirstPage({bool keepItems = false}) async {
+    final sort = state.sort;
+    final slug = state.categorySlug;
     state = state.copyWith(
-      sort: sort,
-      items: kept,
+      items: keepItems ? state.items : const <TopicSummary>[],
       loadingFirst: true,
       clearError: true,
     );
 
     try {
-      final page = await _repo.load(sort: sort);
-      // 请求返回时若排序已被用户切走，丢弃这批结果，避免串台
-      if (state.sort != sort) return;
+      final page = await _repo.load(sort: sort, categorySlug: slug);
+      // 请求返回时若排序或分类已被切走，丢弃这批结果，避免串台
+      if (state.sort != sort || state.categorySlug != slug) return;
       state = state.copyWith(
         items: page.items,
         cursor: page.nextCursor,
@@ -111,11 +153,12 @@ class FeedController extends Notifier<FeedState> {
     if (!state.hasMore || cursor == null) return;
 
     final sort = state.sort;
+    final slug = state.categorySlug;
     state = state.copyWith(loadingMore: true, clearError: true);
 
     try {
-      final page = await _repo.load(sort: sort, cursor: cursor);
-      if (state.sort != sort) return;
+      final page = await _repo.load(sort: sort, cursor: cursor, categorySlug: slug);
+      if (state.sort != sort || state.categorySlug != slug) return;
 
       final seen = state.items.map((e) => e.id).toSet();
       final merged = [

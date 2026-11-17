@@ -1,7 +1,18 @@
 /// 展示层的纯函数格式化。不依赖 BuildContext，方便单测。
 library;
 
+import 'dart:ui' show Color;
+
 import 'env.dart';
+
+/// 站内 `#RRGGBB` 分类色 → Color。解析不出来就退成主题蓝，不抛错。
+Color colorFromHex(String? raw, {Color fallback = const Color(0xFF8AB4F8)}) {
+  if (raw == null || raw.isEmpty) return fallback;
+  final hex = raw.replaceAll('#', '').trim();
+  final value = int.tryParse(hex, radix: 16);
+  if (value == null) return fallback;
+  return Color(hex.length <= 6 ? 0xFF000000 | value : value);
+}
 
 /// 列表里的相对时间。超过 7 天退成日期，避免「123天前」这种没信息量的表述。
 String relativeTime(DateTime? time, {DateTime? now}) {

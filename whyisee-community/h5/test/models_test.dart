@@ -96,7 +96,7 @@ void main() {
   });
 
   test('feed 分页元信息解析', () {
-    final page = FeedPage.fromJson(
+    final page = FeedPageResult.fromJson(
       {
         'items': [
           {

@@ -69,7 +69,7 @@ class TopicCard extends StatelessWidget {
                     width: 5,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: _categoryColor(category.color),
+                      color: colorFromHex(category.color),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -150,13 +150,6 @@ class TopicCard extends StatelessWidget {
     );
   }
 
-  static Color _categoryColor(String? raw) {
-    if (raw == null || raw.isEmpty) return const Color(Env.blue);
-    final hex = raw.replaceAll('#', '');
-    final value = int.tryParse(hex, radix: 16);
-    if (value == null) return const Color(Env.blue);
-    return Color(hex.length <= 6 ? 0xFF000000 | value : value);
-  }
 }
 
 class _Cover extends StatelessWidget {

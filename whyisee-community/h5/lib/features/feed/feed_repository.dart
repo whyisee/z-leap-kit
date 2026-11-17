@@ -27,17 +27,33 @@ class FeedRepository {
   final ApiClient _api;
 
   /// cursor 是服务端编的 offset 串，客户端不解析、只回传。
-  Future<FeedPage> load({
+  /// categorySlug 为空表示「全部」，服务端不传这个参数就不做分类过滤。
+  Future<FeedPageResult> load({
     required FeedSort sort,
     String? cursor,
+    String? categorySlug,
     int limit = 20,
   }) async {
     final payload = await _api.get('/feed', query: {
       'sort': sort.wire,
       'limit': limit,
       'cursor': cursor,
+      'category': categorySlug,
       'surface': 'see',
     });
-    return FeedPage.fromJson(payload.data, payload.meta);
+    return FeedPageResult.fromJson(payload.data, payload.meta);
+  }
+
+  /// 分类筛选项。失败不抛错：拿不到就只显示「全部」，不能因此让整页报错。
+  Future<List<CategoryRef>> categories() async {
+    try {
+      final payload = await _api.get('/meta/filters');
+      return ((payload.data['categories'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => CategoryRef.fromJson(e.cast<String, dynamic>()))
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
   }
 }
