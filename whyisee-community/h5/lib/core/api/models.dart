@@ -394,6 +394,164 @@ class FeedPage {
       );
 }
 
+/// 「我」页一次拿全的数据（`GET /api/v1/me/overview`）。
+class MeOverview {
+  const MeOverview({
+    required this.profile,
+    required this.stats,
+    this.badges = const [],
+    this.recentTopics = const [],
+    this.unreadCount = 0,
+  });
+
+  final MeProfile profile;
+  final MeStats stats;
+  final List<MeBadge> badges;
+  final List<TopicSummary> recentTopics;
+  final int unreadCount;
+
+  factory MeOverview.fromJson(Map<String, dynamic> json) => MeOverview(
+        profile: MeProfile.fromJson(
+          (json['user'] as Map?)?.cast<String, dynamic>() ?? const {},
+        ),
+        stats: MeStats.fromJson(
+          (json['stats'] as Map?)?.cast<String, dynamic>() ?? const {},
+        ),
+        badges: ((json['badges'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => MeBadge.fromJson(e.cast<String, dynamic>()))
+            .toList(growable: false),
+        recentTopics: ((json['recentTopics'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => TopicSummary.fromJson(e.cast<String, dynamic>()))
+            .toList(growable: false),
+        unreadCount: (json['unreadCount'] as num?)?.toInt() ?? 0,
+      );
+
+  MeOverview copyWith({int? unreadCount}) => MeOverview(
+        profile: profile,
+        stats: stats,
+        badges: badges,
+        recentTopics: recentTopics,
+        unreadCount: unreadCount ?? this.unreadCount,
+      );
+}
+
+class MeProfile {
+  const MeProfile({
+    required this.id,
+    required this.username,
+    required this.displayName,
+    this.avatarUrl,
+    this.bio = '',
+    this.websiteUrl,
+    this.githubUrl,
+    this.locale = 'zh',
+    this.role,
+    this.joinedAt,
+  });
+
+  final int id;
+  final String username;
+  final String displayName;
+  final String? avatarUrl;
+  final String bio;
+  final String? websiteUrl;
+  final String? githubUrl;
+  final String locale;
+  final String? role;
+  final DateTime? joinedAt;
+
+  String get initial =>
+      (displayName.isNotEmpty ? displayName : username).trim().isEmpty
+          ? 'W'
+          : (displayName.isNotEmpty ? displayName : username)
+              .trim()
+              .characters
+              .first
+              .toUpperCase();
+
+  factory MeProfile.fromJson(Map<String, dynamic> json) => MeProfile(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        username: json['username'] as String? ?? '',
+        displayName: (json['displayName'] as String?)?.trim().isNotEmpty == true
+            ? json['displayName'] as String
+            : (json['username'] as String? ?? ''),
+        avatarUrl: json['avatarUrl'] as String?,
+        bio: json['bio'] as String? ?? '',
+        websiteUrl: json['websiteUrl'] as String?,
+        githubUrl: json['githubUrl'] as String?,
+        locale: json['locale'] as String? ?? 'zh',
+        role: json['role'] as String?,
+        joinedAt: _parseTime(json['joinedAt']),
+      );
+}
+
+class MeStats {
+  const MeStats({
+    this.topicCount = 0,
+    this.replyCount = 0,
+    this.featuredCount = 0,
+    this.badgeCount = 0,
+    this.followerCount = 0,
+    this.followingCount = 0,
+    this.contributionScore = 0,
+    this.trustLevel = 1,
+    this.trustName = '',
+    this.nextLevelScore,
+    this.nextLevelName,
+  });
+
+  final int topicCount;
+  final int replyCount;
+  final int featuredCount;
+  final int badgeCount;
+  final int followerCount;
+  final int followingCount;
+  final int contributionScore;
+  final int trustLevel;
+  final String trustName;
+  final int? nextLevelScore;
+  final String? nextLevelName;
+
+  factory MeStats.fromJson(Map<String, dynamic> json) => MeStats(
+        topicCount: (json['topicCount'] as num?)?.toInt() ?? 0,
+        replyCount: (json['replyCount'] as num?)?.toInt() ?? 0,
+        featuredCount: (json['featuredCount'] as num?)?.toInt() ?? 0,
+        badgeCount: (json['badgeCount'] as num?)?.toInt() ?? 0,
+        followerCount: (json['followerCount'] as num?)?.toInt() ?? 0,
+        followingCount: (json['followingCount'] as num?)?.toInt() ?? 0,
+        contributionScore: (json['contributionScore'] as num?)?.toInt() ?? 0,
+        trustLevel: (json['trustLevel'] as num?)?.toInt() ?? 1,
+        trustName: json['trustName'] as String? ?? '',
+        nextLevelScore: (json['nextLevelScore'] as num?)?.toInt(),
+        nextLevelName: json['nextLevelName'] as String?,
+      );
+}
+
+class MeBadge {
+  const MeBadge({
+    required this.id,
+    required this.name,
+    this.icon = '',
+    this.tone = 'blue',
+  });
+
+  final String id;
+  final String name;
+  final String icon;
+
+  /// blue / green / gold / violet / rose，客户端按它选配色。
+  final String tone;
+
+  factory MeBadge.fromJson(Map<String, dynamic> json) => MeBadge(
+        id: json['id'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        icon: json['icon'] as String? ?? '',
+        tone: json['tone'] as String? ?? 'blue',
+      );
+}
+
 DateTime? _parseTime(Object? value) {
   if (value is! String || value.isEmpty) return null;
   return DateTime.tryParse(value)?.toLocal();

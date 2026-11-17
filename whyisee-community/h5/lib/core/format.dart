@@ -1,6 +1,8 @@
 /// 展示层的纯函数格式化。不依赖 BuildContext，方便单测。
 library;
 
+import 'env.dart';
+
 /// 列表里的相对时间。超过 7 天退成日期，避免「123天前」这种没信息量的表述。
 String relativeTime(DateTime? time, {DateTime? now}) {
   if (time == null) return '';
@@ -22,6 +24,17 @@ String relativeTime(DateTime? time, {DateTime? now}) {
     return '${time.month}-${time.day.toString().padLeft(2, '0')}';
   }
   return '${time.year}-${time.month.toString().padLeft(2, '0')}-${time.day.toString().padLeft(2, '0')}';
+}
+
+/// 站内相对路径补成绝对地址；网页内置头像（data:image/svg+xml）Flutter 画不了，
+/// 返回 null 让 UI 退回首字母，避免整块白图。
+String? absoluteImageUrl(String? raw) {
+  if (raw == null) return null;
+  final url = raw.trim();
+  if (url.isEmpty || url.startsWith('data:')) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  if (url.startsWith('//')) return 'https:$url';
+  return url.startsWith('/') ? '${Env.siteBase}$url' : '${Env.siteBase}/$url';
 }
 
 /// 计数压缩：999 以内原样，1 万以内 1.2k，再往上 1.2w。
