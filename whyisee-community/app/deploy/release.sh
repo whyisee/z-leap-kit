@@ -13,6 +13,17 @@
 #      任何情况下不删除该目录。
 #   3. 构建失败或重启后不健康 → 自动恢复上一份 dist，不留半死状态。
 #
+
+# 必须在 bash 下跑：`sh release.sh` 会用 dash，不认 [[ ]] 和 <(...)。
+if [ -z "${BASH_VERSION:-}" ]; then
+  if command -v bash >/dev/null 2>&1; then
+    printf '\033[33m! 检测到非 bash（当前 shell 不支持本脚本语法），自动切换到 bash\033[0m\n' >&2
+    exec bash "$0" "$@"
+  fi
+  printf '\033[31m[FAIL] 需要用 bash 执行：bash %s\033[0m\n' "$0" >&2
+  exit 1
+fi
+
 set -euo pipefail
 
 SERVICE="${SERVICE:-whyisee-community}"
@@ -40,17 +51,58 @@ warn() { printf '    \033[33m!\033[0m %s\n' "$*"; }
 die()  { printf '\n\033[1;31m[FAIL] %s\033[0m\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------- 0. 环境变量
+# 三个来源依次兜底：unit 的 Environment= → unit 的 EnvironmentFile= → app/.env
 log "读取 $SERVICE 的运行时环境变量"
 systemctl cat "$SERVICE" >/dev/null 2>&1 || die "找不到 systemd 服务 $SERVICE，先用 deploy/whyisee-community.service 注册"
-while IFS= read -r kv; do
-  [[ -z "$kv" ]] && continue
+
+ENV_SOURCE=""
+ENV_RAW="$(systemctl show "$SERVICE" -p Environment --value || true)"
+ENV_RAW="${ENV_RAW#Environment=}"     # 少数 systemd 版本 --value 仍带键名
+
+for kv in $ENV_RAW; do
+  [[ "$kv" == *=* ]] || continue
   export "$kv"
-done < <(systemctl show "$SERVICE" -p Environment --value | tr ' ' '\n')
+  ENV_SOURCE="Environment="
+done
+
+if [[ -z "${DB_HOST:-}" ]]; then
+  for ef in $(systemctl show "$SERVICE" -p EnvironmentFiles --value | sed 's/ ([^)]*)//g'); do
+    ef="${ef#-}"                       # systemd 前缀 - 表示文件可缺失
+    [[ -f "$ef" && "$ef" != "/dev/null" ]] || continue
+    set -a
+    # shellcheck disable=SC1090
+    . "$ef"
+    set +a
+    ENV_SOURCE="EnvironmentFile=$ef"
+    break
+  done
+fi
+
+if [[ -z "${DB_HOST:-}" && -f "$APP_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$APP_DIR/.env"
+  set +a
+  ENV_SOURCE="$APP_DIR/.env"
+fi
+
+# 应用进程自己的 cwd 就是 APP_DIR，所以无论变量来自哪里，都解析成绝对路径
+if [[ -n "${WHYISEE_UPLOAD_DIR:-}" && "${WHYISEE_UPLOAD_DIR}" != /* ]]; then
+  export WHYISEE_UPLOAD_DIR="$APP_DIR/${WHYISEE_UPLOAD_DIR#./}"
+fi
+
+[[ -n "${DB_HOST:-}" ]] && ok "配置来源：${ENV_SOURCE:-未知}"
 ok "DB=${DB_HOST:-?}:${DB_PORT:-?}/${DB_NAME:-?}?${DB_SCHEMA:-?}"
 PORT="${PORT:-4321}"
 ok "PORT=$PORT（standalone 未设 PORT 时默认 8080，线上 nginx 反代写的是 4321，两者必须一致）"
 
-[[ -n "${DB_HOST:-}" && -n "${DB_PASSWORD:-}" ]] || die "systemd unit 里缺 DB_HOST / DB_PASSWORD"
+if [[ -z "${DB_HOST:-}" || -z "${DB_PASSWORD:-}" ]]; then
+  printf '\n' >&2
+  warn "unit 里既没有 Environment= 也没有可读的 EnvironmentFile=，且 $APP_DIR/.env 不存在"
+  warn "把下面的输出贴出来，就能定位配置到底放在哪："
+  printf '\n    systemctl cat %s\n    systemctl show %s -p Environment -p EnvironmentFiles\n\n' "$SERVICE" "$SERVICE" >&2
+  die "缺 DB_HOST / DB_PASSWORD，无法安全执行迁移"
+fi
 [[ -d "$APP_DIR/node_modules" ]] || die "$APP_DIR/node_modules 不存在，先执行 cd $APP_DIR && npm ci"
 
 # ---------------------------------------------------------------- 1. 代码
