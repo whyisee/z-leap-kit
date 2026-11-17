@@ -13,6 +13,7 @@ import '../../core/format.dart';
 import '../../core/providers.dart';
 import '../errors/error_view.dart';
 import '../feed/feed_controller.dart';
+import 'reading_queue.dart';
 import 'topic_repository.dart';
 import 'widgets/article_webview.dart';
 import 'widgets/float_dock.dart';
@@ -87,6 +88,16 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
     try {
       final detail = await ref.read(topicRepositoryProvider).detail(widget.topicId);
       if (!mounted) return;
+
+      // 先把这篇记成已读、把它带来的候选倒进队列，再刷新 UI，
+      // 否则底部的「继续下滑 · 标题」会先渲染成上一批的旧值。
+      final queue = ref.read(readingQueueProvider);
+      queue.markSeen(widget.topicId);
+      queue.push(detail.nextCandidates);
+
+      // 上报已读：服务端据此把这批从推荐池里剔除，也用来算兴趣画像。
+      unawaited(ref.read(topicRepositoryProvider).trackRead(widget.topicId));
+
       setState(() {
         _detail = detail;
         _loading = false;
@@ -369,14 +380,38 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
 
   Future<void> _goNext() async {
     if (_switching) return;
-    final next = _detail?.next;
-    if (next == null || next.id <= 0) {
+
+    final queue = ref.read(readingQueueProvider);
+    final repo = ref.read(topicRepositoryProvider);
+
+    var next = queue.take();
+
+    // 队列啃完了就去服务端补一批，带上已读 id 做排除，否则又会算回同一批。
+    if (next == null) {
+      _switching = true;
+      try {
+        queue.push(
+          await repo.nextCandidates(topicId: widget.topicId, exclude: queue.seenIds),
+        );
+        next = queue.take();
+      } on ApiException catch (e) {
+        _toast(e.message);
+      } finally {
+        _switching = false;
+      }
+    }
+
+    if (next == null) {
       _toast('下面没有了');
       return;
     }
 
+    if (!mounted) return;
+
     _switching = true;
-    context.pushReplacement('/t/${next.id}');
+    final id = next.id;
+    unawaited(repo.trackRecommendationClick(id));
+    context.pushReplacement('/t/$id');
     // 新页面接管后本 State 会被销毁；这里延迟复位，兜底替换失败的情况
     Timer(const Duration(milliseconds: 400), () {
       if (mounted) _switching = false;
@@ -456,7 +491,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
                         likeBusy: _postLikeBusy.contains(detail.posts[i].id),
                         onLike: () => _togglePostLike(detail.posts[i]),
                       ),
-                  _NextHint(next: detail.next),
+                  _NextHint(next: ref.read(readingQueueProvider).peek),
                   const SizedBox(height: 96),
                 ],
               ),
@@ -687,7 +722,7 @@ class _NextHint extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            target == null ? '下面没有了' : '继续下滑 · ${target.title}',
+            target == null ? '继续下滑 · 换一批推荐' : '继续下滑 · ${target.title}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(

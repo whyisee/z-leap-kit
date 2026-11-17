@@ -35,12 +35,13 @@ topics.get("/:id", optionalAuth, async (c) => {
     return c.body(null, 304);
   }
 
-  const [posts, interaction, related, readingNext] = await Promise.all([
+  const [posts, interaction, related, readingCandidates] = await Promise.all([
     listPostsForTopic(topic.id, session?.userId, lang),
     getTopicInteractionState(topic.id, session?.userId),
     listRelatedTopics(topic, 4, lang),
-    // 客户端「滑到底继续滑切下一篇」用，和网页版共用同一套推荐算法
-    listReadingRecommendations({ topic, userId: session?.userId, lang, limit: 1 }),
+    // 「滑到底继续滑」的候选池。网页版一次渲染 12 条，客户端也拿一批，
+    // 由客户端自己按已读栈去重 —— 只给 1 条会退化成 A→B→A 打转。
+    listReadingRecommendations({ topic, userId: session?.userId, lang, limit: 12 }),
   ]);
 
   const stats = await listPostInteractionStats(
@@ -75,12 +76,59 @@ topics.get("/:id", optionalAuth, async (c) => {
       tags: (item.tags || []).map(toTag),
       author: toAuthor(item.author),
     })),
-    // 下一篇：没有就是 null，客户端据此提示「下面没有了」
-    next: readingNext[0]
-      ? { id: readingNext[0].topic.id, title: readingNext[0].topic.title }
-      : null,
+    // 下一篇候选（按服务端推荐分排序，已排除推荐池外的低分项）。
+    // 客户端按自己的已读队列挑第一条没读过的；啃光了再调 /:id/next 换新。
+    nextCandidates: readingCandidates.map((item) => ({
+      id: item.targetId,
+      title: item.topic.title,
+      summary: item.topic.summary,
+      replyCount: item.topic.replyCount,
+    })),
   });
 });
+
+/**
+ * 候选池补充：客户端把当前这篇算出来的 12 条啃完后调用，
+ * 用 exclude 把自己读过的排除掉，避免又转回同一批。
+ */
+topics.get("/:id/next", optionalAuth, async (c) => {
+  const id = intParam(c.req.param("id"));
+  if (id <= 0) return fail(c, "validation_failed", "话题 id 不合法");
+
+  const session = sessionOf(c);
+  const lang = langOf(c);
+  const topic = await getTopicById(id, lang);
+  if (!topic) return fail(c, "not_found", "话题不存在");
+
+  const limit = Math.min(Math.max(intParam(c.req.query("limit"), 12), 1), 24);
+  const exclude = readIdList(c.req.query("exclude"));
+
+  const items = await listReadingRecommendations({
+    topic,
+    userId: session?.userId,
+    lang,
+    limit,
+    excludeTopicIds: exclude,
+  });
+
+  return ok(c, {
+    items: items.map((item) => ({
+      id: item.targetId,
+      title: item.topic.title,
+      summary: item.topic.summary,
+      replyCount: item.topic.replyCount,
+    })),
+  });
+});
+
+/** `?exclude=1,2,3`，最多认 60 个，防止超长 query */
+function readIdList(value: string | undefined) {
+  return String(value || "")
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isFinite(item) && item > 0)
+    .slice(0, 60);
+}
 
 topics.post("/:id/posts", requireAuth, async (c) => {
   const session = c.get("session");

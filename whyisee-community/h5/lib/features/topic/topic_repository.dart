@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/api/api_exception.dart';
 import '../../core/api/models.dart';
 import '../../core/providers.dart';
 
@@ -48,6 +49,45 @@ class TopicRepository {
       'targetId': userId,
     });
     return payload.data['following'] as bool? ?? false;
+  }
+
+  /// 候选池补货：客户端把当前这篇的 12 条啃完后调用，exclude 传已读 id。
+  Future<List<TopicRef>> nextCandidates({
+    required int topicId,
+    required List<int> exclude,
+    int limit = 12,
+  }) async {
+    final payload = await _api.get(
+      '/topics/$topicId/next',
+      query: {
+        'limit': limit,
+        'exclude': exclude.isEmpty ? null : exclude.join(','),
+      },
+    );
+    return ((payload.data['items'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => TopicRef.fromJson(e.cast<String, dynamic>()))
+        .where((e) => e.id > 0)
+        .toList(growable: false);
+  }
+
+  /// 埋点：读过 / 点了推荐。服务端据此把读过的从推荐池里排除，
+  /// 并更新兴趣画像 —— 不上报的话推荐只能靠全局热度，必然反复推同一批。
+  Future<void> trackRead(int topicId) => _track('topic_read', topicId);
+
+  Future<void> trackRecommendationClick(int topicId, {int position = 0}) =>
+      _track('feed_click', topicId, position: position);
+
+  Future<void> _track(String type, int topicId, {int position = 0}) async {
+    try {
+      await _api.post('/events', body: {
+        'events': [
+          {'type': type, 'targetId': topicId, 'position': position, 'surface': 'reading'},
+        ],
+      });
+    } on ApiException {
+      // 埋点失败不影响阅读
+    }
   }
 
   /// 帖子 AI（总结/回复草稿/翻译/行动项/相关/质检）。

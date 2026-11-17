@@ -286,7 +286,7 @@ class TopicDetail {
     required this.interactions,
     required this.me,
     this.related = const [],
-    this.next,
+    this.nextCandidates = const [],
   });
 
   final TopicSummary topic;
@@ -295,8 +295,9 @@ class TopicDetail {
   final ViewerState me;
   final List<TopicSummary> related;
 
-  /// 读完这篇之后的下一篇（服务端按网页同一套推荐算法给出）。null = 没有下一篇。
-  final TopicRef? next;
+  /// 读完这篇之后的下滑候选（服务端按网页同一套推荐算法排序）。
+  /// 客户端用「已读队列」挑第一条没读过的，空 = 这批啃完了。
+  final List<TopicRef> nextCandidates;
 
   factory TopicDetail.fromJson(Map<String, dynamic> json) => TopicDetail(
         topic: TopicSummary.fromJson(
@@ -316,9 +317,11 @@ class TopicDetail {
             .whereType<Map>()
             .map((e) => TopicSummary.fromJson(e.cast<String, dynamic>()))
             .toList(growable: false),
-        next: json['next'] is Map
-            ? TopicRef.fromJson((json['next'] as Map).cast<String, dynamic>())
-            : null,
+        nextCandidates: ((json['nextCandidates'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => TopicRef.fromJson(e.cast<String, dynamic>()))
+            .where((e) => e.id > 0)
+            .toList(growable: false),
       );
 
   TopicDetail copyWith({
@@ -331,7 +334,7 @@ class TopicDetail {
         interactions: interactions ?? this.interactions,
         me: me,
         related: related,
-        next: next,
+        nextCandidates: nextCandidates,
       );
 }
 
