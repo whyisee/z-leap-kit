@@ -19,27 +19,11 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   DateTime? _lastBackPress;
 
-  static const _destinations = <NavigationDestination>[
-    NavigationDestination(
-      icon: Icon(Icons.dynamic_feed_outlined),
-      selectedIcon: Icon(Icons.dynamic_feed),
-      label: '看见',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.explore_outlined),
-      selectedIcon: Icon(Icons.explore),
-      label: '出发',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.people_outline),
-      selectedIcon: Icon(Icons.people),
-      label: '关注',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.person_outline),
-      selectedIcon: Icon(Icons.person),
-      label: '我',
-    ),
+  static const _destinations = <_Destination>[
+    _Destination(icon: Icons.dynamic_feed_outlined, activeIcon: Icons.dynamic_feed, label: '看见'),
+    _Destination(icon: Icons.explore_outlined, activeIcon: Icons.explore, label: '出发'),
+    _Destination(icon: Icons.people_outline, activeIcon: Icons.people, label: '关注'),
+    _Destination(icon: Icons.person_outline, activeIcon: Icons.person, label: '我'),
   ];
 
   Future<void> _handleBack() async {
@@ -83,6 +67,8 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _onTap(int index) {
+    HapticFeedback.selectionClick();
+    // 点当前 tab = 回到该分支的根页面（和 iOS 标签栏一致）
     widget.shell.goBranch(
       index,
       initialLocation: index == widget.shell.currentIndex,
@@ -103,11 +89,97 @@ class _HomeShellState extends State<HomeShell> {
           bottom: false,
           child: widget.shell,
         ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: widget.shell.currentIndex,
-          onDestinationSelected: _onTap,
-          destinations: _destinations,
+        bottomNavigationBar: _BottomBar(
+          currentIndex: widget.shell.currentIndex,
+          onTap: _onTap,
         ),
+      ),
+    );
+  }
+}
+
+class _Destination {
+  const _Destination({required this.icon, required this.activeIcon, required this.label});
+
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+}
+
+/// 底部导航：不用 M3 的 NavigationBar（深色底上会带一层浅色 surface 和胶囊指示器，
+/// 和站点风格不搭），这里做纯图标 + 小字、顶部一条 hairline 的扁平样式。
+class _BottomBar extends StatelessWidget {
+  const _BottomBar({required this.currentIndex, required this.onTap});
+
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0A0D13),
+        border: Border(top: BorderSide(color: Color(0x14FFFFFF), width: 1)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 54,
+          child: Row(
+            children: [
+              for (var index = 0; index < _HomeShellState._destinations.length; index++)
+                Expanded(
+                  child: _BottomItem(
+                    destination: _HomeShellState._destinations[index],
+                    selected: index == currentIndex,
+                    onTap: () => onTap(index),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomItem extends StatelessWidget {
+  const _BottomItem({
+    required this.destination,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _Destination destination;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tint = selected ? const Color(0xFF8AB4F8) : const Color(0xFF7C8694);
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            selected ? destination.activeIcon : destination.icon,
+            size: 21,
+            color: tint,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            destination.label,
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.1,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              color: tint,
+            ),
+          ),
+        ],
       ),
     );
   }
