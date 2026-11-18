@@ -7,11 +7,24 @@ import 'package:whyisee_app/features/compose/compose_page.dart';
 import 'package:whyisee_app/features/compose/compose_repository.dart';
 
 /// 发布页要锁住的行为：
-/// 1. 三个选择器（类型 / 分类）真的从 taxonomy 渲染出来；
-/// 2. 标题太短不发请求，就地报错；
-/// 3. 正常填写后带对参数提交，普通用户只能是 pending；
-/// 4. 390 宽下不溢出。
+/// 1. 分区行默认显示「类型 · 分类」，不点开也能直接发；
+/// 2. 选项收在弹层里，主页面上不铺开；
+/// 3. 弹层里改完点完成才生效，选项真的带上去了；
+/// 4. 标题太短不发请求，就地报错；
+/// 5. 正常填写后带对参数提交，普通用户只能是 pending；
+/// 6. 390 宽下不溢出。
 void main() {
+  testWidgets('分区默认显示第一项，主页面不铺开选项', (tester) async {
+    final repo = _FakeComposeRepo();
+    await _pump(tester, repo);
+
+    // 默认值就是发出去的值
+    expect(find.text('讨论 · AI'), findsOneWidget);
+    // 分类/类型的 chip 只在弹层里出现
+    expect(find.text('提问'), findsNothing);
+    expect(find.text('资源'), findsNothing);
+  });
+
   testWidgets('标题太短就地报错，不发请求', (tester) async {
     final repo = _FakeComposeRepo();
     await _pump(tester, repo);
@@ -32,11 +45,17 @@ void main() {
     await tester.enterText(find.byType(TextField).first, '原生发布页自测标题');
     await tester.enterText(find.byType(TextField).at(1), '这是正文，用来验证提交参数对不对。');
 
-    // 选第二个分类和「提问」类型
+    // 分区收在弹层里：点开 → 选分类和类型 → 完成
+    await tester.tap(find.text('讨论 · AI'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('资源'));
     await tester.pump();
     await tester.tap(find.text('提问'));
     await tester.pump();
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('提问 · 资源'), findsOneWidget);
 
     await tester.tap(find.text('发布'));
     await tester.pumpAndSettle();

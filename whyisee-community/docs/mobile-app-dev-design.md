@@ -698,6 +698,8 @@ whyisee-app/
 
 不引：`get_it`（Riverpod 已覆盖 DI）、`provider`（重复）、`sqflite/drift`（P1 用 JSON 快照就够，需要局部更新再上）。
 
+富文本编辑器也不引 `flutter_quill` / `appflowy_editor` / `super_editor`：它们存的是自家文档模型（delta / 节点树），落库前得转回 Markdown，转出来和网页端编辑器渲染的结果对不上，跨端就是两套正文。正文一律以 Markdown 源文为准，手机上用 `shared/widgets/markdown_editor.dart` —— 一个带格式工具条的 TextField，选中文字点「粗」就包裹成 `**…**`，光标位置不动，没有任何中间格式。
+
 ### 4.3 导航结构
 
 ```dart
@@ -728,8 +730,9 @@ StatefulShellRoute.indexedStack(
 | `/` | 原生 feed |
 | `/go` | 原生参与推荐（`GET /api/v1/participation`） |
 | `/t/:id` | 原生详情 |
+| `/new-topic` | 原生 `/compose`（`POST /api/v1/topics`），网页版仍保留给桌面 |
 | `/login`、`/signup`、`/forgot-password` | WebView |
-| `/search`、`/settings/*`、`/u/*`、`/agent-zone/*`、`/new-topic`、`/notifications` | WebView |
+| `/search`、`/settings/*`、`/u/*`、`/agent-zone/*`、`/notifications` | WebView |
 | `/c/:slug`、`/tag/:slug`、`/latest`、`/following` | WebView（P1），P2 视情况转原生 |
 | `/admin/*` | 系统浏览器 |
 | 其他 host | 系统浏览器 |

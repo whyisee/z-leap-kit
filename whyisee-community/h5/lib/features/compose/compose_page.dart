@@ -7,12 +7,14 @@ import '../../core/api/models.dart';
 import '../../core/env.dart';
 import '../../core/format.dart';
 import '../../core/providers.dart';
+import '../../shared/widgets/markdown_editor.dart';
 import 'compose_repository.dart';
 
 /// 原生发布页。
 ///
-/// 刻意不复用网页 `/new-topic`：那套是桌面两栏表单，手机上要横向滚动；
-/// 这里按写作顺序排 —— 标题 → 类型 / 分类 → 正文 → 标签，一个字段一行。
+/// 刻意不复用网页 `/new-topic`：那套是桌面两栏表单，手机上要横向滚动。
+/// 这里只有三行东西 —— 标题、分区、正文。分区（类型 + 分类）收成一行，
+/// 点开才展开选项，页面剩下的全部给正文，写作时不被选项打断。
 class ComposePage extends ConsumerStatefulWidget {
   const ComposePage({super.key});
 
@@ -51,6 +53,48 @@ class _ComposePageState extends ConsumerState<ComposePage> {
       .take(5)
       .toList(growable: false);
 
+  /// 用户没进分区弹层时的默认分类：第一个。和提交兜底用的是同一个值，
+  /// 所以分区行显示什么，发出去就是什么，不会「看着是 A 发出去是 B」。
+  int? _defaultCategoryId(Taxonomy? taxonomy) {
+    if (taxonomy == null || taxonomy.categories.isEmpty) return null;
+    return taxonomy.categories.first.id;
+  }
+
+  int? _effectiveCategoryId(Taxonomy? taxonomy) => _categoryId ?? _defaultCategoryId(taxonomy);
+
+  Future<void> _openZoneSheet() async {
+    final taxonomy = ref.read(taxonomyProvider).asData?.value;
+    final categoryId = _effectiveCategoryId(taxonomy);
+
+    if (taxonomy == null) {
+      _toast('选项还没加载出来，稍等一下');
+      return;
+    }
+    if (categoryId == null) {
+      _toast('还没有可选的分区');
+      return;
+    }
+
+    final picked = await showModalBottomSheet<_ZoneSelection>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ZoneSheet(
+        taxonomy: taxonomy,
+        type: _type,
+        categoryId: categoryId,
+        tags: _tagController.text,
+      ),
+    );
+
+    if (picked == null || !mounted) return;
+    setState(() {
+      _type = picked.type;
+      _categoryId = picked.categoryId;
+      _tagController.text = picked.tags;
+    });
+  }
+
   Future<void> _submit({required bool draft}) async {
     if (_submitting) return;
 
@@ -72,8 +116,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
       return;
     }
 
-    final categoryId = _categoryId ??
-        (taxonomy != null && taxonomy.categories.isNotEmpty ? taxonomy.categories.first.id : null);
+    final categoryId = _effectiveCategoryId(taxonomy);
     if (categoryId == null) {
       _toast('分类还没加载出来，稍等一下');
       return;
@@ -155,6 +198,26 @@ class _ComposePageState extends ConsumerState<ComposePage> {
     return discard ?? false;
   }
 
+  /// 分区行上显示的文字，例如「讨论 · 技术」
+  String _zoneLabel(Taxonomy? taxonomy) {
+    final typeLabel = taxonomy?.types
+            .firstWhere(
+              (type) => type.id == _type,
+              orElse: () => const TaxonomyType(id: 'discussion', label: '讨论'),
+            )
+            .label ??
+        '讨论';
+
+    final categoryId = _effectiveCategoryId(taxonomy);
+    if (categoryId == null) return typeLabel;
+
+    final category = taxonomy!.categories.firstWhere(
+      (item) => item.id == categoryId,
+      orElse: () => taxonomy.categories.first,
+    );
+    return '$typeLabel · ${category.name}';
+  }
+
   @override
   Widget build(BuildContext context) {
     // 没登录就不让进编辑器：写完再被 401 挡回来，比一开始就说清楚更伤人
@@ -185,98 +248,371 @@ class _ComposePageState extends ConsumerState<ComposePage> {
                 onSubmit: () => _submit(draft: false),
               ),
               Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    TextField(
-                      controller: _titleController,
-                      enabled: !_submitting,
-                      maxLines: null,
-                      textInputAction: TextInputAction.next,
-                      style: const TextStyle(
-                        fontSize: 19,
-                        height: 1.4,
-                        fontWeight: FontWeight.w700,
-                        color: Color(Env.text),
-                      ),
-                      onChanged: (_) {
-                        if (_titleError != null) setState(() => _titleError = null);
-                      },
-                      decoration: InputDecoration(
-                        hintText: '标题，写清楚在说什么',
-                        hintStyle: const TextStyle(
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: TextField(
+                        controller: _titleController,
+                        enabled: !_submitting,
+                        maxLines: null,
+                        textInputAction: TextInputAction.next,
+                        style: const TextStyle(
                           fontSize: 19,
+                          height: 1.4,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF4A5462),
+                          color: Color(Env.text),
                         ),
-                        border: InputBorder.none,
-                        errorText: _titleError,
-                        errorStyle: const TextStyle(fontSize: 11.5, color: Color(0xFFF0A868)),
+                        onChanged: (_) {
+                          if (_titleError != null) setState(() => _titleError = null);
+                        },
+                        decoration: InputDecoration(
+                          hintText: '标题，写清楚在说什么',
+                          hintStyle: const TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF4A5462),
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                          errorText: _titleError,
+                          errorStyle: const TextStyle(fontSize: 11.5, color: Color(0xFFF0A868)),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Container(height: 1, color: const Color(Env.line)),
-                    const SizedBox(height: 14),
-                    _SectionLabel('类型'),
-                    const SizedBox(height: 8),
-                    _TypeRow(
-                      types: taxonomy.asData?.value.types ?? const [],
-                      selected: _type,
-                      onSelect: (value) => setState(() => _type = value),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Container(height: 1, color: const Color(Env.line)),
                     ),
-                    const SizedBox(height: 16),
-                    _SectionLabel('分类'),
-                    const SizedBox(height: 8),
-                    _CategoryRow(
-                      categories: taxonomy.asData?.value.categories ?? const [],
-                      selected: _categoryId,
+                    _ZoneRow(
+                      label: _zoneLabel(taxonomy.asData?.value),
                       loading: taxonomy.isLoading,
-                      onSelect: (id) => setState(() => _categoryId = id),
-                    ),
-                    const SizedBox(height: 18),
-                    _SectionLabel('正文'),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _bodyController,
+                      tagCount: _tags.length,
                       enabled: !_submitting,
-                      maxLines: null,
-                      minLines: 12,
-                      keyboardType: TextInputType.multiline,
-                      style: const TextStyle(fontSize: 14.5, height: 1.75, color: Color(Env.text)),
-                      decoration: const InputDecoration(
-                        hintText: '支持 Markdown：## 小标题、**加粗**、- 列表、> 引用、```代码```',
-                        hintStyle: TextStyle(fontSize: 13, height: 1.7, color: Color(0xFF4A5462)),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                      ),
+                      onTap: _openZoneSheet,
                     ),
-                    const SizedBox(height: 10),
-                    Container(height: 1, color: const Color(Env.line)),
-                    const SizedBox(height: 12),
-                    _SectionLabel('标签（可选，逗号分隔，最多 5 个）'),
-                    const SizedBox(height: 4),
-                    TextField(
-                      controller: _tagController,
-                      enabled: !_submitting,
-                      maxLines: 1,
-                      style: const TextStyle(fontSize: 13.5, color: Color(Env.text)),
-                      decoration: const InputDecoration(
-                        hintText: '例如：Flutter, 独立开发',
-                        hintStyle: TextStyle(fontSize: 13, color: Color(0xFF4A5462)),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                      ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Container(height: 1, color: const Color(Env.line)),
                     ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      '提交后进入审核，通过后公开展示；存草稿不会通知任何人。',
-                      style: TextStyle(fontSize: 11.5, height: 1.6, color: Color(0xFF5F6875)),
+                    Expanded(
+                      child: MarkdownEditor(
+                        controller: _bodyController,
+                        enabled: !_submitting,
+                        hintText: '开始写正文，选中文字可以用下方按钮加格式',
+                        onChanged: (_) {
+                          // 正文变化要刷新返回确认逻辑（_hasContent）
+                          setState(() {});
+                        },
+                      ),
                     ),
                   ],
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 分区一行：左边标签，右边当前值，点整行开弹层。
+class _ZoneRow extends StatelessWidget {
+  const _ZoneRow({
+    required this.label,
+    required this.loading,
+    required this.tagCount,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool loading;
+  final int tagCount;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 11, 10, 11),
+        child: Row(
+          children: [
+            const Text(
+              '分区',
+              style: TextStyle(fontSize: 12.5, color: Color(0xFF737D8B)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: loading
+                  ? const Align(
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(Env.muted),
+                        ),
+                      ),
+                    )
+                  : Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(Env.blue),
+                      ),
+                    ),
+            ),
+            if (tagCount > 0)
+              Text(
+                '$tagCount 个标签',
+                style: const TextStyle(fontSize: 11.5, color: Color(0xFF5F6875)),
+              ),
+            const Icon(Icons.chevron_right, size: 18, color: Color(0xFF5F6875)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ZoneSelection {
+  const _ZoneSelection({required this.type, required this.categoryId, required this.tags});
+
+  final String type;
+  final int categoryId;
+  final String tags;
+}
+
+/// 分区弹层：类型 + 分类 + 标签都收在这里。
+///
+/// 点「完成」才回传 —— 中途划掉就当作没动过，不会把用户的选择半途改掉。
+class _ZoneSheet extends StatefulWidget {
+  const _ZoneSheet({
+    required this.taxonomy,
+    required this.type,
+    required this.categoryId,
+    required this.tags,
+  });
+
+  final Taxonomy taxonomy;
+  final String type;
+  final int categoryId;
+  final String tags;
+
+  @override
+  State<_ZoneSheet> createState() => _ZoneSheetState();
+}
+
+class _ZoneSheetState extends State<_ZoneSheet> {
+  late String _type = widget.type;
+  late int _categoryId = widget.categoryId;
+  late final _tagController = TextEditingController(text: widget.tags);
+
+  @override
+  void dispose() {
+    _tagController.dispose();
+    super.dispose();
+  }
+
+  void _done() {
+    Navigator.of(context).pop(
+      _ZoneSelection(type: _type, categoryId: _categoryId, tags: _tagController.text),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final types = widget.taxonomy.types.isEmpty
+        ? const [TaxonomyType(id: 'discussion', label: '讨论')]
+        : widget.taxonomy.types;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Color(Env.surface),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.72),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 34,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(Env.line),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    const Text(
+                      '分区',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(Env.text),
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: _done,
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(Env.blue),
+                        minimumSize: const Size(0, 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      child: const Text(
+                        '完成',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                const _SheetLabel('类型'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final type in types)
+                      _Chip(
+                        label: type.label,
+                        active: type.id == _type,
+                        onTap: () => setState(() => _type = type.id),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                const _SheetLabel('分类'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final category in widget.taxonomy.categories)
+                      _Chip(
+                        label: category.name,
+                        color: category.color,
+                        active: category.id == _categoryId,
+                        onTap: () => setState(() => _categoryId = category.id),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                const _SheetLabel('标签（可选，逗号分隔，最多 5 个）'),
+                const SizedBox(height: 4),
+                TextField(
+                  controller: _tagController,
+                  maxLines: 1,
+                  style: const TextStyle(fontSize: 13.5, color: Color(Env.text)),
+                  decoration: const InputDecoration(
+                    hintText: '例如：Flutter, 独立开发',
+                    hintStyle: TextStyle(fontSize: 13, color: Color(0xFF4A5462)),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetLabel extends StatelessWidget {
+  const _SheetLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 11,
+        height: 1.3,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.3,
+        color: Color(0xFF737D8B),
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.color,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  final String? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final dot = colorFromHex(color);
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 13),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active ? const Color(Env.blue).withValues(alpha: 0.16) : const Color(Env.panel),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: active ? const Color(Env.blue).withValues(alpha: 0.55) : const Color(Env.line),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (color != null) ...[
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.1,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                color: active ? const Color(Env.blue) : const Color(0xFFA8B2BF),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -364,7 +700,8 @@ class _LoginWall extends StatelessWidget {
   }
 }
 
-class _Bar extends StatelessWidget {  const _Bar({
+class _Bar extends StatelessWidget {
+  const _Bar({
     required this.submitting,
     required this.canSubmit,
     required this.onClose,
@@ -437,166 +774,6 @@ class _Bar extends StatelessWidget {  const _Bar({
           ),
           const SizedBox(width: 6),
         ],
-      ),
-    );
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontSize: 11,
-        height: 1.3,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.3,
-        color: Color(0xFF737D8B),
-      ),
-    );
-  }
-}
-
-class _TypeRow extends StatelessWidget {
-  const _TypeRow({required this.types, required this.selected, required this.onSelect});
-
-  final List<TaxonomyType> types;
-  final String selected;
-  final ValueChanged<String> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = types.isEmpty
-        ? const [TaxonomyType(id: 'discussion', label: '讨论')]
-        : types;
-
-    return SizedBox(
-      height: 30,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: items.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final type = items[index];
-          final active = type.id == selected;
-          return _Chip(
-            label: type.label,
-            active: active,
-            onTap: () => onSelect(type.id),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _CategoryRow extends StatelessWidget {
-  const _CategoryRow({
-    required this.categories,
-    required this.selected,
-    required this.loading,
-    required this.onSelect,
-  });
-
-  final List<CategoryRef> categories;
-  final int? selected;
-  final bool loading;
-  final ValueChanged<int> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    if (loading && categories.isEmpty) {
-      return const SizedBox(
-        height: 30,
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: SizedBox(
-            width: 14,
-            height: 14,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Color(Env.muted)),
-          ),
-        ),
-      );
-    }
-
-    return SizedBox(
-      height: 30,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: categories.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final category = categories[index];
-          return _Chip(
-            label: category.name,
-            color: category.color,
-            active: category.id == selected,
-            onTap: () => onSelect(category.id),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip({
-    required this.label,
-    required this.active,
-    required this.onTap,
-    this.color,
-  });
-
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  final String? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final dot = colorFromHex(color);
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 30,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: active ? const Color(Env.blue).withValues(alpha: 0.16) : const Color(Env.panel),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(
-            color: active ? const Color(Env.blue).withValues(alpha: 0.55) : const Color(Env.line),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (color != null) ...[
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12.5,
-                height: 1.1,
-                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                color: active ? const Color(Env.blue) : const Color(0xFFA8B2BF),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
