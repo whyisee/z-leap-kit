@@ -3,16 +3,16 @@ import 'package:material_ui/material_ui.dart';
 
 import '../features/compose/compose_page.dart';
 import '../features/feed/feed_page.dart';
+import '../features/following/following_page.dart';
 import '../features/go/go_page.dart';
 import '../features/me/me_page.dart';
 import '../features/shell/home_shell.dart';
 import '../features/topic/topic_detail_page.dart';
-import '../features/web/web_page.dart';
 import '../features/web/web_route_page.dart';
 
 /// 四个 tab 各自一条独立导航栈，indexedStack 保证切换不重建、WebView 不重载。
 ///
-/// P1 起「看见」「出发」「帖子详情」「我」是原生页；只剩「关注」还是 WebView。
+/// 四个 tab 全是原生页（看见 / 出发 / 关注 / 我）；WebView 只剩设置、登录这类低频页。
 /// 详情挂在第一个 branch 下，这样从 feed 进详情再返回，tab 状态不丢。
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
@@ -65,8 +65,14 @@ final GoRouter appRouter = GoRouter(
           routes: [
             GoRoute(
               path: '/following',
-              builder: (context, state) =>
-                  const WebTabPage(tabIndex: 2, path: '/following'),
+              builder: (context, state) => const FollowingPage(),
+              routes: [
+                // 订阅流里的帖子用原生阅读器，挂在「关注」这条栈下，返回回到本页
+                GoRoute(
+                  path: 't/:id',
+                  pageBuilder: (context, state) => _topicPage(state),
+                ),
+              ],
             ),
           ],
         ),

@@ -817,6 +817,105 @@ class TaxonomyType {
       );
 }
 
+/// 「关注」流的过滤维度。wire 值与服务端 `filter` 参数一一对应。
+enum FollowingFilter {
+  all('全部', 'all'),
+  topics('话题', 'topics'),
+  users('作者', 'users'),
+  categories('分类', 'categories'),
+  tags('标签', 'tags');
+
+  const FollowingFilter(this.label, this.wire);
+
+  final String label;
+  final String wire;
+}
+
+/// 「关注」流的一条：哪条订阅源把它带来的 + 帖子摘要。
+///
+/// 和「看见」的区别就在 `sourceType` / `sourceLabel`：看见给的是「为什么推荐给你」，
+/// 关注给的是「你订阅了谁」，所以来源必须显式写出来。
+class FollowingItem {
+  const FollowingItem({
+    required this.sourceType,
+    required this.sourceLabel,
+    required this.topicId,
+    required this.title,
+    required this.summary,
+    required this.timeLabel,
+    this.category,
+    this.tags = const [],
+  });
+
+  /// `topic` / `user` / `category` / `tag`
+  final String sourceType;
+
+  /// 来源名：话题标题、作者昵称、分类名、标签名
+  final String sourceLabel;
+
+  final int topicId;
+  final String title;
+  final String summary;
+
+  /// 相对时间（「3 小时前」），服务端按 locale 算好
+  final String timeLabel;
+
+  final CategoryRef? category;
+  final List<TagRef> tags;
+
+  /// 来源徽章前缀，和网页 `/following` 的 "来自" 保持一致
+  String get sourcePrefix => '来自';
+
+  String get sourceTypeLabel => switch (sourceType) {
+        'user' => '作者',
+        'category' => '分类',
+        'tag' => '标签',
+        _ => '话题',
+      };
+
+  factory FollowingItem.fromJson(Map<String, dynamic> json) => FollowingItem(
+        sourceType: json['sourceType'] as String? ?? 'topic',
+        sourceLabel: json['sourceLabel'] as String? ?? '',
+        topicId: (json['targetId'] as num?)?.toInt() ?? 0,
+        title: json['title'] as String? ?? '(无标题)',
+        summary: json['summary'] as String? ?? '',
+        timeLabel: json['timeLabel'] as String? ?? '',
+        category: json['category'] is Map
+            ? CategoryRef.fromJson((json['category'] as Map).cast<String, dynamic>())
+            : null,
+        tags: ((json['tags'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => TagRef.fromJson(e.cast<String, dynamic>()))
+            .toList(growable: false),
+      );
+}
+
+/// 「关注」一页结果。游标原样回传，语义由服务端决定。
+class FollowingPageResult {
+  const FollowingPageResult({
+    required this.items,
+    required this.hasMore,
+    this.nextCursor,
+  });
+
+  final List<FollowingItem> items;
+  final bool hasMore;
+  final String? nextCursor;
+
+  factory FollowingPageResult.fromJson(
+    Map<String, dynamic> data,
+    Map<String, dynamic>? meta,
+  ) =>
+      FollowingPageResult(
+        items: ((data['items'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => FollowingItem.fromJson(e.cast<String, dynamic>()))
+            .toList(growable: false),
+        hasMore: meta?['hasMore'] as bool? ?? false,
+        nextCursor: meta?['nextCursor'] as String?,
+      );
+}
+
 DateTime? _parseTime(Object? value) {
   if (value is! String || value.isEmpty) return null;
   return DateTime.tryParse(value)?.toLocal();

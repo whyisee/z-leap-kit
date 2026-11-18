@@ -356,6 +356,7 @@ export const optionalAuth: MiddlewareHandler = async (c, next) => {
 | POST | `/api/v1/interactions/follow` | Bearer | `{targetType, targetId}` → `{following}` |
 | POST | `/api/v1/uploads/images` | Bearer | multipart，字段名 `image`（与网页一致） |
 | POST | `/api/v1/events` | 可选 | 批量埋点，`{events:[...]}`，上限 50 条/次 |
+| GET | `/api/v1/following` | Bearer | `filter=all\|topics\|users\|categories\|tags`、`limit`、`cursor` → 订阅流（复用 `listFollowingFeed`） |
 | GET | `/api/v1/notifications` | Bearer | 游标分页 |
 
 **P2（按需）**
@@ -743,7 +744,8 @@ StatefulShellRoute.indexedStack(
 | `/new-topic` | 原生 `/compose`（`POST /api/v1/topics`），网页版仍保留给桌面 |
 | `/login`、`/signup`、`/forgot-password` | WebView |
 | `/search`、`/settings/*`、`/u/*`、`/agent-zone/*`、`/notifications` | WebView |
-| `/c/:slug`、`/tag/:slug`、`/latest`、`/following` | WebView（P1），P2 视情况转原生 |
+| `/following` | 原生订阅流（`GET /api/v1/following`），四个 tab 全部原生 |
+| `/c/:slug`、`/tag/:slug`、`/latest` | WebView，P2 视情况转原生 |
 | `/admin/*` | 系统浏览器 |
 | 其他 host | 系统浏览器 |
 
@@ -1215,7 +1217,13 @@ App           WebView(/login)        Server(/api/login)     Server(v1)
 | POST | `/uploads/images` | Bearer | 不带 `Origin` → 403，带 `Origin` → 200（与 §1.2 预测一致） |
 | POST | `/events` | 可选 | 200，click/read 均写入 `user_content_events` |
 
-`surface=following` 明确拒绝（`validation_failed`）：`listFollowingFeed` 只返回 title/summary/href，拼不出完整 DTO。关注 tab 继续走 WebView。
+`surface=following` 明确拒绝（`validation_failed`）：`listFollowingFeed` 只返回 title/summary/href，拼不出 feed 的完整 DTO。
+
+关注 tab 因此单独开了 `GET /api/v1/following`（`routes/following.ts`）：
+- 直接复用 `listFollowingFeed`，来源判定 / 打分 / 排序不另写，保证手机和网页是同一条流；
+- 回 `{sourceType, sourceLabel, targetId, title, summary, timeLabel, category, tags}` —— 订阅流的关键是
+  「这条是谁带来的」，所以来源必须显式回给客户端，不能塞进 feed 的 topic DTO；
+- 必须登录（`requireAuth`），未登录 401，客户端出登录引导而不是空列表。
 
 ### 12.2 网页侧改动（共 3 处，均不影响普通浏览器）
 
@@ -1373,7 +1381,7 @@ git reset --hard <上一个提交> && npm run build && systemctl restart whyisee
 
 - 发帖 / 回复输入框、配图上传：现在点「回复」提示走浏览器。要做需要在 dio 的 multipart 请求上带 `Origin: https://whyisee.xyz`（Astro `checkOrigin` 会拦，见 §3.4）。
 - 收藏写入：按钮已渲染，`onTap` 为空。
-- 「关注」流的 JSON：服务端 `surface!=see` 时直接拒绝，因为关注流服务层没有作者与计数，拼不出完整 DTO。
+- ~~「关注」流的 JSON~~：已单独开 `GET /api/v1/following`（见 §12.1），关注 tab 已转原生。
 - 推送、深链、iOS 构建（缺完整 Xcode）。
 
 ### 14.5 详情页正文空白：根因与修复（2026-11-17 夜）
