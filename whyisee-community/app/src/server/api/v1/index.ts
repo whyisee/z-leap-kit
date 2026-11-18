@@ -14,6 +14,8 @@ import followingRoutes from "./routes/following";
 import notificationRoutes from "./routes/notifications";
 import adminRoutes from "./routes/admin";
 import metaRoutes from "./routes/meta";
+import searchRoutes from "./routes/search";
+import userRoutes from "./routes/users";
 
 /**
  * app 专用协议层。
@@ -39,6 +41,8 @@ v1.route("/following", followingRoutes);
 v1.route("/notifications", notificationRoutes);
 v1.route("/admin", adminRoutes);
 v1.route("/meta", metaRoutes);
+v1.route("/search", searchRoutes);
+v1.route("/users", userRoutes);
 
 v1.notFound((c) => fail(c, "not_found", "接口不存在"));
 

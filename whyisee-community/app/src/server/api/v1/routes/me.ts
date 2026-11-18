@@ -7,6 +7,7 @@ import { fail, langOf, ok, type ApiEnv } from "../http";
 import { requireAuth, sessionOf } from "../middleware";
 import { toFeedItem } from "../serializers";
 import todoRoutes from "./todo";
+import settingsRoutes from "./settings";
 
 const me = new Hono<ApiEnv>();
 
@@ -14,6 +15,8 @@ me.use("*", requireAuth);
 
 // 「出发」页的数据：我该做的事，和「我」页共用登录守卫
 me.route("/todo", todoRoutes);
+// 设置页：公开资料 / 改密码 / Agent 设备（都在 /api/v1/me 下，天然只有本人能进）
+me.route("/", settingsRoutes);
 
 /**
  * 「我」页一次拿全：资料 + 统计 + 最近话题。

@@ -193,17 +193,30 @@ class _Header extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(left: 2, bottom: 9),
-            child: Text(
-              '看见',
-              style: TextStyle(
-                fontSize: 22,
-                height: 1.2,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.2,
-                color: Color(Env.text),
-              ),
+          Padding(
+            padding: const EdgeInsets.only(left: 2, bottom: 9, right: 12),
+            child: Row(
+              children: [
+                const Text(
+                  '看见',
+                  style: TextStyle(
+                    fontSize: 22,
+                    height: 1.2,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                    color: Color(Env.text),
+                  ),
+                ),
+                const Spacer(),
+                // 搜索挂在标题行右侧：这是唯一一个「不属于任何 tab、但随时要用」的入口
+                IconButton(
+                  onPressed: () => context.push('/search'),
+                  icon: const Icon(Icons.search, size: 20),
+                  color: const Color(Env.muted),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: '搜索',
+                ),
+              ],
             ),
           ),
           Padding(

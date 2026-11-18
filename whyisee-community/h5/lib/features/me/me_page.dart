@@ -18,7 +18,7 @@ import 'me_repository.dart';
 /// - 顶部只留标题 + 通知入口（手机上没有第二个可点的位置）；
 /// - 资料卡把「头像/昵称/简介/四个计数」压成一张卡，统计与网页 service 同口径；
 /// - 我的话题直接列在页面上，点开进原生详情（走 `/me/t/:id`，返回回到本页）；
-/// - 低频设置项（资料、密码、Agent 设备）仍交给网页版，push 一个带返回条的 WebView。
+/// - 设置三项（资料、密码、Agent 设备）都是原生页；只剩「关于」还走网页。
 class MePage extends ConsumerWidget {
   const MePage({super.key});
 
@@ -78,9 +78,10 @@ class MePage extends ConsumerWidget {
                               await ref.read(meOverviewProvider.future);
                             },
                             onEditProfile: () =>
-                                _openWeb(context, ref, '/settings/profile', '公开资料'),
+                                _openNative(context, ref, '/settings/profile'),
                             onOpenWeb: (path, title) =>
                                 _openWeb(context, ref, path, title),
+                            onOpenNative: (path) => _openNative(context, ref, path),
                             onOpenTopic: (id) => context.push('/me/t/$id'),
                             onOpenNotifications: () => _openNotifications(context, ref),
                             onSignOut: () => _signOut(context, ref),
@@ -92,6 +93,18 @@ class MePage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// 原生设置页：进去改完回来，本地缓存必须失效，否则「我」页还是旧昵称旧头像。
+  Future<void> _openNative(
+    BuildContext context,
+    WidgetRef ref,
+    String path,
+  ) async {
+    await context.push(path);
+    if (!context.mounted) return;
+    ref.invalidate(meOverviewProvider);
+    await ref.read(sessionProvider.notifier).refreshMe();
   }
 
   /// 设置类页面复用网页版：push 进来，返回走 pop。
@@ -224,6 +237,7 @@ class _Content extends StatelessWidget {
     required this.onRefresh,
     required this.onEditProfile,
     required this.onOpenWeb,
+    required this.onOpenNative,
     required this.onOpenTopic,
     required this.onOpenNotifications,
     required this.onSignOut,
@@ -233,6 +247,9 @@ class _Content extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final VoidCallback onEditProfile;
   final void Function(String path, String title) onOpenWeb;
+
+  /// 原生设置页：push 进去，回来刷新缓存
+  final void Function(String path) onOpenNative;
   final void Function(int topicId) onOpenTopic;
   final VoidCallback onOpenNotifications;
   final VoidCallback onSignOut;
@@ -259,7 +276,7 @@ class _Content extends StatelessWidget {
           _MyTopics(
             topics: data.recentTopics,
             onOpenTopic: onOpenTopic,
-            onSeeAll: () => onOpenWeb('/u/${profile.username}', '我的主页'),
+            onSeeAll: () => context.push('/u/${profile.username}'),
           ),
           _MenuGroup(
             title: '互动',
@@ -268,12 +285,13 @@ class _Content extends StatelessWidget {
                 icon: Icons.person_outline,
                 label: '我的主页',
                 hint: '公开可见',
-                onTap: () => onOpenWeb('/u/${profile.username}', '我的主页'),
+                onTap: () => context.push('/u/${profile.username}'),
               ),
               _MenuAction(
                 icon: Icons.people_outline,
                 label: '关注的人',
-                onTap: () => onOpenWeb('/following', '关注'),
+                // 底部第 3 个 tab 就是原生关注页，这里 go 过去而不是再推一个网页
+                onTap: () => context.go('/following'),
               ),
               _MenuAction(
                 icon: Icons.notifications_none,
@@ -290,17 +308,17 @@ class _Content extends StatelessWidget {
                 icon: Icons.badge_outlined,
                 label: '公开资料',
                 hint: '昵称、简介、头像',
-                onTap: () => onOpenWeb('/settings/profile', '公开资料'),
+                onTap: () => onOpenNative('/settings/profile'),
               ),
               _MenuAction(
                 icon: Icons.lock_outline,
                 label: '密码与认证',
-                onTap: () => onOpenWeb('/settings/account', '密码与认证'),
+                onTap: () => onOpenNative('/settings/account'),
               ),
               _MenuAction(
                 icon: Icons.smart_toy_outlined,
                 label: 'Agent 设备',
-                onTap: () => onOpenWeb('/settings/agents', 'Agent 设备'),
+                onTap: () => onOpenNative('/settings/agents'),
               ),
               _MenuAction(
                 icon: Icons.info_outline,

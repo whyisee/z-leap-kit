@@ -9,9 +9,14 @@ import '../features/go/go_page.dart';
 import '../features/me/me_page.dart';
 import '../features/notifications/notification_page.dart';
 import '../features/review/review_page.dart';
+import '../features/search/search_page.dart';
+import '../features/settings/settings_account_page.dart';
+import '../features/settings/settings_agents_page.dart';
+import '../features/settings/settings_profile_page.dart';
 import '../features/shell/home_shell.dart';
 import '../features/topic/topic_detail_page.dart';
 import '../features/topic/topic_entry.dart';
+import '../features/user/user_page.dart';
 import '../features/web/web_route_page.dart';
 
 /// 四个 tab 各自一条独立导航栈，indexedStack 保证切换不重建、WebView 不重载。
@@ -143,6 +148,38 @@ final GoRouter appRouter = GoRouter(
           child: child,
         ),
       ),
+    ),
+    // 搜索：全屏，键盘弹起时底部栏本来也留不住，直接挂 shell 外面
+    GoRoute(
+      path: '/search',
+      pageBuilder: (context, state) => CustomTransitionPage<void>(
+        key: state.pageKey,
+        child: SearchPage(initialQuery: state.uri.queryParameters['q']),
+        transitionDuration: const Duration(milliseconds: 200),
+        reverseTransitionDuration: const Duration(milliseconds: 160),
+        transitionsBuilder: (_, animation, _, child) => FadeTransition(
+          opacity: animation,
+          child: child,
+        ),
+      ),
+    ),
+    // 用户主页：从列表、详情、搜索结果都能推，所以放在全局
+    GoRoute(
+      path: '/u/:username',
+      builder: (context, state) => UserPage(username: state.pathParameters['username'] ?? ''),
+    ),
+    // 设置三项：原来都是 WebView，现在原生
+    GoRoute(
+      path: '/settings/profile',
+      builder: (context, state) => const SettingsProfilePage(),
+    ),
+    GoRoute(
+      path: '/settings/account',
+      builder: (context, state) => const SettingsAccountPage(),
+    ),
+    GoRoute(
+      path: '/settings/agents',
+      builder: (context, state) => const SettingsAgentsPage(),
     ),
     // 发帖是全局动作，挂在 shell 外面：全屏盖住底部栏，返回回到原 tab
     GoRoute(

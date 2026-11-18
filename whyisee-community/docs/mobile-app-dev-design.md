@@ -1343,7 +1343,8 @@ App 侧（`features/notifications/`）：
 - 客户端 P1 原生 feed / 详情页 / 出发 / 关注 / 我 / 发帖 / 通知：**均已完成**（四个 tab 全是原生页）。
 - ~~详情页不能回复~~：已加底部「写回复」条 + 分块编辑器，直连 `POST /api/v1/topics/:id/posts`（§12.6）。
 - ~~登录要走网页~~：已改原生登录页 `features/auth/login_page.dart`（§12.6）；注册 / 找回密码仍走网页。
-- 仍缺原生入口的：搜索、用户主页、分类与标签页、项目展示、Agent 专区、设置三项、举报。
+- ~~搜索 / 用户主页 / 设置三项要跳网页~~：均已原生化（§12.7）。
+- 仍缺原生入口的：分类与标签页、项目展示、Agent 专区、举报、关于。
 - `npm run check` 有 3 个既有错误，都在 `src/pages/app.astro`（与本方案无关，未改动）。
 
 ### 12.6 P0 补齐：原生登录 + 详情页回复
@@ -1365,6 +1366,52 @@ App 侧（`features/notifications/`）：
 - 发布成功后把服务端回的楼层 DTO 直接插进列表并滚过去，不重新拉详情 —— 自己刚说的话要立刻看得见，否则用户会以为没发出去。
 - 失败留在编辑层、草稿不丢，按错误码给话术（限流 / 校验 / 断网）。
 - **附带修了个真 bug**：`MarkdownDocController` 原来只在结构变化（拆块、删块）时 notify，纯打字不通知，所以任何依赖它的按钮状态/字数都是死的。现在每个块的 controller 都被接管，输入即通知。
+
+### 12.7 P1 补齐：搜索 / 用户主页 / 设置三项
+
+P1 的共同点是「不是不能用，是每次都要掉进 WebView」：搜索在 App 里连入口都没有，
+点作者没反应，改个昵称要开浏览器。四处一起收了。
+
+**搜索**（`features/search/`，路由 `/search`，入口在「看见」标题行右侧）
+
+- 服务端只做一层 DTO：`GET /api/v1/search?q=&mode=` 包住既有 `runCommunitySearch`，
+  话题 / 回复 / 分类 / 标签 / 用户一次搜完。**不重写查询**，否则 App 和网页会搜出两套结果。
+- 默认 `mode=directive`（关键词 + 指令解析），不默认走 AI：AI 模式要调模型，
+  手机上等十几秒等于不可用；要 AI 显式传 `mode=ai`。
+- 客户端边打边搜（350ms 防抖），结果按类型分组、组头带条数；话题和用户直接进原生页，
+  分类 / 标签仍进网页（原生页还没做）。
+- 服务端 `notes` / `warnings` 原样展示：搜索词被指令或 AI 改写时得说一声，
+  否则用户会以为「我搜 A 怎么出来 B」。
+
+**用户主页**（`features/user/`，路由 `/u/:username`）
+
+- `GET /api/v1/users/:username` 一次给 `user` + `stats` + `topics` + `isSelf` + `following`，
+  登录可选（`optionalAuth`）：没登录也能看别人主页。
+- 网页 `/u/:username` 有徽章墙、贡献流水、信任等级四段，手机上滚两屏还看不到一个话题。
+  这里只回答三件事：这个人是谁、他写了什么、要不要关注；徽章与贡献留个入口进网页。
+- 只有本人主页才带草稿（`listUserTopics(..., includeDrafts: isSelf)`）：
+  草稿是「只有我看得见」的东西，别人连条数都不该看到。
+- 入口：详情页正文的作者头像 + 昵称可点；「我 → 我的主页」也走这里。
+
+**「我 → 关注的人」不再绕网页**
+
+底部第 3 个 tab 本来就是原生关注页，原来这里却 push 了 `/following` 的 WebView ——
+等于自己打自己。改成 `context.go('/following')`，直接切到那个 tab。
+
+**设置三项**（`features/settings/`，路由 `/settings/profile|account|agents`）
+
+- 接口都在 `/api/v1/me/*`（`routes/settings.ts`）：`GET/PATCH /me/profile`、
+  `POST /me/password`、`GET /me/agents`、`POST /me/agents/:id/unbind`。
+  不传 userId，从会话取 —— 结构上就没有「改到别人资料」的可能。
+- 公开资料：只留别人看得见的字段（昵称 / 简介 / 头像 / 网站 / GitHub / 语言），
+  头像地址边输边预览；只收 `http(s)`，因为最终会进 `<img src>`，放 `javascript:` 就是 XSS。
+- 改密码：**成功后只吊销其它会话，保留当前这台**。网页的做法是直接踢回登录页，
+  在浏览器里重登成本很低，但在 App 里操作到一半被踢出去很莫名。弹窗明确告知这一点。
+- Agent 设备：手机上跑终端命令不现实，所以只保留「看哪些设备绑着 + 解绑」，
+  绑定的那条命令留在网页。
+- 解绑用 `POST /me/agents/:id/unbind` 而不是 `DELETE`：Astro 的跨站防护会拦掉
+  不带 Origin 头的 DELETE（`Cross-site DELETE form submissions are forbidden`），
+  而原生请求根本不会带 Origin —— 那样这条接口在手机上永远 403。
 
 ## 13. 部署 runbook（服务端）
 

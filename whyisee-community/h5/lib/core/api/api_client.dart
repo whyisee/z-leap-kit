@@ -93,6 +93,16 @@ class ApiClient {
         ),
       );
 
+  /// 局部更新（改资料这类）。和 post 一样走统一的错误解包。
+  Future<ApiPayload> patch(String path, {Object? body, Map<String, dynamic>? query}) =>
+      _send(
+        () => _dio.patch<dynamic>(
+          path,
+          data: body,
+          queryParameters: _clean(query),
+        ),
+      );
+
   static Options? _timeoutOptions(Duration? receiveTimeout) =>
       receiveTimeout == null ? null : Options(receiveTimeout: receiveTimeout);
 

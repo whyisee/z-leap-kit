@@ -802,11 +802,20 @@ class _Header extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              _Avatar(author: topic.author),
-              const SizedBox(width: 8),
-              Text(
-                topic.author.displayName,
-                style: const TextStyle(fontSize: 12.5, color: Color(Env.text)),
+              // 头像和昵称一起可点：这是「想看看这个人还写过什么」最自然的落点
+              GestureDetector(
+                onTap: () => context.push('/u/${topic.author.username}'),
+                behavior: HitTestBehavior.opaque,
+                child: Row(
+                  children: [
+                    _Avatar(author: topic.author),
+                    const SizedBox(width: 8),
+                    Text(
+                      topic.author.displayName,
+                      style: const TextStyle(fontSize: 12.5, color: Color(Env.text)),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(width: 10),
               Text(

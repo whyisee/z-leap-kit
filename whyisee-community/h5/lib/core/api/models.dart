@@ -1304,3 +1304,258 @@ class ReviewActionResult {
     );
   }
 }
+
+/// 一条搜索结果。
+///
+/// `kind` 是服务端判的（topic / reply / category / tag / user），客户端只按它
+/// 决定点开去哪儿，不解析标题猜类型。`href` 是网页路径，兜底一律能进网页。
+class SearchHit {
+  const SearchHit({
+    required this.kind,
+    required this.title,
+    required this.href,
+    this.summary = '',
+    this.meta = '',
+    this.replyCount = 0,
+    this.viewCount = 0,
+  });
+
+  final String kind;
+  final String title;
+  final String href;
+  final String summary;
+
+  /// 服务端算好的副标（时间 / 计数），客户端不重算
+  final String meta;
+  final int replyCount;
+  final int viewCount;
+
+  String get kindLabel => switch (kind) {
+        'topic' => '话题',
+        'reply' => '回复',
+        'category' => '分类',
+        'tag' => '标签',
+        'user' => '用户',
+        _ => '结果',
+      };
+
+  /// 话题详情页能原生打开；分类 / 标签 / 用户页也有原生版本，靠 href 取 slug。
+  String? get nativePath {
+    switch (kind) {
+      case 'topic':
+        final match = RegExp(r'^/t/(\d+)').firstMatch(href);
+        final id = int.tryParse(match?.group(1) ?? '');
+        return id == null ? null : '/t/$id';
+      case 'user':
+        final match = RegExp(r'^/u/([^/?#]+)').firstMatch(href);
+        return match == null ? null : '/u/${match.group(1)}';
+      default:
+        return null;
+    }
+  }
+
+  factory SearchHit.fromJson(Map<String, dynamic> json) => SearchHit(
+        kind: json['kind'] as String? ?? 'topic',
+        title: json['title'] as String? ?? '',
+        href: json['href'] as String? ?? '/',
+        summary: json['summary'] as String? ?? '',
+        meta: json['meta'] as String? ?? '',
+        replyCount: (json['replyCount'] as num?)?.toInt() ?? 0,
+        viewCount: (json['viewCount'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class SearchOutcome {
+  const SearchOutcome({
+    required this.q,
+    required this.hits,
+    this.notes = const [],
+    this.warnings = const [],
+  });
+
+  final String q;
+  final List<SearchHit> hits;
+
+  /// 搜索词被指令 / AI 改写时的说明，直接展示给用户
+  final List<String> notes;
+  final List<String> warnings;
+
+  /// 结果按 kind 分组，顺序固定：先话题，其余按出现顺序
+  List<MapEntry<String, List<SearchHit>>> get grouped {
+    const order = ['topic', 'reply', 'user', 'category', 'tag'];
+    final buckets = <String, List<SearchHit>>{};
+    for (final hit in hits) {
+      buckets.putIfAbsent(hit.kind, () => []).add(hit);
+    }
+    final keys = [...order.where(buckets.containsKey), ...buckets.keys.where((k) => !order.contains(k))];
+    return [for (final key in keys) MapEntry(key, buckets[key]!)];
+  }
+
+  factory SearchOutcome.fromJson(Map<String, dynamic> json) => SearchOutcome(
+        q: json['q'] as String? ?? '',
+        hits: ((json['results'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((item) => SearchHit.fromJson(item.cast<String, dynamic>()))
+            .toList(),
+        notes: _stringList(json['notes']),
+        warnings: _stringList(json['warnings']),
+      );
+}
+
+List<String> _stringList(Object? value) =>
+    ((value as List?) ?? const []).whereType<String>().toList();
+
+/// 别人的主页 / 自己的主页都用它。
+class ProfilePageData {
+  const ProfilePageData({
+    required this.id,
+    required this.username,
+    required this.displayName,
+    required this.isSelf,
+    required this.following,
+    required this.topics,
+    required this.stats,
+    this.avatarUrl,
+    this.bio = '',
+    this.role = 'member',
+    this.websiteUrl,
+    this.githubUrl,
+    this.joinedAt,
+  });
+
+  final int id;
+  final String username;
+  final String displayName;
+  final String? avatarUrl;
+  final String bio;
+  final String role;
+  final String? websiteUrl;
+  final String? githubUrl;
+  final DateTime? joinedAt;
+
+  final bool isSelf;
+  final bool following;
+  final List<TopicSummary> topics;
+  final ProfileStats stats;
+
+  factory ProfilePageData.fromJson(Map<String, dynamic> json) {
+    final user = (json['user'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return ProfilePageData(
+      id: (user['id'] as num?)?.toInt() ?? 0,
+      username: user['username'] as String? ?? '',
+      displayName: user['displayName'] as String? ?? '',
+      avatarUrl: user['avatarUrl'] as String?,
+      bio: user['bio'] as String? ?? '',
+      role: user['role'] as String? ?? 'member',
+      websiteUrl: user['websiteUrl'] as String?,
+      githubUrl: user['githubUrl'] as String?,
+      joinedAt: _parseTime(user['joinedAt']),
+      isSelf: json['isSelf'] as bool? ?? false,
+      following: json['following'] as bool? ?? false,
+      stats: ProfileStats.fromJson(
+        (json['stats'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      topics: ((json['topics'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((item) => TopicSummary.fromJson(item.cast<String, dynamic>()))
+          .toList(),
+    );
+  }
+}
+
+class ProfileStats {
+  const ProfileStats({
+    this.topicCount = 0,
+    this.replyCount = 0,
+    this.featuredCount = 0,
+    this.followerCount = 0,
+    this.followingCount = 0,
+    this.badgeCount = 0,
+    this.trustName,
+  });
+
+  final int topicCount;
+  final int replyCount;
+  final int featuredCount;
+  final int followerCount;
+  final int followingCount;
+  final int badgeCount;
+  final String? trustName;
+
+  factory ProfileStats.fromJson(Map<String, dynamic> json) => ProfileStats(
+        topicCount: (json['topicCount'] as num?)?.toInt() ?? 0,
+        replyCount: (json['replyCount'] as num?)?.toInt() ?? 0,
+        featuredCount: (json['featuredCount'] as num?)?.toInt() ?? 0,
+        followerCount: (json['followerCount'] as num?)?.toInt() ?? 0,
+        followingCount: (json['followingCount'] as num?)?.toInt() ?? 0,
+        badgeCount: (json['badgeCount'] as num?)?.toInt() ?? 0,
+        trustName: json['trustName'] as String?,
+      );
+}
+
+/// 「设置 → 公开资料」回填用，比 [ProfilePageData] 多邮箱（只有本人能看到）。
+class MyProfile {
+  const MyProfile({
+    required this.username,
+    required this.displayName,
+    required this.bio,
+    required this.locale,
+    this.avatarUrl,
+    this.email,
+    this.websiteUrl,
+    this.githubUrl,
+  });
+
+  final String username;
+  final String displayName;
+  final String bio;
+  final String locale;
+  final String? avatarUrl;
+  final String? email;
+  final String? websiteUrl;
+  final String? githubUrl;
+
+  factory MyProfile.fromJson(Map<String, dynamic> json) => MyProfile(
+        username: json['username'] as String? ?? '',
+        displayName: json['displayName'] as String? ?? '',
+        bio: json['bio'] as String? ?? '',
+        locale: json['locale'] as String? ?? 'zh',
+        avatarUrl: json['avatarUrl'] as String?,
+        email: json['email'] as String?,
+        websiteUrl: json['websiteUrl'] as String?,
+        githubUrl: json['githubUrl'] as String?,
+      );
+}
+
+/// 一个绑定的 Agent 设备。
+class AgentDevice {
+  const AgentDevice({
+    required this.id,
+    required this.deviceName,
+    required this.agentName,
+    required this.status,
+    this.tokenPrefix,
+    this.lastSeenAt,
+    this.lastIpAddress,
+  });
+
+  final int id;
+  final String deviceName;
+  final String agentName;
+  final String status;
+  final String? tokenPrefix;
+  final DateTime? lastSeenAt;
+  final String? lastIpAddress;
+
+  bool get active => status == 'active';
+
+  factory AgentDevice.fromJson(Map<String, dynamic> json) => AgentDevice(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        deviceName: json['deviceName'] as String? ?? '未命名设备',
+        agentName: json['agentName'] as String? ?? '',
+        status: json['status'] as String? ?? 'active',
+        tokenPrefix: json['tokenPrefix'] as String?,
+        lastSeenAt: _parseTime(json['lastSeenAt']),
+        lastIpAddress: json['lastIpAddress'] as String?,
+      );
+}
