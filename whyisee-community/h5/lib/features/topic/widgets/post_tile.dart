@@ -15,6 +15,7 @@ class PostTile extends StatelessWidget {
     required this.floor,
     required this.onLike,
     this.likeBusy = false,
+    this.highlighted = false,
   });
 
   final TopicPost post;
@@ -22,14 +23,27 @@ class PostTile extends StatelessWidget {
   final VoidCallback onLike;
   final bool likeBusy;
 
+  /// 从通知点进来时，把被回复的那一层标出来 —— 用户不必自己数楼层
+  final bool highlighted;
+
   @override
   Widget build(BuildContext context) {
     final text = htmlToPlainText(post.contentHtml);
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOut,
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 12),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(Env.line), width: 1)),
+      decoration: BoxDecoration(
+        color: highlighted ? const Color(0x148AB4F8) : Colors.transparent,
+        border: Border(
+          // 左侧竖条常驻占位（透明的），高亮时不会把正文挤动 2.5px
+          left: BorderSide(
+            color: highlighted ? const Color(0xCC8AB4F8) : Colors.transparent,
+            width: 2.5,
+          ),
+          bottom: const BorderSide(color: Color(Env.line), width: 1),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -56,6 +70,24 @@ class PostTile extends StatelessWidget {
                 style: const TextStyle(fontSize: 11.5, color: Color(0xFF6E7887)),
               ),
               const Spacer(),
+              if (highlighted)
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: const Color(0x268AB4F8),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    '通知来源',
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      height: 1.3,
+                      fontWeight: FontWeight.w700,
+                      color: Color(Env.blue),
+                    ),
+                  ),
+                ),
               Text(
                 '#$floor',
                 style: const TextStyle(fontSize: 11.5, color: Color(0xFF5C6675)),

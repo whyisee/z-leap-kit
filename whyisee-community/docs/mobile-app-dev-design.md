@@ -1254,6 +1254,24 @@ App 侧（`features/notifications/`）：
 - 从通知返回「我」页会 `invalidate(meOverviewProvider)` + `refreshMe()`，
   顶部角标跟着掉。
 
+点开一条通知后落地的详情页（`TopicDetailPage`）也按「带着任务来」重排：
+
+- **直接落到被回复的那一层**。通知 href 是 `/t/79/slug#post-123`，`postAnchorOf`
+  取楼层 id，详情页把它换成 `?post=123` + 一个每楼层的 `GlobalKey`，
+  跳过去并把该楼标成蓝色左条 + `通知来源` 小标签。
+- **正文高度是异步的**：WebView 会从默认 320px 涨到真实高度（最长 1.5s），
+  跳一次会被顶走。所以分 5 拍（160/480/900/1500/2400ms）：第一拍跳，
+  后面只补「目标已不在视口内」的情况，否则每一拍都把用户往上拽一下。
+- **要定位时改用全量构建**（`SingleChildScrollView + Column`）：`ListView` 只建
+  视口附近子项，深层楼层没有 Element，`ensureVisible` 拿不到目标 —— 这不是
+  位置算错，是懒加载拿不到 context。
+- 顶部一条**来由条**（`EntryBanner`）：谁 / 什么时候 / 能不能定位，可收起。
+  目标楼层已被删就写「这条回复可能已被删除」，不假装跳到了一个不存在的位置。
+- 从通知进来**不串推荐**：隐藏底部「继续下滑 · 下一篇」，也关掉「到底继续滑
+  换一篇」——那会把用户从「看某条回复」的任务里甩出去（快速上滑很容易误触）。
+- `post` 走 query 而不是 `extra`：进程被回收重建后 `extra` 会丢，
+  但「跳到那一层」这件事仍然成立。
+
 ### 12.2 网页侧改动（共 3 处，均不影响普通浏览器）
 
 1. `src/layouts/BaseLayout.astro`：viewport 加 `viewport-fit=cover`。

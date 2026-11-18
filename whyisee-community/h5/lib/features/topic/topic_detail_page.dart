@@ -14,8 +14,10 @@ import '../../core/providers.dart';
 import '../errors/error_view.dart';
 import '../feed/feed_controller.dart';
 import 'reading_queue.dart';
+import 'topic_entry.dart';
 import 'topic_repository.dart';
 import 'widgets/article_webview.dart';
+import 'widgets/entry_banner.dart';
 import 'widgets/float_dock.dart';
 import 'widgets/post_tile.dart';
 import 'widgets/reader_top_bar.dart';
@@ -27,10 +29,24 @@ import 'widgets/topic_ai_sheet.dart';
 /// - 右下角竖排操作条（FloatDock），AI/点赞/收藏/回复/分享/关注作者；
 /// - 已读到底后继续上滑，切到服务端推荐的下一篇；
 /// - 正文用 WebView 保真渲染，回帖降级成纯文本。
+///
+/// 从通知点进来时多带两样东西：[entry] 说明来由（顶部一条），[postId] 指向
+/// 被回复的那一层（滚过去并高亮）。
 class TopicDetailPage extends ConsumerStatefulWidget {
-  const TopicDetailPage({super.key, required this.topicId});
+  const TopicDetailPage({
+    super.key,
+    required this.topicId,
+    this.entry,
+    this.postId,
+  });
 
   final int topicId;
+
+  /// 来由，只有从通知进来时才有
+  final TopicEntry? entry;
+
+  /// 要定位的楼层 id（通知 href 里的 `#post-123`）
+  final int? postId;
 
   @override
   ConsumerState<TopicDetailPage> createState() => _TopicDetailPageState();
@@ -44,6 +60,16 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
   final _scroll = ScrollController();
   final _offset = ValueNotifier<double>(0);
   final _repliesKey = GlobalKey();
+
+  /// 每个楼层一个 GlobalKey，用来滚到被通知指向的那一条。
+  /// 用 Map 复用：点赞等操作触发重建时不会重新造 key，滚动位置才不会跳。
+  final _postKeys = <int, GlobalKey>{};
+
+  /// 来由条可以收起来 —— 用户已经知道怎么回事了，别一直占着首屏
+  bool _bannerOpen = true;
+
+  /// 定位只做一次：下拉刷新不该把正在看的人拽回那条回复
+  bool _locateScheduled = false;
 
   TopicDetail? _detail;
   ApiException? _error;
@@ -79,6 +105,62 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
     _offset.value = _scroll.offset;
   }
 
+  /// 要定位的楼层 id；没有就是普通进入
+  int? get _targetPostId {
+    final id = widget.postId;
+    return (id != null && id > 0) ? id : null;
+  }
+
+  /// 滚到被通知指向的那一层。
+  ///
+  /// 正文是 WebView，高度靠 JS 异步上报（最长 1.5s 才稳定）。跳一次会被后来
+  /// 的长高顶走，所以分几拍：先跳，随后在高度稳定前后各纠一次偏。
+  void _scheduleLocate() {
+    final id = _targetPostId;
+    if (id == null) return;
+
+    for (final ms in const [160, 480, 900, 1500, 2400]) {
+      Timer(Duration(milliseconds: ms), () {
+        if (!mounted) return;
+        _locatePost(id, first: ms == 160);
+      });
+    }
+  }
+
+  void _locatePost(int postId, {bool first = false}) {
+    final ctx = _postKeys[postId]?.currentContext;
+    if (ctx == null) return;
+
+    // 0.12 屏高 ≈ 100px，正好落在顶栏下方而不是被毛玻璃压住
+    const alignment = 0.12;
+
+    if (first) {
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: alignment,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+      return;
+    }
+
+    // 纠偏只补「已经看不见了」的情况，否则每一拍都把用户往上拽一下
+    final box = ctx.findRenderObject();
+    if (box is! RenderBox || !box.attached) return;
+
+    final top = box.localToGlobal(Offset.zero).dy;
+    final screen = MediaQuery.of(context).size.height;
+    final barBottom = MediaQuery.of(context).padding.top + kToolbarHeight;
+    if (top < barBottom - 12 || top > screen * 0.62) {
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: alignment,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -102,6 +184,11 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
         _detail = detail;
         _loading = false;
       });
+
+      if (!_locateScheduled) {
+        _locateScheduled = true;
+        _scheduleLocate();
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -356,7 +443,9 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
   // ---------------------------------------------------------------- 切篇
 
   bool _onScrollNotification(ScrollNotification n) {
-    if (_switching) return false;
+    // 从通知进来时不允许「到底继续滑 → 换下一篇」：那是推荐流的行为，
+    // 在这里会把用户从「看某条回复」的任务里甩出去（快速上滑很容易误触）
+    if (_switching || widget.entry != null) return false;
 
     if (n is OverscrollNotification) {
       // 只有「已到底还继续往上看」才算，顶部回弹不算
@@ -418,6 +507,88 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
     });
   }
 
+  // ---------------------------------------------------------------- 内容
+
+  GlobalKey _keyFor(int postId) =>
+      _postKeys.putIfAbsent(postId, () => GlobalKey(debugLabel: 'post-$postId'));
+
+  List<Widget> _content() {
+    final detail = _detail!;
+    final topic = detail.topic;
+    final targetId = _targetPostId;
+    final targetFound = targetId != null && detail.posts.any((p) => p.id == targetId);
+    final entry = widget.entry;
+
+    return [
+      if (entry != null && _bannerOpen)
+        EntryBanner(
+          entry: entry,
+          located: targetFound,
+          hasTarget: targetId != null,
+          onLocate: () => _locatePost(targetId!, first: true),
+          onDismiss: () => setState(() => _bannerOpen = false),
+        ),
+      _Header(topic: topic),
+      if (topic.contentHtml.trim().isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: ArticleWebView(html: topic.contentHtml),
+        ),
+      if (topic.tags.isNotEmpty) _Tags(tags: topic.tags),
+      _RepliesHeader(key: _repliesKey, count: detail.posts.length),
+      if (detail.posts.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 26),
+          child: Center(
+            child: Text(
+              '还没有回复，去做第一个',
+              style: TextStyle(fontSize: 13, color: Color(Env.muted)),
+            ),
+          ),
+        )
+      else
+        for (var i = 0; i < detail.posts.length; i++)
+          PostTile(
+            key: _keyFor(detail.posts[i].id),
+            post: detail.posts[i],
+            floor: i + 1,
+            highlighted: targetId != null && detail.posts[i].id == targetId,
+            likeBusy: _postLikeBusy.contains(detail.posts[i].id),
+            onLike: () => _togglePostLike(detail.posts[i]),
+          ),
+      // 从通知进来不串推荐：用户带着「看那条回复」的任务来，
+      // 快速上滑到底就被换成另一篇，是会让人愣住的那种意外
+      if (entry == null) _NextHint(next: ref.read(readingQueueProvider).peek),
+      const SizedBox(height: 96),
+    ];
+  }
+
+  Widget _scrollArea(double topInset) {
+    final children = _content();
+    final padding = EdgeInsets.only(top: topInset + kToolbarHeight);
+
+    // 需要定位到某一层时改成全量构建：ListView 只建视口附近的子项，
+    // 深层的楼层根本没有 Element，ensureVisible 拿不到目标（不是位置算错）。
+    if (_targetPostId != null) {
+      return SingleChildScrollView(
+        controller: _scroll,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: padding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: children,
+        ),
+      );
+    }
+
+    return ListView(
+      controller: _scroll,
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: padding,
+      children: children,
+    );
+  }
+
   // ---------------------------------------------------------------- 构建
 
   @override
@@ -460,41 +631,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
               color: const Color(Env.blue),
               backgroundColor: const Color(Env.surface),
               onRefresh: _load,
-              child: ListView(
-                controller: _scroll,
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.only(top: topInset + kToolbarHeight),
-                children: [
-                  _Header(topic: topic),
-                  if (topic.contentHtml.trim().isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                      child: ArticleWebView(html: topic.contentHtml),
-                    ),
-                  if (topic.tags.isNotEmpty) _Tags(tags: topic.tags),
-                  _RepliesHeader(key: _repliesKey, count: detail.posts.length),
-                  if (detail.posts.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 26),
-                      child: Center(
-                        child: Text(
-                          '还没有回复，去做第一个',
-                          style: TextStyle(fontSize: 13, color: Color(Env.muted)),
-                        ),
-                      ),
-                    )
-                  else
-                    for (var i = 0; i < detail.posts.length; i++)
-                      PostTile(
-                        post: detail.posts[i],
-                        floor: i + 1,
-                        likeBusy: _postLikeBusy.contains(detail.posts[i].id),
-                        onLike: () => _togglePostLike(detail.posts[i]),
-                      ),
-                  _NextHint(next: ref.read(readingQueueProvider).peek),
-                  const SizedBox(height: 96),
-                ],
-              ),
+              child: _scrollArea(topInset),
             ),
           ),
         ),

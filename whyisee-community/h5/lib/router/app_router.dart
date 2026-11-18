@@ -9,6 +9,7 @@ import '../features/me/me_page.dart';
 import '../features/notifications/notification_page.dart';
 import '../features/shell/home_shell.dart';
 import '../features/topic/topic_detail_page.dart';
+import '../features/topic/topic_entry.dart';
 import '../features/web/web_route_page.dart';
 
 /// 四个 tab 各自一条独立导航栈，indexedStack 保证切换不重建、WebView 不重载。
@@ -149,12 +150,22 @@ final GoRouter appRouter = GoRouter(
 );
 
 /// 详情页统一用淡入过渡：feed 和「我」两条栈共用，避免两处参数慢慢写歪。
+///
+/// 从通知进来时额外带 `entry`（来由）和 `?post=`（被回复的楼层）：
+/// 前者说明为什么打开，后者让页面直接滚到那一层，而不是让人自己数到第 12 楼。
 CustomTransitionPage<void> _topicPage(GoRouterState state) {
   final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
+  final extra = state.extra;
 
   return CustomTransitionPage<void>(
     key: state.pageKey,
-    child: TopicDetailPage(topicId: id),
+    child: TopicDetailPage(
+      topicId: id,
+      entry: extra is TopicEntry ? extra : null,
+      // post 走 query 而不是 extra：进程被回收重建后 extra 会丢，
+      // 但「跳到那一层」这件事仍然应该成立
+      postId: int.tryParse(state.uri.queryParameters['post'] ?? ''),
+    ),
     transitionDuration: const Duration(milliseconds: 220),
     reverseTransitionDuration: const Duration(milliseconds: 180),
     transitionsBuilder: (_, animation, _, child) => FadeTransition(

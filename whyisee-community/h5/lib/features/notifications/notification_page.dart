@@ -6,6 +6,7 @@ import '../../core/api/models.dart';
 import '../../core/env.dart';
 import '../../core/providers.dart';
 import '../errors/error_view.dart';
+import '../topic/topic_entry.dart';
 import 'notification_controller.dart';
 
 /// 原生通知页。
@@ -143,12 +144,24 @@ class _NotificationPageState extends ConsumerState<NotificationPage> {
   /// 点开：先本地置已读（返回时那一行不再亮着），再跳目标。
   ///
   /// 能解析出帖子 id 就走原生阅读器，其余的（任务、举报、设置类）交给网页容器。
+  /// 走原生时把「谁、什么时候、指向哪一层」一起带过去 —— 否则落地的是一篇
+  /// 从标题开始的文章，用户得自己数到第 12 楼才能看到回复他的那句。
   void _open(NotificationItem item, NotificationController controller) {
     controller.markRead(item);
 
     final topicId = item.topicId;
     if (topicId != null && topicId > 0) {
-      context.push('/me/notifications/t/$topicId');
+      final postId = postAnchorOf(item.href);
+      final query = postId == null ? '' : '?post=$postId';
+      context.push(
+        '/me/notifications/t/$topicId$query',
+        extra: TopicEntry(
+          kind: item.kind,
+          actorName: item.actorName,
+          actorAvatarUrl: item.actorAvatarUrl,
+          timeLabel: item.timeLabel,
+        ),
+      );
       return;
     }
 
