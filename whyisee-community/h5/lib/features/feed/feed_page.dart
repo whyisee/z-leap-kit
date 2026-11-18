@@ -260,7 +260,7 @@ class _CategoryBar extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.only(right: 16),
-        itemCount: categories.length + 1,
+        itemCount: categories.length + 2,
         separatorBuilder: (_, _) => const SizedBox(width: 7),
         itemBuilder: (context, index) {
           if (index == 0) {
@@ -268,6 +268,16 @@ class _CategoryBar extends StatelessWidget {
               label: '全部',
               selected: activeSlug == null,
               onTap: () => onChanged(null),
+            );
+          }
+
+          // 末尾是出口而不是筛选项：筛选只换列表，点这里去分类总览页
+          if (index == categories.length + 1) {
+            return _CategoryChip(
+              label: '分类',
+              selected: false,
+              trailingIcon: Icons.chevron_right,
+              onTap: () => context.push('/categories'),
             );
           }
 
@@ -290,12 +300,16 @@ class _CategoryChip extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.dotColor,
+    this.trailingIcon,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
   final Color? dotColor;
+
+  /// 只给「分类」那个出口用：右侧一个小箭头，暗示它会跳页面
+  final IconData? trailingIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -335,6 +349,10 @@ class _CategoryChip extends StatelessWidget {
                 color: selected ? const Color(Env.blue) : const Color(0xFF8A939F),
               ),
             ),
+            if (trailingIcon != null) ...[
+              const SizedBox(width: 1),
+              Icon(trailingIcon, size: 14, color: const Color(0xFF5F6875)),
+            ],
           ],
         ),
       ),

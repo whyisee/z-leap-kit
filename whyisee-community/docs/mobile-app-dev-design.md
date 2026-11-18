@@ -1344,7 +1344,8 @@ App 侧（`features/notifications/`）：
 - ~~详情页不能回复~~：已加底部「写回复」条 + 分块编辑器，直连 `POST /api/v1/topics/:id/posts`（§12.6）。
 - ~~登录要走网页~~：已改原生登录页 `features/auth/login_page.dart`（§12.6）；注册 / 找回密码仍走网页。
 - ~~搜索 / 用户主页 / 设置三项要跳网页~~：均已原生化（§12.7）。
-- 仍缺原生入口的：分类与标签页、项目展示、Agent 专区、举报、关于。
+- ~~分类与标签页、注册、找回密码~~：均已原生化（§12.8）。
+- 仍缺原生入口的：项目展示、Agent 专区、举报、关于。
 - `npm run check` 有 3 个既有错误，都在 `src/pages/app.astro`（与本方案无关，未改动）。
 
 ### 12.6 P0 补齐：原生登录 + 详情页回复
@@ -1412,6 +1413,52 @@ P1 的共同点是「不是不能用，是每次都要掉进 WebView」：搜索
 - 解绑用 `POST /me/agents/:id/unbind` 而不是 `DELETE`：Astro 的跨站防护会拦掉
   不带 Origin 头的 DELETE（`Cross-site DELETE form submissions are forbidden`），
   而原生请求根本不会带 Origin —— 那样这条接口在手机上永远 403。
+
+### 12.8 P0/P1 收尾：注册、找回密码、分类标签、编辑删除
+
+这一轮清的是「上一批做完之后还挂在网页上的那几个入口」。
+
+**注册 / 找回密码**（`features/auth/`，路由 `/signup`、`/forgot-password`、`/reset-password`）
+
+- 服务端 `POST /api/v1/auth/signup`：校验复用网页同一套 `createUserWithInvitation`（邀请码、
+  用户名格式、邮箱唯一），成功后调 `promoteSessionToApp` 把网页会话转成 App 会话（90 天），
+  直接回 token —— 注册完就是登录态，不用退回去再登一次。
+- `POST /auth/password-reset/request`：**不管账号在不在都回 `sent: true`**。这个接口不登录
+  就能调，按结果区分等于送人一个「这个用户名注册过没有」的探测工具。只有 `DEV` 才回
+  `debugToken`（线上邮件是真发的，回给调用方等于绕过邮箱）。
+- `POST /auth/password-reset/confirm`：过期 / 用过 / 不对，三种情况对用户是同一件事，
+  统一说「这个重置链接已失效」。重置成功**不动现有会话** —— 人可能是在另一台机器上被锁在外面。
+- 邮件里的链接指向网页；App 里因此做了「我有 token」那一段：把链接里的 token 粘过来就地改完，
+  比被踢去浏览器再回来自然。带 `?token=` 进 `/reset-password` 直接落在这一段。
+- 三个表单共用 `auth_field.dart`（AuthField / AuthSubmitButton / AuthErrorLine / AuthHeading），
+  错误文案统一走 `authErrorText` —— 登录、注册、找回三处的「账号或密码不对」是同一句话。
+
+**分类与标签**（`features/taxonomy/`，路由 `/categories`、`/c/:slug`、`/tag/:slug`）
+
+- 服务端 `routes/taxonomy.ts`：`GET /taxonomy/categories`、`/taxonomy/tags`、`/taxonomy/categories/:slug`、
+  `/taxonomy/tags/:slug`。详情一次带回 `{category|tag, topics, meta{hasMore,nextOffset}}` ——
+  头部那行说明和「17 篇」是给「确认自己点对了」用的，不值得再来一次请求。
+- 网页 `/categories` 是分类墙 + 右侧标签云；手机上双栏没意义，改成上下两段：分类在前
+  （带说明和篇数，决定点不点），热门标签在后（只是补充入口）。
+- 分类页和标签页结构完全一样，合成一个 `TaxonomyDetailPage`，`kind` 决定文案。
+- 入口三处：看见页分类条末尾的「分类 ›」、搜索结果里的分类 / 标签、标签页之间的互跳。
+- 搜索结果的 `nativePath` 之前对 category/tag 返回 null（只能进网页），现在补上了。
+  **标签 slug 可能是中文**，href 里是百分号编码，拼路由前必须 `decodeComponent → encodeComponent`
+  走一遍，否则 `%E8%B7%AF…` 会被当成路径的一部分，打开是 404。
+
+**编辑 / 删除自己的话题**（详情页右上 ⋮）
+
+- 服务端三条：`GET /topics/:id/edit`（原文 markdown，仅作者 / 管理员）、
+  `POST /topics/:id/update`、`POST /topics/:id/delete`。
+- **编辑前取原文单独一条接口**，不塞进详情：详情是公开的，读者不需要正文源码。
+- 用 POST 不用 PATCH/DELETE：Astro 跨站防护会拦掉不带 `Origin` 头的非常规方法，
+  原生请求不会带 Origin（`/me/agents/:id/unbind` 已经踩过一次）。
+- 状态规则与网页一致：普通作者改完回 `pending` 重审，管理员可 `published`。App 编辑页
+  没有「存草稿」——文章本来就在线上，退回草稿等于自己下线，那个动作留给网页后台。
+- 编辑页复用发布页（`ComposePage(editTopicId:)`）：分区选择、块编辑器、标题校验、返回确认
+  全都一样，分成两页只会让两边慢慢长歪。编辑模式下 `_hasContent` 比的是「和原文有没有差异」，
+  没改就退出不弹确认。
+- 删除是软删（`status='deleted'`），回复和历史都留着；二次确认文案明说「这个动作在手机上去不掉」。
 
 ## 13. 部署 runbook（服务端）
 

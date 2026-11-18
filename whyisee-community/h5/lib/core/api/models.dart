@@ -1349,6 +1349,18 @@ class SearchHit {
       case 'user':
         final match = RegExp(r'^/u/([^/?#]+)').firstMatch(href);
         return match == null ? null : '/u/${match.group(1)}';
+      // 分类和标签的 slug 可能是中文（标签尤其常见），href 里是百分号编码的，
+      // 直接拼进路由会把「%E8%B7%AF…」当路径的一部分，得先解码再编码一次
+      case 'category':
+        final match = RegExp(r'^/c/([^/?#]+)').firstMatch(href);
+        return match == null
+            ? null
+            : '/c/${Uri.encodeComponent(Uri.decodeComponent(match.group(1)!))}';
+      case 'tag':
+        final match = RegExp(r'^/tag/([^/?#]+)').firstMatch(href);
+        return match == null
+            ? null
+            : '/tag/${Uri.encodeComponent(Uri.decodeComponent(match.group(1)!))}';
       default:
         return null;
     }
@@ -1557,5 +1569,100 @@ class AgentDevice {
         tokenPrefix: json['tokenPrefix'] as String?,
         lastSeenAt: _parseTime(json['lastSeenAt']),
         lastIpAddress: json['lastIpAddress'] as String?,
+      );
+}
+
+/// 分类 / 标签列表里的一项。
+///
+/// 两个接口回的形状几乎一样（name/slug/description/topicCount，分类多个 color），
+/// 用一个模型装，页面上就能拿同一套 widget 渲染。
+class TaxonomyItem {
+  const TaxonomyItem({
+    required this.id,
+    required this.name,
+    required this.slug,
+    this.description = '',
+    this.color = '',
+    this.topicCount = 0,
+  });
+
+  final int id;
+  final String name;
+  final String slug;
+  final String description;
+  final String color;
+  final int topicCount;
+
+  factory TaxonomyItem.fromJson(Map<String, dynamic> json) => TaxonomyItem(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        name: json['name'] as String? ?? '',
+        slug: json['slug'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        color: json['color'] as String? ?? '',
+        topicCount: (json['topicCount'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// 分类页 / 标签页的内容：头部的说明 + 一页话题。
+class TaxonomyDetail {
+  const TaxonomyDetail({
+    required this.kind,
+    required this.item,
+    required this.topics,
+    required this.hasMore,
+    this.nextOffset,
+  });
+
+  /// `category` / `tag`。页面只拿它决定文案（「分类」还是「标签」）。
+  final String kind;
+  final TaxonomyItem item;
+  final List<TopicSummary> topics;
+  final bool hasMore;
+  final int? nextOffset;
+
+  TaxonomyDetail copyWith({
+    List<TopicSummary>? topics,
+    bool? hasMore,
+    int? nextOffset,
+  }) =>
+      TaxonomyDetail(
+        kind: kind,
+        item: item,
+        topics: topics ?? this.topics,
+        hasMore: hasMore ?? this.hasMore,
+        nextOffset: nextOffset ?? this.nextOffset,
+      );
+
+  String get kindLabel => kind == 'tag' ? '标签' : '分类';
+}
+
+/// 编辑页的预填数据：服务端只给作者本人 / 管理员。
+class TopicDraft {
+  const TopicDraft({
+    required this.id,
+    required this.title,
+    required this.contentMarkdown,
+    required this.type,
+    required this.categoryId,
+    required this.status,
+    this.tags = const [],
+  });
+
+  final int id;
+  final String title;
+  final String contentMarkdown;
+  final String type;
+  final int? categoryId;
+  final String status;
+  final List<String> tags;
+
+  factory TopicDraft.fromJson(Map<String, dynamic> json) => TopicDraft(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        title: json['title'] as String? ?? '',
+        contentMarkdown: json['contentMarkdown'] as String? ?? '',
+        type: json['type'] as String? ?? 'discussion',
+        categoryId: (json['categoryId'] as num?)?.toInt(),
+        status: json['status'] as String? ?? 'published',
+        tags: ((json['tags'] as List?) ?? const []).whereType<String>().toList(),
       );
 }

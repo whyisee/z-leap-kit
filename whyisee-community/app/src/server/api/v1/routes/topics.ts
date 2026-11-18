@@ -1,6 +1,14 @@
 import { Hono } from "hono";
 import { isAdmin } from "@lib/auth";
-import { getTopicById, listRelatedTopics, createTopic } from "@server/services/topics";
+import type { TopicType } from "@lib/types";
+import {
+  getTopicById,
+  getTopicByIdForAdmin,
+  listRelatedTopics,
+  createTopic,
+  updateTopic,
+  updateTopicAdminState,
+} from "@server/services/topics";
 import { listCategories } from "@server/services/categories";
 import { notifyAdmins } from "@server/services/notifications";
 import { getPostForEdit, listPostsForTopic, topicHref, createPost } from "@server/services/posts";
@@ -131,6 +139,136 @@ function readIdList(value: string | undefined) {
     .filter((item) => Number.isFinite(item) && item > 0)
     .slice(0, 60);
 }
+
+/**
+ * 编辑前取原文。
+ *
+ * 为什么不把 markdown 塞进详情接口：详情是公开的，读者不需要正文源码，
+ * 发了只是多一份可以被抓走的内容。这里单独一条，作者本人和管理员才拿得到。
+ */
+topics.get("/:id/edit", requireAuth, async (c) => {
+  const id = intParam(c.req.param("id"));
+  const session = c.get("session");
+
+  if (id <= 0) return fail(c, "validation_failed", "话题 id 不合法");
+
+  const topic = await getTopicByIdForAdmin(id);
+
+  if (!topic || (topic.authorId !== session.userId && !isAdmin(session))) {
+    return fail(c, "not_found", "话题不存在");
+  }
+
+  return ok(c, {
+    topic: {
+      id: topic.id,
+      title: topic.title,
+      contentMarkdown: topic.contentMarkdown,
+      categoryId: topic.category?.id ?? null,
+      type: topic.type,
+      status: topic.status,
+      tags: (topic.tags || []).map((tag) => tag.name),
+    },
+  });
+});
+
+/**
+ * 保存编辑。
+ *
+ * 用 POST 而不是 PATCH：Astro 的跨站防护会拦掉不带 Origin 头的非常规方法，
+ * 而原生请求根本不会带 Origin（`/me/agents/:id/unbind` 已经踩过一次）。
+ *
+ * 状态规则和网页一致：普通作者改完回到 `pending` 重新审核，管理员可以直接
+ * `published`。App 里没有「存草稿」这个动作 —— 编辑页是从一篇已存在的文章
+ * 进的，把线上文章改回草稿没有意义。
+ */
+topics.post("/:id/update", requireAuth, async (c) => {
+  const id = intParam(c.req.param("id"));
+  const session = c.get("session");
+
+  if (id <= 0) return fail(c, "validation_failed", "话题 id 不合法");
+
+  const topic = await getTopicByIdForAdmin(id);
+
+  if (!topic || (topic.authorId !== session.userId && !isAdmin(session))) {
+    return fail(c, "not_found", "话题不存在");
+  }
+
+  const body = await readJson<{
+    title?: string;
+    summary?: string;
+    contentMarkdown?: string;
+    categoryId?: number;
+    type?: string;
+    tags?: string[];
+    status?: string;
+  }>(c.req.raw);
+
+  const title = String(body?.title || "").trim();
+  const contentMarkdown = String(body?.contentMarkdown || "").trim();
+  const categoryId = Number(body?.categoryId || 0);
+
+  if (title.length < 4) return fail(c, "validation_failed", "标题至少 4 个字");
+  if (contentMarkdown.length < 10) return fail(c, "validation_failed", "正文至少 10 个字");
+  if (!Number.isFinite(categoryId) || categoryId <= 0) {
+    return fail(c, "validation_failed", "选一个分区");
+  }
+
+  const allowedTypes: TopicType[] = [
+    "discussion",
+    "question",
+    "article",
+    "project",
+    "resource",
+    "announcement",
+  ];
+  const type: TopicType = allowedTypes.find((item) => item === body?.type) ?? "discussion";
+
+  const status =
+    isAdmin(session) && body?.status === "published" ? "published" : "pending";
+
+  try {
+    await updateTopic(topic.id, {
+      title,
+      slug: topic.slug,
+      summary: String(body?.summary || "").trim(),
+      contentMarkdown,
+      authorId: topic.authorId,
+      categoryId,
+      type,
+      status,
+      isPinned: topic.isPinned,
+      isFeatured: topic.isFeatured,
+      tags: Array.isArray(body?.tags) ? body!.tags!.map(String).filter(Boolean).slice(0, 5) : [],
+    });
+  } catch (error) {
+    console.error("Failed to update topic from app", error);
+    return fail(c, "server_error", "保存失败，稍后再试");
+  }
+
+  return ok(c, { id: topic.id, status });
+});
+
+/**
+ * 删除（软删）。和网页后台同一个动作：status 改 `deleted`，数据和回复都还在。
+ *
+ * 只用 POST，理由同 `/:id/update`。
+ */
+topics.post("/:id/delete", requireAuth, async (c) => {
+  const id = intParam(c.req.param("id"));
+  const session = c.get("session");
+
+  if (id <= 0) return fail(c, "validation_failed", "话题 id 不合法");
+
+  const topic = await getTopicByIdForAdmin(id);
+
+  if (!topic || (topic.authorId !== session.userId && !isAdmin(session))) {
+    return fail(c, "not_found", "话题不存在");
+  }
+
+  await updateTopicAdminState(topic.id, { status: "deleted" });
+
+  return ok(c, { deleted: true });
+});
 
 topics.post("/:id/posts", requireAuth, async (c) => {
   const session = c.get("session");

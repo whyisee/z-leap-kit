@@ -14,6 +14,7 @@ import followingRoutes from "./routes/following";
 import notificationRoutes from "./routes/notifications";
 import adminRoutes from "./routes/admin";
 import metaRoutes from "./routes/meta";
+import taxonomyRoutes from "./routes/taxonomy";
 import searchRoutes from "./routes/search";
 import userRoutes from "./routes/users";
 
@@ -41,6 +42,7 @@ v1.route("/following", followingRoutes);
 v1.route("/notifications", notificationRoutes);
 v1.route("/admin", adminRoutes);
 v1.route("/meta", metaRoutes);
+v1.route("/taxonomy", taxonomyRoutes);
 v1.route("/search", searchRoutes);
 v1.route("/users", userRoutes);
 

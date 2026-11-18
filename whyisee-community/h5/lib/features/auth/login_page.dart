@@ -5,6 +5,8 @@ import 'package:material_ui/material_ui.dart';
 import '../../core/api/api_exception.dart';
 import '../../core/env.dart';
 import '../../core/providers.dart';
+import 'auth_field.dart';
+import 'auth_repository.dart';
 
 /// 原生登录页。
 ///
@@ -12,8 +14,8 @@ import '../../core/providers.dart';
 /// 用户看着地址栏和一堆站点头尾，登录态还得靠 JS 桥回传。原生登录只有一个
 /// 表单，登录成功后直接 `pop` 回上一页，来路不变。
 ///
-/// 注册和找回密码仍然走网页 —— 那两个流程有验证码、邮件、重发倒计时，
-/// 原生化收益低；这里只在底部留入口。
+/// 注册和找回密码也是原生页了（`SignupPage` / `ForgotPasswordPage`），
+/// 三个入口不再各跳各的 WebView。
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key, this.reason});
 
@@ -65,13 +67,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = switch (e.code) {
-          // 服务端对「账号不存在」和「密码错」返回同一个码，不区分——
-          // 这里也别替它泄露哪个字段错了
-          'invalid_credentials' || 'unauthorized' => '账号或密码不对，再试一次',
-          'rate_limited' => '试得太频繁了，过一会儿再来',
-          _ => e.isNetwork ? '网络不通，检查一下再试' : e.message,
-        };
+        _error = authErrorText(e);
       });
     } catch (_) {
       if (!mounted) return;
@@ -80,12 +76,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         _error = '登录失败，稍后重试';
       });
     }
-  }
-
-  void _openWeb(String path, String title) {
-    context.push(
-      '/web?path=${Uri.encodeComponent(path)}&title=${Uri.encodeComponent(title)}',
-    );
   }
 
   @override
@@ -110,22 +100,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 26, 20, 28),
           children: [
-            const Text(
-              '欢迎回来',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.6,
-                color: Color(Env.text),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              widget.reason ?? '登录后可以发帖、回复和关注作者。',
-              style: const TextStyle(fontSize: 12.5, height: 1.5, color: Color(Env.muted)),
+            AuthHeading(
+              title: '欢迎回来',
+              description: widget.reason ?? '登录后可以发帖、回复和关注作者。',
             ),
             const SizedBox(height: 24),
-            _Field(
+            AuthField(
               label: '用户名或邮箱',
               controller: _identifier,
               hint: 'whyisee',
@@ -135,7 +115,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               onChanged: () => setState(() {}),
             ),
             const SizedBox(height: 14),
-            _Field(
+            AuthField(
               label: '密码',
               controller: _password,
               focusNode: _passwordFocus,
@@ -155,132 +135,37 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             ),
             if (_error != null) ...[
               const SizedBox(height: 14),
-              Row(
-                children: [
-                  const Icon(Icons.error_outline, size: 15, color: Color(0xFFFF6B7A)),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      _error!,
-                      style: const TextStyle(fontSize: 12.5, height: 1.4, color: Color(0xFFFF9AA6)),
-                    ),
-                  ),
-                ],
-              ),
+              AuthErrorLine(message: _error!),
             ],
             const SizedBox(height: 22),
-            FilledButton(
+            AuthSubmitButton(
+              label: '登录',
+              busy: _busy,
               onPressed: _canSubmit ? _submit : null,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(46),
-                backgroundColor: const Color(0xFF8AB4F8),
-                foregroundColor: const Color(0xFF0D1016),
-                disabledBackgroundColor: const Color(0x1FFFFFFF),
-                disabledForegroundColor: const Color(0xFF5F6875),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
-              ),
-              child: _busy
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation(Color(0xFF0D1016)),
-                      ),
-                    )
-                  : const Text(
-                      '登录',
-                      style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
-                    ),
             ),
             const SizedBox(height: 18),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _LinkButton(label: '注册账号', onTap: () => _openWeb('/signup', '注册')),
+                _LinkButton(
+                  label: '注册账号',
+                  // push 而不是 replace：注册页取消后回到这张已经填了一半的登录表单
+                  onTap: () async {
+                    final navigator = Navigator.of(context);
+                    final created = await context.push<bool>('/signup');
+                    if (created == true) navigator.pop(true);
+                  },
+                ),
                 Container(width: 1, height: 12, color: const Color(Env.line)),
                 _LinkButton(
                   label: '忘记密码',
-                  onTap: () => _openWeb('/forgot-password', '找回密码'),
+                  onTap: () => context.push('/forgot-password'),
                 ),
               ],
             ),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _Field extends StatelessWidget {
-  const _Field({
-    required this.label,
-    required this.controller,
-    required this.hint,
-    this.focusNode,
-    this.obscure = false,
-    this.autofillHints,
-    this.textInputAction,
-    this.onSubmitted,
-    this.onChanged,
-    this.trailing,
-  });
-
-  final String label;
-  final TextEditingController controller;
-  final String hint;
-  final FocusNode? focusNode;
-  final bool obscure;
-  final List<String>? autofillHints;
-  final TextInputAction? textInputAction;
-  final ValueChanged<String>? onSubmitted;
-  final VoidCallback? onChanged;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 11.5, letterSpacing: 0.3, color: Color(0xFF7C8798)),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          decoration: BoxDecoration(
-            color: const Color(Env.surface),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(Env.line)),
-          ),
-          padding: EdgeInsets.only(left: 12, right: trailing == null ? 12 : 2),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  obscureText: obscure,
-                  autofillHints: autofillHints,
-                  textInputAction: textInputAction,
-                  onSubmitted: onSubmitted,
-                  onChanged: (_) => onChanged?.call(),
-                  style: const TextStyle(fontSize: 15, color: Color(Env.text)),
-                  cursorColor: const Color(Env.blue),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    hintText: hint,
-                    hintStyle: const TextStyle(fontSize: 15, color: Color(0xFF4A5462)),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 13),
-                  ),
-                ),
-              ),
-              ?trailing,
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

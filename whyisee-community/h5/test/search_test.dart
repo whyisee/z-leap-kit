@@ -5,22 +5,30 @@ import 'package:whyisee_app/core/api/models.dart';
 /// 1. 一条结果点开时能原生打开还是只能进网页 —— 判错就是把用户扔进 WebView；
 /// 2. 分组顺序稳定 —— 顺序乱跳会让人以为结果变了。
 void main() {
-  test('话题和用户能原生打开，分类/标签只能走网页', () {
+  test('话题 / 用户 / 分类 / 标签都能原生打开，回复和未知类型留给网页', () {
     SearchHit hit(String kind, String href) =>
         SearchHit(kind: kind, title: 't', href: href);
 
     expect(hit('topic', '/t/91').nativePath, '/t/91');
     expect(hit('topic', '/t/91#post-3').nativePath, '/t/91');
     expect(hit('user', '/u/mika_ai').nativePath, '/u/mika_ai');
+    expect(hit('category', '/c/design').nativePath, '/c/design');
+    expect(hit('tag', '/tag/cursor-plugin').nativePath, '/tag/cursor-plugin');
 
-    // 分类 / 标签页还没原生化，必须留给网页容器
-    expect(hit('tag', '/tag/cursor-plugin').nativePath, isNull);
-    expect(hit('category', '/c/design').nativePath, isNull);
+    // 标签 slug 可能是中文，href 里是百分号编码；拼路由前必须解码再编码，
+    // 否则会把 %E8%B7%AF… 当成路径的一部分，打开是个 404
+    expect(
+      hit('tag', '/tag/%E8%B7%AF%E5%BE%84%E8%AE%BE%E8%AE%A1').nativePath,
+      '/tag/${Uri.encodeComponent('路径设计')}',
+    );
+
+    // 回复只带楼层锚点，没有独立的原生页面
     expect(hit('reply', '/t/91#post-3').nativePath, isNull);
 
     // href 形状不对时宁可不跳原生，也不要拼出一个打不开的地址
     expect(hit('topic', '/latest').nativePath, isNull);
     expect(hit('user', '/u/').nativePath, isNull);
+    expect(hit('category', '/categories').nativePath, isNull);
   });
 
   test('分组顺序固定：话题在前，其余按固定顺序，未知类型兜到最后', () {

@@ -347,6 +347,121 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
     }
   }
 
+  /// 作者 / 管理员的长按菜单：编辑、删除。
+  ///
+  /// 只做这两件事。改分区、置顶、加精这些留给网页后台 —— 手机上处理一篇
+  /// 内容时，99% 的需求是「有个错字」或「发错地方了」。
+  Future<void> _openOwnerMenu() async {
+    final topic = _detail?.topic;
+    if (topic == null) return;
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => SafeArea(
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          decoration: BoxDecoration(
+            color: const Color(Env.surface),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit_outlined, size: 20, color: Color(Env.text)),
+                title: const Text(
+                  '编辑这篇',
+                  style: TextStyle(fontSize: 14, color: Color(Env.text)),
+                ),
+                subtitle: const Text(
+                  '改完要重新过一遍审核',
+                  style: TextStyle(fontSize: 11.5, color: Color(0xFF5F6875)),
+                ),
+                onTap: () => Navigator.of(context).pop('edit'),
+              ),
+              const Divider(height: 1, color: Color(Env.line)),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, size: 20, color: Color(0xFFF08A8A)),
+                title: const Text(
+                  '删除',
+                  style: TextStyle(fontSize: 14, color: Color(0xFFF08A8A)),
+                ),
+                subtitle: const Text(
+                  '会从列表里下线，回复不会丢',
+                  style: TextStyle(fontSize: 11.5, color: Color(0xFF5F6875)),
+                ),
+                onTap: () => Navigator.of(context).pop('delete'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (action == 'edit') {
+      await context.push('/compose/edit/${topic.id}');
+      if (!mounted) return;
+      await _refreshQuietly();
+    } else if (action == 'delete') {
+      await _confirmDelete(topic.id);
+    }
+  }
+
+  Future<void> _confirmDelete(int topicId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(Env.surface),
+        title: const Text('删除这篇？', style: TextStyle(fontSize: 15, color: Color(Env.text))),
+        content: const Text(
+          '删除后列表里就看不到了，回复记录仍然保留。这个动作在手机上去不掉。',
+          style: TextStyle(fontSize: 13, height: 1.6, color: Color(Env.muted)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('算了', style: TextStyle(color: Color(Env.muted))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除', style: TextStyle(color: Color(0xFFF08A8A))),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await ref.read(topicRepositoryProvider).deleteTopic(topicId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已删除')),
+      );
+      // 这篇已经不在列表里了，留在详情页只会到处 404
+      context.pop();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('删除失败，稍后再试')),
+      );
+    }
+  }
+
+  /// 编辑回来后的静默刷新：不置 loading，避免整页闪一下骨架再回到原位。
+  Future<void> _refreshQuietly() async {
+    try {
+      final detail = await ref.read(topicRepositoryProvider).detail(widget.topicId);
+      if (!mounted) return;
+      setState(() => _detail = detail);
+    } catch (_) {
+      // 刷新失败不打断阅读，用户下拉一下还能手动重来
+    }
+  }
+
   void _scrollToReplies() {
     final ctx = _repliesKey.currentContext;
     if (ctx == null) return;
@@ -711,6 +826,8 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
               topInset: topInset,
               onBack: () => context.pop(),
               onOpenBrowser: _openInBrowser,
+              // canEdit 由服务端判（作者本人或管理员），客户端不自己比 id
+              onMore: _detail?.me.canEdit == true ? _openOwnerMenu : null,
             ),
           ),
         ),

@@ -8,6 +8,7 @@ import '../../core/env.dart';
 import '../../core/format.dart';
 import '../../core/providers.dart';
 import '../../shared/widgets/markdown_editor.dart';
+import '../topic/topic_repository.dart';
 import 'compose_repository.dart';
 
 /// 原生发布页。
@@ -16,7 +17,15 @@ import 'compose_repository.dart';
 /// 这里只有三行东西 —— 标题、分区、正文。分区（类型 + 分类）收成一行，
 /// 点开才展开选项，页面剩下的全部给正文，写作时不被选项打断。
 class ComposePage extends ConsumerStatefulWidget {
-  const ComposePage({super.key});
+  const ComposePage({super.key, this.editTopicId});
+
+  /// 非空 = 编辑这篇已有的话题，而不是写新的。
+  ///
+  /// 编辑和发布共用这一页：分区选择、块编辑器、标题校验、返回确认全都一样，
+  /// 差别只有「预填 + 提交到 /update」。分成两页会让两边慢慢长歪。
+  final int? editTopicId;
+
+  bool get isEditing => editTopicId != null;
 
   @override
   ConsumerState<ComposePage> createState() => _ComposePageState();
@@ -35,11 +44,56 @@ class _ComposePageState extends ConsumerState<ComposePage> {
   bool _submitting = false;
   String? _titleError;
 
+  /// 编辑模式下的原文。除了预填，还用来判断「有没有改动」——
+  /// 没改就退出不该弹「放弃这次编辑」。
+  TopicDraft? _draft;
+  bool _loadingDraft = false;
+  String? _draftError;
+
   @override
   void initState() {
     super.initState();
+
+    final editing = widget.editTopicId;
+    if (editing != null) _loadDraft(editing);
+
     // 正文结构变了（加块、转类型）要刷新返回确认逻辑和提交按钮
     _bodyController.addListener(_onBodyChanged);
+  }
+
+  Future<void> _loadDraft(int topicId) async {
+    setState(() {
+      _loadingDraft = true;
+      _draftError = null;
+    });
+
+    try {
+      final draft = await ref.read(topicRepositoryProvider).editDraft(topicId);
+      if (!mounted) return;
+
+      _titleController.text = draft.title;
+      _bodyController.load(draft.contentMarkdown);
+      _tagController.text = draft.tags.join(' ');
+
+      setState(() {
+        _draft = draft;
+        _categoryId = draft.categoryId;
+        _type = draft.type;
+        _loadingDraft = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingDraft = false;
+        _draftError = e.code == 'not_found' ? '这篇不能编辑：不是你写的，或者已经删除' : e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loadingDraft = false;
+        _draftError = '没打开原文，检查网络后再试';
+      });
+    }
   }
 
   void _onBodyChanged() {
@@ -55,7 +109,14 @@ class _ComposePageState extends ConsumerState<ComposePage> {
     super.dispose();
   }
 
-  bool get _hasContent => _titleController.text.trim().isNotEmpty || !_bodyController.isEmpty;
+  bool get _hasContent {
+    final draft = _draft;
+    if (draft != null) {
+      return _titleController.text.trim() != draft.title.trim() ||
+          _bodyController.markdown.trim() != draft.contentMarkdown.trim();
+    }
+    return _titleController.text.trim().isNotEmpty || !_bodyController.isEmpty;
+  }
 
   List<String> get _tags => _tagController.text
       .split(RegExp(r'[,，\s]+'))
@@ -108,6 +169,9 @@ class _ComposePageState extends ConsumerState<ComposePage> {
 
   Future<void> _submit({required bool draft}) async {
     if (_submitting) return;
+    // 编辑已有话题时没有「存草稿」这条路：文章本来就在线上，
+    // 把它退回草稿等于自己下线，那个动作留给网页后台
+    if (draft && widget.isEditing) return;
 
     final title = _titleController.text.trim();
     final body = _bodyController.markdown.trim();
@@ -139,6 +203,25 @@ class _ComposePageState extends ConsumerState<ComposePage> {
     });
 
     try {
+      final editing = widget.editTopicId;
+
+      if (editing != null) {
+        final status = await ref.read(topicRepositoryProvider).saveEdit(
+              topicId: editing,
+              title: title,
+              contentMarkdown: body,
+              categoryId: categoryId,
+              type: _type,
+              tags: _tags,
+            );
+
+        if (!mounted) return;
+        _toast(status == 'published' ? '已更新' : '已保存，审核通过后更新');
+        // 路由声明的是 Page<void>，不要带返回值 pop，否则 debug 下会类型断言失败
+        context.pop();
+        return;
+      }
+
       final result = await ref.read(composeRepositoryProvider).submit(
             title: title,
             contentMarkdown: body,
@@ -236,6 +319,13 @@ class _ComposePageState extends ConsumerState<ComposePage> {
 
     final taxonomy = ref.watch(taxonomyProvider);
 
+    // 编辑模式要先把原文拉回来，否则输入框是空的，用户以为内容丢了
+    if (_loadingDraft) return const _DraftLoading();
+
+    if (_draftError != null) {
+      return _DraftError(message: _draftError!, onRetry: () => _loadDraft(widget.editTopicId!));
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -250,8 +340,9 @@ class _ComposePageState extends ConsumerState<ComposePage> {
           child: Column(
             children: [
               _Bar(
+                editing: widget.isEditing,
                 submitting: _submitting,
-                canSubmit: !_submitting,
+                canSubmit: !_submitting && !_loadingDraft && _draftError == null,
                 onClose: () async {
                   if (await _confirmDiscard() && context.mounted) context.pop();
                 },
@@ -707,6 +798,7 @@ class _LoginWall extends StatelessWidget {
 
 class _Bar extends StatelessWidget {
   const _Bar({
+    required this.editing,
     required this.submitting,
     required this.canSubmit,
     required this.onClose,
@@ -714,6 +806,8 @@ class _Bar extends StatelessWidget {
     required this.onSubmit,
   });
 
+  /// 编辑已有话题：标题写「编辑话题」，并且没有「存草稿」
+  final bool editing;
   final bool submitting;
   final bool canSubmit;
   final VoidCallback onClose;
@@ -738,25 +832,27 @@ class _Bar extends StatelessWidget {
             icon: const Icon(Icons.close),
             tooltip: '关闭',
           ),
-          const Text(
-            '写文章',
-            style: TextStyle(
+          Text(
+            editing ? '编辑话题' : '写文章',
+            style: const TextStyle(
               fontSize: 14.5,
               fontWeight: FontWeight.w700,
               color: Color(Env.text),
             ),
           ),
           const Spacer(),
-          TextButton(
-            onPressed: submitting ? null : onDraft,
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(Env.muted),
-              minimumSize: const Size(0, 34),
-              padding: const EdgeInsets.symmetric(horizontal: 10),
+          if (!editing) ...[
+            TextButton(
+              onPressed: submitting ? null : onDraft,
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(Env.muted),
+                minimumSize: const Size(0, 34),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+              ),
+              child: const Text('存草稿', style: TextStyle(fontSize: 12.5)),
             ),
-            child: const Text('存草稿', style: TextStyle(fontSize: 12.5)),
-          ),
-          const SizedBox(width: 2),
+            const SizedBox(width: 2),
+          ],
           FilledButton(
             onPressed: canSubmit ? onSubmit : null,
             style: FilledButton.styleFrom(
@@ -772,13 +868,85 @@ class _Bar extends StatelessWidget {
                     height: 14,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0D1016)),
                   )
-                : const Text(
-                    '发布',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                : Text(
+                    editing ? '保存' : '发布',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                   ),
           ),
           const SizedBox(width: 6),
         ],
+      ),
+    );
+  }
+}
+
+/// 编辑页打开时的一次加载。用一行字而不是骨架：这活儿通常眨眼就好，
+/// 满屏骨架反而像卡住了。
+class _DraftLoading extends StatelessWidget {
+  const _DraftLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Color(Env.bg),
+      body: Center(
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2, color: Color(Env.blue)),
+        ),
+      ),
+    );
+  }
+}
+
+class _DraftError extends StatelessWidget {
+  const _DraftError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(Env.bg),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock_outline, size: 28, color: Color(0xFF5F6875)),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13, height: 1.6, color: Color(Env.muted)),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton(
+                      onPressed: () => context.pop(),
+                      child: const Text('返回', style: TextStyle(color: Color(Env.muted))),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: onRetry,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF8AB4F8),
+                        foregroundColor: const Color(0xFF0D1016),
+                      ),
+                      child: const Text('重试', style: TextStyle(fontSize: 13)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

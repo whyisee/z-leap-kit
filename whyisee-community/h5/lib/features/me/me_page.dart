@@ -975,9 +975,7 @@ class _SignedOutView extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               TextButton(
-                onPressed: () => context.push(
-                  '/me/page?path=${Uri.encodeComponent('/signup')}&title=${Uri.encodeComponent('注册')}',
-                ),
+                onPressed: () => context.push('/signup'),
                 child: const Text(
                   '还没有账号？去注册',
                   style: TextStyle(fontSize: 12, color: Color(Env.muted)),

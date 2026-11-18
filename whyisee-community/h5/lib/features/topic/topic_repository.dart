@@ -43,6 +43,40 @@ class TopicRepository {
     return TopicPost.fromJson(post);
   }
 
+  /// 编辑前取原文（只有作者本人 / 管理员拿得到）。
+  Future<TopicDraft> editDraft(int topicId) async {
+    final payload = await _api.get('/topics/$topicId/edit');
+
+    return TopicDraft.fromJson(
+      (payload.data['topic'] as Map?)?.cast<String, dynamic>() ?? const {},
+    );
+  }
+
+  /// 保存编辑。服务端对普通作者会打回 `pending` 重新审核，返回新状态。
+  Future<String> saveEdit({
+    required int topicId,
+    required String title,
+    required String contentMarkdown,
+    required int categoryId,
+    required String type,
+    required List<String> tags,
+  }) async {
+    final payload = await _api.post(
+      '/topics/$topicId/update',
+      body: {
+        'title': title,
+        'contentMarkdown': contentMarkdown,
+        'categoryId': categoryId,
+        'type': type,
+        'tags': tags,
+      },
+    );
+
+    return payload.data['status'] as String? ?? 'pending';
+  }
+
+  Future<void> deleteTopic(int topicId) => _api.post('/topics/$topicId/delete');
+
   /// 点赞是 toggle，返回服务端裁决后的真实状态，避免乐观更新和实际不一致。
   Future<({bool liked, int likeCount})> toggleLike({
     required String targetType,

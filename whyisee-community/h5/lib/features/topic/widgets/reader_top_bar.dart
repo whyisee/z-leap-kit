@@ -19,6 +19,7 @@ class ReaderTopBar extends StatelessWidget {
     required this.topInset,
     required this.onBack,
     required this.onOpenBrowser,
+    this.onMore,
   });
 
   /// 列表当前的滚动偏移，直接来自滚动监听。
@@ -27,6 +28,9 @@ class ReaderTopBar extends StatelessWidget {
   final double topInset;
   final VoidCallback onBack;
   final VoidCallback onOpenBrowser;
+
+  /// 作者本人 / 管理员才有：编辑、删除。null 时按钮不出现。
+  final VoidCallback? onMore;
 
   /// 毛玻璃在滚过 16px 后开始建立，和网页 `getScrollTop() > 16` 一致。
   static const _blurStart = 16.0;
@@ -100,6 +104,17 @@ class ReaderTopBar extends StatelessWidget {
                 ),
               ),
               const Spacer(),
+              if (onMore != null)
+                Opacity(
+                  opacity: chromeT,
+                  child: IconButton(
+                    onPressed: onMore,
+                    iconSize: 20,
+                    color: const Color(Env.muted),
+                    icon: const Icon(Icons.more_horiz),
+                    tooltip: '管理这篇',
+                  ),
+                ),
               Opacity(
                 opacity: chromeT,
                 child: IconButton(

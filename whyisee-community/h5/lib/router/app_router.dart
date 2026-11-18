@@ -1,7 +1,9 @@
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../features/auth/forgot_password_page.dart';
 import '../features/auth/login_page.dart';
+import '../features/auth/signup_page.dart';
 import '../features/compose/compose_page.dart';
 import '../features/feed/feed_page.dart';
 import '../features/following/following_page.dart';
@@ -14,6 +16,8 @@ import '../features/settings/settings_account_page.dart';
 import '../features/settings/settings_agents_page.dart';
 import '../features/settings/settings_profile_page.dart';
 import '../features/shell/home_shell.dart';
+import '../features/taxonomy/taxonomy_detail_page.dart';
+import '../features/taxonomy/taxonomy_list_page.dart';
 import '../features/topic/topic_detail_page.dart';
 import '../features/topic/topic_entry.dart';
 import '../features/user/user_page.dart';
@@ -149,6 +153,23 @@ final GoRouter appRouter = GoRouter(
         ),
       ),
     ),
+    // 注册 / 找回密码：和登录同一套滑入动画，做成一叠表单卡片的观感
+    GoRoute(
+      path: '/signup',
+      pageBuilder: (context, state) => _sheetPage(state, const SignupPage()),
+    ),
+    GoRoute(
+      path: '/forgot-password',
+      pageBuilder: (context, state) => _sheetPage(state, const ForgotPasswordPage()),
+    ),
+    // 邮件里的链接指向网页；这条留给「从网页把 token 带进来」的场景
+    GoRoute(
+      path: '/reset-password',
+      pageBuilder: (context, state) => _sheetPage(
+        state,
+        ForgotPasswordPage(token: state.uri.queryParameters['token']),
+      ),
+    ),
     // 搜索：全屏，键盘弹起时底部栏本来也留不住，直接挂 shell 外面
     GoRoute(
       path: '/search',
@@ -161,6 +182,25 @@ final GoRouter appRouter = GoRouter(
           opacity: animation,
           child: child,
         ),
+      ),
+    ),
+    // 分类 / 标签：搜索里点分类标签、看见页的分类条都往这儿走
+    GoRoute(
+      path: '/categories',
+      builder: (context, state) => const TaxonomyListPage(),
+    ),
+    GoRoute(
+      path: '/c/:slug',
+      builder: (context, state) => TaxonomyDetailPage(
+        kind: 'category',
+        slug: state.pathParameters['slug'] ?? '',
+      ),
+    ),
+    GoRoute(
+      path: '/tag/:slug',
+      builder: (context, state) => TaxonomyDetailPage(
+        kind: 'tag',
+        slug: state.pathParameters['slug'] ?? '',
       ),
     ),
     // 用户主页：从列表、详情、搜索结果都能推，所以放在全局
@@ -187,6 +227,25 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) => CustomTransitionPage<void>(
         key: state.pageKey,
         child: const ComposePage(),
+        fullscreenDialog: true,
+        transitionDuration: const Duration(milliseconds: 260),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
+        transitionsBuilder: (_, animation, _, child) => SlideTransition(
+          position: Tween(begin: const Offset(0, 1), end: Offset.zero).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          ),
+          child: child,
+        ),
+      ),
+    ),
+    // 编辑已有话题：和发布同一页，只是带 id 进来预填
+    GoRoute(
+      path: '/compose/edit/:id',
+      pageBuilder: (context, state) => CustomTransitionPage<void>(
+        key: state.pageKey,
+        child: ComposePage(
+          editTopicId: int.tryParse(state.pathParameters['id'] ?? ''),
+        ),
         fullscreenDialog: true,
         transitionDuration: const Duration(milliseconds: 260),
         reverseTransitionDuration: const Duration(milliseconds: 200),
@@ -233,6 +292,24 @@ CustomTransitionPage<void> _topicPage(GoRouterState state) {
     reverseTransitionDuration: const Duration(milliseconds: 180),
     transitionsBuilder: (_, animation, _, child) => FadeTransition(
       opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+      child: child,
+    ),
+  );
+}
+
+/// 表单类页面统一从下往上滑，和登录页一致 —— 这类页面是「临时去做一件事」，
+/// 不是同一层级的浏览，所以不用淡入。
+CustomTransitionPage<void> _sheetPage(GoRouterState state, Widget child) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    fullscreenDialog: true,
+    transitionDuration: const Duration(milliseconds: 240),
+    reverseTransitionDuration: const Duration(milliseconds: 200),
+    transitionsBuilder: (_, animation, _, child) => SlideTransition(
+      position: Tween(begin: const Offset(0, 1), end: Offset.zero).animate(
+        CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+      ),
       child: child,
     ),
   );

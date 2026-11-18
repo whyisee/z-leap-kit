@@ -128,18 +128,42 @@ class SessionController extends Notifier<SessionState> {
       'platform': 'app',
     });
 
-    final token = payload.data['token'] as String?;
+    await _adoptTokenPayload(payload.data);
+  }
+
+  /// 注册。校验在服务端（邀请码、用户名格式、邮箱唯一），这里不做本地预判 ——
+  /// 预判漏一条，用户就会看到「本地说没问题、服务端说不行」。
+  Future<void> signUp({
+    required String username,
+    required String email,
+    required String password,
+    required String inviteCode,
+  }) async {
+    final payload = await _api.post('/auth/signup', body: {
+      'username': username,
+      'email': email,
+      'password': password,
+      'inviteCode': inviteCode,
+      'platform': 'app',
+    });
+
+    await _adoptTokenPayload(payload.data);
+  }
+
+  /// 登录 / 注册回的是同一副样子：token + expiresAt + user。
+  Future<void> _adoptTokenPayload(Map<String, dynamic> data) async {
+    final token = data['token'] as String?;
     if (token == null || token.isEmpty) {
       throw StateError('登录成功但没拿到 token');
     }
 
-    final expiresAt = DateTime.tryParse(payload.data['expiresAt'] as String? ?? '');
+    final expiresAt = DateTime.tryParse(data['expiresAt'] as String? ?? '');
     await ref.read(tokenStoreProvider).save(token, expiresAt: expiresAt);
 
     state = SessionState(
       status: SessionStatus.signedIn,
       user: SessionUser.fromJson(
-        (payload.data['user'] as Map?)?.cast<String, dynamic>() ?? const {},
+        (data['user'] as Map?)?.cast<String, dynamic>() ?? const {},
       ),
       unreadCount: state.unreadCount,
     );
