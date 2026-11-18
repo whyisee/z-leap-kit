@@ -267,6 +267,27 @@ class MarkdownDocController extends ChangeNotifier {
     return count;
   }
 
+  /// 上下移动一块（[delta] = -1 上移 / +1 下移），返回是否真的动了
+  bool moveBlock(MdBlock block, int delta) {
+    final index = blocks.indexOf(block);
+    if (index < 0) return false;
+    final target = index + delta;
+    if (target < 0 || target >= blocks.length) return false;
+    blocks.removeAt(index);
+    blocks.insert(target, block);
+    notifyListeners();
+    return true;
+  }
+
+  /// 复制一块插在它后面，返回副本
+  MdBlock duplicateBlock(MdBlock block) {
+    final copy = MdBlock(type: block.type, text: block.text);
+    final index = blocks.indexOf(block);
+    blocks.insert(index < 0 ? blocks.length : index + 1, copy);
+    notifyListeners();
+    return copy;
+  }
+
   @override
   void dispose() {
     for (final block in blocks) {

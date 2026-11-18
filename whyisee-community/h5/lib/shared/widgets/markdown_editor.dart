@@ -258,6 +258,68 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     _focusBlock(next, atStart: true);
   }
 
+  // ---------------------------------------------------------------- 块菜单
+
+  /// 「⋮」图标在每种块里的顶部偏移：让图标和正文首行视觉对齐
+  double _handleTop(MdBlockType type) => switch (type) {
+        MdBlockType.h1 => 16,
+        MdBlockType.h2 => 13,
+        MdBlockType.h3 => 11,
+        MdBlockType.h4 => 9,
+        MdBlockType.quote || MdBlockType.code => 8,
+        _ => 6,
+      };
+
+  /// 点块首「⋮」：先收键盘（否则弹层只有半屏），再弹块菜单
+  Future<void> _openBlockMenu(MdBlock block) async {
+    FocusScope.of(context).unfocus();
+    final result = await showModalBottomSheet<(_BlockOp, MdBlockType?)>(
+      context: context,
+      // 默认最高只有 9/16 屏，三组 chip 放不下；内容本身不高，放开限制即可
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF171C24),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => _BlockMenu(block: block),
+    );
+    if (!mounted || result == null || !_doc.blocks.contains(block)) return;
+    _applyBlockOp(block, result.$1, result.$2);
+  }
+
+  void _applyBlockOp(MdBlock block, _BlockOp op, MdBlockType? type) {
+    final index = _doc.indexOf(block);
+
+    switch (op) {
+      case _BlockOp.convert:
+        if (type != null) setState(() => block.type = type);
+        break;
+      case _BlockOp.moveUp:
+        _doc.moveBlock(block, -1);
+        break;
+      case _BlockOp.moveDown:
+        _doc.moveBlock(block, 1);
+        break;
+      case _BlockOp.duplicate:
+        final copy = _doc.duplicateBlock(block);
+        setState(() {});
+        _focusExisting(copy);
+        return;
+      case _BlockOp.delete:
+        _doc.removeBlock(block);
+        setState(() {});
+        // 删掉之后光标落到上一块（第一块就落到剩下的第一块）
+        final next = index > 0 && index - 1 < _doc.blocks.length
+            ? _doc.blocks[index - 1]
+            : _doc.blocks.first;
+        _focusExisting(next);
+        return;
+    }
+
+    setState(() {});
+    _focusExisting(block);
+  }
+
   // ---------------------------------------------------------------- 渲染
 
   @override
@@ -267,19 +329,23 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         Expanded(
           child: ListView.builder(
             controller: _scroll,
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 96),
+            padding: const EdgeInsets.fromLTRB(2, 6, 16, 96),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             itemCount: _doc.blocks.length,
             itemBuilder: (context, index) {
               final block = _doc.blocks[index];
-              return _BlockField(
+              return _BlockRow(
                 key: ValueKey(block),
-                block: block,
-                doc: _doc,
-                enabled: widget.enabled,
-                hintText: _doc.isBlank ? widget.hintText : null,
-                onChanged: (deletedFromStart) =>
-                    _onBlockTextChanged(block, deletedFromStart: deletedFromStart),
+                handleTop: _handleTop(block.type),
+                onMenu: () => _openBlockMenu(block),
+                child: _BlockField(
+                  block: block,
+                  doc: _doc,
+                  enabled: widget.enabled,
+                  hintText: _doc.isBlank ? widget.hintText : null,
+                  onChanged: (deletedFromStart) =>
+                      _onBlockTextChanged(block, deletedFromStart: deletedFromStart),
+                ),
               );
             },
           ),
@@ -302,11 +368,270 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
 
 }
 
+/// 块菜单里的操作。块模型能做的事都从这一个入口走，后面加功能只加枚举。
+enum _BlockOp { convert, moveUp, moveDown, duplicate, delete }
+
+/// 块的左边界：一个「⋮」入口 + 正文。
+///
+/// 入口用 Stack 叠在正文左侧，不占正文宽度、不影响行高 —— 直接塞进 Row 的话，
+/// 图标高度会把单行块撑高，段落之间的空隙就变大了。
+class _BlockRow extends StatelessWidget {
+  const _BlockRow({
+    super.key,
+    required this.handleTop,
+    required this.onMenu,
+    required this.child,
+  });
+
+  /// 图标距块顶的偏移，按块型给，让图标和首行文字视觉对齐
+  final double handleTop;
+  final VoidCallback onMenu;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Padding(padding: const EdgeInsets.only(left: 26), child: child),
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 26,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onMenu,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: EdgeInsets.only(top: handleTop),
+                child: const Icon(
+                  Icons.more_vert,
+                  size: 16,
+                  color: Color(0xFF4A5462),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 块菜单：换块型 / 上移下移 / 复制 / 删除。
+///
+/// 用底部弹层而不是贴着「⋮」的浮层：键盘弹起时贴边浮层只剩半屏，
+/// 底部弹层会自己让开键盘，而且以后加功能（转成图片、加注释…）往下堆就行。
+class _BlockMenu extends StatelessWidget {
+  const _BlockMenu({required this.block});
+
+  final MdBlock block;
+
+  /// (块类型, 标签, 预览字号)
+  static const _headings = <(MdBlockType, String, double)>[
+    (MdBlockType.paragraph, '正文', 15),
+    (MdBlockType.h1, 'T1', 19),
+    (MdBlockType.h2, 'T2', 17),
+    (MdBlockType.h3, 'T3', 15.5),
+    (MdBlockType.h4, 'T4', 14),
+  ];
+
+  void _pick(BuildContext context, _BlockOp op, [MdBlockType? type]) =>
+      Navigator.pop(context, (op, type));
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2C343F),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const _MenuLabel('标题'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final (type, label, size) in _headings)
+                  _MenuChip(
+                    label: label,
+                    fontSize: size,
+                    selected: block.type == type,
+                    onTap: () => _pick(context, _BlockOp.convert, type),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const _MenuLabel('块类型'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final (type, label) in _blockKinds)
+                  _MenuChip(
+                    label: label,
+                    fontSize: 13,
+                    selected: block.type == type,
+                    onTap: () => _pick(context, _BlockOp.convert, type),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                _ActionTile(
+                  icon: Icons.arrow_upward,
+                  label: '上移',
+                  onTap: () => _pick(context, _BlockOp.moveUp),
+                ),
+                _ActionTile(
+                  icon: Icons.arrow_downward,
+                  label: '下移',
+                  onTap: () => _pick(context, _BlockOp.moveDown),
+                ),
+                _ActionTile(
+                  icon: Icons.copy_all_outlined,
+                  label: '复制',
+                  onTap: () => _pick(context, _BlockOp.duplicate),
+                ),
+                _ActionTile(
+                  icon: Icons.delete_outline,
+                  label: '删除',
+                  danger: true,
+                  onTap: () => _pick(context, _BlockOp.delete),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static const _blockKinds = <(MdBlockType, String)>[
+    (MdBlockType.bullet, '无序列表'),
+    (MdBlockType.ordered, '有序列表'),
+    (MdBlockType.quote, '引用'),
+    (MdBlockType.code, '代码块'),
+  ];
+}
+
+class _MenuLabel extends StatelessWidget {
+  const _MenuLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(fontSize: 11, letterSpacing: 0.4, color: Color(0xFF6B7686)),
+    );
+  }
+}
+
+class _MenuChip extends StatelessWidget {
+  const _MenuChip({
+    required this.label,
+    required this.fontSize,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final double fontSize;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 38,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0x338AB4F8) : const Color(0x12FFFFFF),
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(
+            color: selected ? const Color(0x998AB4F8) : const Color(0x1AFFFFFF),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: fontSize,
+            height: 1.2,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? const Color(0xFFBFD6FF) : const Color(0xFFDCE3ED),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = danger ? const Color(0xFFE06C6C) : const Color(0xFF9AA5B4);
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: const Color(0x12FFFFFF),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 18, color: color),
+              const SizedBox(height: 4),
+              Text(label, style: TextStyle(fontSize: 11, color: color)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 单个块。样式由块类型决定 —— 这就是「看不到 #」的底气：
 /// 标题靠字号表达，列表靠圆点表达，不靠文本里的符号。
 class _BlockField extends StatefulWidget {
   const _BlockField({
-    super.key,
     required this.block,
     required this.doc,
     required this.enabled,

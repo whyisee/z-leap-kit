@@ -219,6 +219,62 @@ void main() {
     expect(doc.blocks.first.type, MdBlockType.paragraph);
   });
 
+  testWidgets('块首「⋮」打开块菜单，能切标题级别', (tester) async {
+    final doc = await _pump(tester);
+
+    await tester.enterText(find.byType(TextField).first, '第一段\n第二段');
+    await tester.pumpAndSettle();
+    expect(doc.blocks.length, 2);
+
+    // 第二个块前面的入口
+    await tester.tap(find.byIcon(Icons.more_vert).at(1));
+    await tester.pumpAndSettle();
+
+    expect(find.text('正文'), findsOneWidget);
+    expect(find.text('无序列表'), findsOneWidget);
+    expect(find.text('上移'), findsOneWidget);
+    expect(find.text('删除'), findsOneWidget);
+
+    await tester.tap(find.text('T3'));
+    await tester.pumpAndSettle();
+
+    expect(doc.blocks[1].type, MdBlockType.h3);
+    expect(doc.blocks[1].text, '第二段');
+    // 只改这一个块
+    expect(doc.blocks[0].type, MdBlockType.paragraph);
+  });
+
+  testWidgets('块菜单上移：和上一块交换位置', (tester) async {
+    final doc = await _pump(tester);
+
+    await tester.enterText(find.byType(TextField).first, '上段\n下段');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.more_vert).at(1));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('上移'));
+    await tester.pumpAndSettle();
+
+    expect(doc.blocks[0].text, '下段');
+    expect(doc.blocks[1].text, '上段');
+    expect(doc.markdown, '下段\n上段');
+  });
+
+  testWidgets('块菜单删除：块消失，光标落到上一块', (tester) async {
+    final doc = await _pump(tester);
+
+    await tester.enterText(find.byType(TextField).first, '上段\n下段');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.more_vert).at(1));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+
+    expect(doc.blocks.length, 1);
+    expect(doc.markdown, '上段');
+  });
+
   testWidgets('390 宽下渲染不溢出', (tester) async {
     await _pump(tester);
     await tester.pumpAndSettle();
