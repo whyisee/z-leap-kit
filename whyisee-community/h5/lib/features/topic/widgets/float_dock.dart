@@ -9,18 +9,19 @@ import '../../../core/format.dart';
 /// 网页在 ≤720px 的实测参数：右侧 10px、底部 42px、每项 38×48、图标 18、
 /// 数字 11px、透明底。这里按同样的尺寸做，操作顺序也一致：
 /// AI（网页是 `.ai-tool-mark` 的方形标记）→ 作者（带关注角标）→ 喜欢 →
-/// 收藏 → 回复 → 分享。
+/// 收藏 → 分享。
+///
+/// 「回复」从这条上摘掉了：它现在单独做成右下角的圆钮（ReplyFab）。
+/// 同一个动作挂两处，用户还得猜哪个是「看回复」哪个是「写回复」。
 class FloatDock extends StatelessWidget {
   const FloatDock({
     super.key,
     required this.author,
     required this.interactions,
-    required this.replyCount,
     required this.likeBusy,
     required this.followBusy,
     required this.onLike,
     required this.onBookmark,
-    required this.onReply,
     required this.onShare,
     required this.onFollow,
     required this.onAi,
@@ -28,12 +29,10 @@ class FloatDock extends StatelessWidget {
 
   final Author author;
   final TopicInteractions interactions;
-  final int replyCount;
   final bool likeBusy;
   final bool followBusy;
   final VoidCallback onLike;
   final VoidCallback onBookmark;
-  final VoidCallback onReply;
   final VoidCallback onShare;
   final VoidCallback onFollow;
   final VoidCallback onAi;
@@ -63,11 +62,6 @@ class FloatDock extends StatelessWidget {
           color: interactions.bookmarked ? const Color(Env.blue) : null,
           label: compactCount(interactions.bookmarkCount),
           onTap: onBookmark,
-        ),
-        _DockAction(
-          icon: Icons.mode_comment_outlined,
-          label: compactCount(replyCount),
-          onTap: onReply,
         ),
         _DockAction(
           icon: Icons.send_outlined,

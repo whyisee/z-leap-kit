@@ -14,6 +14,9 @@ class PostTile extends StatelessWidget {
     required this.post,
     required this.floor,
     required this.onLike,
+    required this.onReply,
+    this.parent,
+    this.onJumpToParent,
     this.likeBusy = false,
     this.highlighted = false,
   });
@@ -21,6 +24,17 @@ class PostTile extends StatelessWidget {
   final TopicPost post;
   final int floor;
   final VoidCallback onLike;
+
+  /// 点「回复」：回这一条，而不是回主楼
+  final VoidCallback onReply;
+
+  /// 被回复的那一层。拿到它才显示得出「回复 @谁」；
+  /// 楼层被删掉时是 null，那就只写「回复了某条评论」，别硬编个名字。
+  final TopicPost? parent;
+
+  /// 点「回复 @谁」跳回被回复的那一条
+  final VoidCallback? onJumpToParent;
+
   final bool likeBusy;
 
   /// 从通知点进来时，把被回复的那一层标出来 —— 用户不必自己数楼层
@@ -102,6 +116,15 @@ class PostTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
+          // 这条是回某一层的，先把对象写出来 —— 平的列表里，
+          // 「在跟谁说话」只能靠这一行
+          if (post.parentPostId != null) ...[
+            _ReplyTarget(
+              name: parent?.author.displayName,
+              onTap: parent == null ? null : onJumpToParent,
+            ),
+            const SizedBox(height: 5),
+          ],
           Text(
             text.isEmpty ? '（内容为空）' : text,
             style: const TextStyle(
@@ -110,7 +133,64 @@ class PostTile extends StatelessWidget {
               color: Color(0xFFDDE3EA),
             ),
           ),
+          const SizedBox(height: 2),
+          Align(
+            alignment: Alignment.centerRight,
+            child: InkWell(
+              onTap: onReply,
+              borderRadius: BorderRadius.circular(8),
+              child: const Padding(
+                padding: EdgeInsets.fromLTRB(9, 5, 5, 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.reply, size: 14, color: Color(0xFF6E7887)),
+                    SizedBox(width: 4),
+                    Text(
+                      '回复',
+                      style: TextStyle(fontSize: 11.5, color: Color(0xFF6E7887)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// 「回复 @某人」。点到名字就跳回那一条，和被 @ 的提醒一个用法。
+class _ReplyTarget extends StatelessWidget {
+  const _ReplyTarget({this.name, this.onTap});
+
+  final String? name;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = name == null ? '回复了一条已删除的评论' : '回复 @$name';
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0x148AB4F8),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 11.5,
+            height: 1.5,
+            color: name == null ? const Color(0xFF6E7887) : const Color(Env.blue),
+          ),
+        ),
       ),
     );
   }

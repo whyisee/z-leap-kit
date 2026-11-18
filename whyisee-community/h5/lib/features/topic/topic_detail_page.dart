@@ -21,13 +21,15 @@ import 'widgets/entry_banner.dart';
 import 'widgets/float_dock.dart';
 import 'widgets/post_tile.dart';
 import 'widgets/reader_top_bar.dart';
-import 'widgets/reply_bar.dart';
+import 'widgets/reply_composer.dart';
+import 'widgets/reply_fab.dart';
 import 'widgets/topic_ai_sheet.dart';
 
 /// 帖子详情，交互对齐网页版的沉浸阅读器：
 ///
 /// - 滚动后顶栏变毛玻璃、文章标题浮出（ReaderTopBar）；
-/// - 右下角竖排操作条（FloatDock），AI/点赞/收藏/回复/分享/关注作者；
+/// - 右下角竖排操作条（FloatDock），AI/点赞/收藏/分享/关注作者；
+/// - 操作条下面一个评论圆钮，弹出回复层（不让底栏钉住阅读区）；
 /// - 已读到底后继续上滑，切到服务端推荐的下一篇；
 /// - 正文用 WebView 保真渲染，回帖降级成纯文本。
 ///
@@ -60,7 +62,6 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
 
   final _scroll = ScrollController();
   final _offset = ValueNotifier<double>(0);
-  final _repliesKey = GlobalKey();
 
   /// 每个楼层一个 GlobalKey，用来滚到被通知指向的那一条。
   /// 用 Map 复用：点赞等操作触发重建时不会重新造 key，滚动位置才不会跳。
@@ -489,28 +490,26 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
     }
   }
 
-  void _scrollToReplies() {
-    final ctx = _repliesKey.currentContext;
-    if (ctx == null) return;
-    Scrollable.ensureVisible(
-      ctx,
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeOutCubic,
-      alignment: 0.02,
-    );
-  }
-
   /// 写回复：没登录先去登录，登录完直接接着编辑，不用再点一次。
+  ///
+  /// [replyTo] 为空是给主楼回一条，非空是回某一条评论（入口在每条回复
+  /// 右下角的「回复」上）。两条路共用同一个编辑层，差别只有标题、
+  /// 被回复内容的摘要和 parentPostId。
   ///
   /// 发布成功后把服务端回的那一层直接插进列表并滚过去 —— 自己刚说的话
   /// 必须马上看得见，否则用户会以为没发出去再发一遍。
-  Future<void> _openReply() async {
+  Future<void> _openReply({TopicPost? replyTo}) async {
     if (!_signedIn) {
-      await context.push('/login?reason=${Uri.encodeComponent('登录后就能回复这篇。')}');
+      final reason = replyTo == null ? '登录后就能回复这篇。' : '登录后就能回复这条评论。';
+      await context.push('/login?reason=${Uri.encodeComponent(reason)}');
       if (!mounted || !_signedIn) return;
     }
 
-    final post = await showReplyComposer(context, topicId: widget.topicId);
+    final post = await showReplyComposer(
+      context,
+      topicId: widget.topicId,
+      replyTo: replyTo,
+    );
     if (!mounted || post == null) return;
 
     final detail = _detail;
@@ -615,6 +614,17 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
     }
   }
 
+  /// 找某一层被回复的是哪一条。找不到（那条被删了）就返回 null，
+  /// 界面上退化成「回复了一条已删除的评论」。
+  static TopicPost? _parentOf(List<TopicPost> posts, TopicPost post) {
+    final parentId = post.parentPostId;
+    if (parentId == null) return null;
+    for (final p in posts) {
+      if (p.id == parentId) return p;
+    }
+    return null;
+  }
+
   static List<TopicPost> _replacePost(List<TopicPost> posts, int index, TopicPost next) {
     final copy = List<TopicPost>.of(posts);
     copy[index] = next;
@@ -716,7 +726,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
           child: ArticleWebView(html: topic.contentHtml),
         ),
       if (topic.tags.isNotEmpty) _Tags(tags: topic.tags),
-      _RepliesHeader(key: _repliesKey, count: detail.posts.length),
+      _RepliesHeader(count: detail.posts.length),
       if (detail.posts.isEmpty)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 26),
@@ -733,14 +743,20 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
             key: _keyFor(detail.posts[i].id),
             post: detail.posts[i],
             floor: i + 1,
+            parent: _parentOf(detail.posts, detail.posts[i]),
             highlighted: targetId != null && detail.posts[i].id == targetId,
             likeBusy: _postLikeBusy.contains(detail.posts[i].id),
             onLike: () => _togglePostLike(detail.posts[i]),
+            onReply: () => _openReply(replyTo: detail.posts[i]),
+            onJumpToParent: () {
+              final parentId = detail.posts[i].parentPostId;
+              if (parentId != null) _scrollToPost(parentId);
+            },
           ),
       // 从通知进来不串推荐：用户带着「看那条回复」的任务来，
       // 快速上滑到底就被换成另一篇，是会让人愣住的那种意外
       if (entry == null) _NextHint(next: ref.read(readingQueueProvider).peek),
-      const SizedBox(height: 96),
+      const SizedBox(height: 112),
     ];
   }
 
@@ -779,16 +795,11 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
 
     return Scaffold(
       backgroundColor: const Color(Env.bg),
-      body: _buildBody(topInset),
-      // 读到一半想回一句，入口就在拇指下面；详情没加载出来时不摆这一条，
-      // 免得点了对着骨架发呆
-      bottomNavigationBar: _detail == null
-          ? null
-          : ReplyBar(signedIn: signedIn, onTap: _openReply),
+      body: _buildBody(topInset, signedIn),
     );
   }
 
-  Widget _buildBody(double topInset) {
+  Widget _buildBody(double topInset, bool signedIn) {
     if (_loading) {
       return _SkeletonBody(topInset: topInset);
     }
@@ -822,22 +833,31 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
             ),
           ),
         ),
-        // 右下角竖排操作条
+        // 右下角竖排操作条。位置比原来高 40px：下面那块让给评论圆钮，
+        // 两个都贴着底会叠在一起
         Positioned(
           right: 10,
-          bottom: 42,
+          bottom: 82 + MediaQuery.of(context).padding.bottom,
           child: FloatDock(
             author: topic.author,
             interactions: detail.interactions,
-            replyCount: detail.posts.length,
             likeBusy: _topicLikeBusy,
             followBusy: _followBusy,
             onLike: _toggleTopicLike,
             onBookmark: _toggleBookmark,
-            onReply: _scrollToReplies,
             onShare: _share,
             onFollow: _toggleFollow,
             onAi: _openAi,
+          ),
+        ),
+        // 评论圆钮：点开是弹层，不抢滚动位置
+        Positioned(
+          right: 10,
+          bottom: 14 + MediaQuery.of(context).padding.bottom,
+          child: ReplyFab(
+            count: detail.posts.length,
+            signedIn: signedIn,
+            onTap: () => _openReply(),
           ),
         ),
         // 顶栏放最上层，遮住滚上来的内容并做模糊
@@ -1014,7 +1034,7 @@ class _Tags extends StatelessWidget {
 }
 
 class _RepliesHeader extends StatelessWidget {
-  const _RepliesHeader({super.key, required this.count});
+  const _RepliesHeader({required this.count});
 
   final int count;
 
