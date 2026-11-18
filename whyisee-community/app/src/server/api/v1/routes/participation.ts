@@ -22,11 +22,12 @@ const FILTERS: ParticipationFilter[] = ["all", "questions", "feedback", "tasks",
 participation.get("/", optionalAuth, async (c) => {
   const session = sessionOf(c);
   const filter = readFilter(c.req.query("filter"));
-  const limit = clampLimit(c.req.query("limit"), 20, 50);
+  // 任务台一屏要按类型分组显示全部待办，所以上限比 feed 宽；服务层本身封顶 100
+  const limit = clampLimit(c.req.query("limit"), 60, 100);
   const offset = decodeCursor(c.req.query("cursor"));
 
-  // 多取一条判 hasMore，服务层 normalizeLimit 上限 50
-  const requested = Math.min(limit + 1, 50);
+  // 多取一条判 hasMore
+  const requested = Math.min(limit + 1, 100);
   const items = await listParticipationRecommendations({
     userId: session?.userId,
     lang: langOf(c),

@@ -6,16 +6,16 @@ import '../../core/api/models.dart';
 import '../../core/env.dart';
 import '../errors/error_view.dart';
 import 'go_controller.dart';
-import 'go_repository.dart';
-import 'widgets/participation_card.dart';
+import 'widgets/task_row.dart';
 
-/// 原生「出发」页。
+/// 「出发」= 任务台，不是第二个信息流。
 ///
-/// 网页版这一页是「左侧大色块 + 单列参与卡 + 右侧统计栏」，手机上两列会挤成一团。
-/// 移动端重做取舍：
-/// - 顶部只留标题 + 一句说明，筛选压成一行可横滚的胶囊（六个筛选一次看不全，但不抢高度）；
-/// - 卡片内部把网页右侧的统计栏折到底部一行，行动按钮贴右下；
-/// - 点击整张卡或按钮都进详情，帖子进原生阅读器，社区任务仍走网页版。
+/// 和「看见」的分工：
+/// - 看见是**读**：大卡片、封面、摘要、作者和时间，用来决定下一篇文章看什么；
+/// - 出发是**做**：一行一件事，只有标题 + 为什么找你 + 动作按钮，按类型分组，
+///   扫一眼就知道今天有几件事、接下来点哪个。
+///
+/// 所以这里没有筛选胶囊（分组已经是筛选），也没有摘要和封面 —— 那些属于看见。
 class GoPage extends ConsumerStatefulWidget {
   const GoPage({super.key});
 
@@ -43,15 +43,11 @@ class _GoPageState extends ConsumerState<GoPage> {
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
-    if (position.pixels < position.maxScrollExtent - 600) return;
+    if (position.pixels < position.maxScrollExtent - 400) return;
     ref.read(goControllerProvider.notifier).loadMore();
   }
 
-  void _resetScroll() {
-    if (_scrollController.hasClients) _scrollController.jumpTo(0);
-  }
-
-  /// 帖子进原生详情（挂在 /go 这条栈下，返回回到本页）；其余页面仍用网页版。
+  /// 帖子进原生详情（挂在 /go 栈下，返回回本页）；其余页面仍用网页容器。
   void _open(ParticipationItem item) {
     final topicId = item.topicId;
     if (topicId != null && topicId > 0) {
@@ -66,20 +62,13 @@ class _GoPageState extends ConsumerState<GoPage> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(goControllerProvider);
-    final controller = ref.read(goControllerProvider.notifier);
 
     return Scaffold(
       backgroundColor: const Color(Env.bg),
       body: Column(
         children: [
-          _Header(
-            filter: state.filter,
-            onFilterChanged: (filter) {
-              _resetScroll();
-              controller.changeFilter(filter);
-            },
-          ),
-          Expanded(child: _buildContent(state, controller)),
+          _Header(total: state.items.length, groupCount: state.groups.length),
+          Expanded(child: _buildContent(state, ref.read(goControllerProvider.notifier))),
         ],
       ),
     );
@@ -106,40 +95,64 @@ class _GoPageState extends ConsumerState<GoPage> {
       onRefresh: controller.refresh,
       child: state.isEmpty
           ? _EmptyState(onRefresh: controller.refresh)
-          : ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.only(top: 6, bottom: 96),
-              physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: state.items.length + 1,
-              itemBuilder: (context, index) {
-                if (index == state.items.length) {
-                  return _Footer(
-                    loading: state.loadingMore,
-                    hasMore: state.hasMore,
-                    error: state.loadingMore ? null : state.error?.message,
-                    onRetry: controller.loadMore,
-                  );
-                }
+          : _buildTaskList(state, controller),
+    );
+  }
 
-                final item = state.items[index];
-                return ParticipationCard(item: item, onTap: () => _open(item));
-              },
-            ),
+  /// 组头与行拍平成一个列表，「每组几件」和行共用同一套滚动与分割节奏。
+  Widget _buildTaskList(GoState state, GoController controller) {
+    final groups = state.groups;
+    final entries = <Object>[];
+    for (final group in groups) {
+      entries.add(group);
+      entries.addAll(group.items);
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.only(top: 2, bottom: 90),
+      physics: const AlwaysScrollableScrollPhysics(),
+      itemCount: entries.length + 1,
+      itemBuilder: (context, index) {
+        if (index == entries.length) {
+          return _Footer(
+            loading: state.loadingMore,
+            error: state.loadingMore ? null : state.error?.message,
+            onRetry: controller.loadMore,
+          );
+        }
+
+        final entry = entries[index];
+        if (entry is GoGroup) {
+          return _GroupHeader(
+            group: entry,
+            isFirst: index == 0,
+          );
+        }
+
+        final item = entry as ParticipationItem;
+        return TaskRow(item: item, onTap: () => _open(item));
+      },
     );
   }
 }
 
-/// 头部：标题 + 说明 + 筛选胶囊条。说明只留一行，手机上不值得占两行。
+/// 头部：标题 + 一句话总结（今天有几件事）。不做筛选条 —— 分组本身就是筛选。
 class _Header extends StatelessWidget {
-  const _Header({required this.filter, required this.onFilterChanged});
+  const _Header({required this.total, required this.groupCount});
 
-  final GoFilter filter;
-  final ValueChanged<GoFilter> onFilterChanged;
+  final int total;
+  final int groupCount;
 
   @override
   Widget build(BuildContext context) {
+    final summary = total == 0
+        ? '暂时没有要做的事'
+        : '今天有 $total 件事可做 · $groupCount 类';
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 6, 0, 8),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
       decoration: const BoxDecoration(
         color: Color(Env.bg),
         border: Border(bottom: BorderSide(color: Color(Env.line), width: 1)),
@@ -158,32 +171,11 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          const Padding(
-            padding: EdgeInsets.only(right: 16),
-            child: Text(
-              '现在最值得参与的讨论、项目、问题和任务',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11.5, height: 1.4, color: Color(0xFF737D8B)),
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 30,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(right: 16),
-              itemCount: GoFilter.values.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 7),
-              itemBuilder: (context, index) {
-                final item = GoFilter.values[index];
-                return _FilterChip(
-                  label: item.label,
-                  selected: item == filter,
-                  onTap: () => onFilterChanged(item),
-                );
-              },
-            ),
+          Text(
+            summary,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11.5, height: 1.4, color: Color(0xFF737D8B)),
           ),
         ],
       ),
@@ -191,56 +183,58 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
+/// 组头：类型色点 + 组名 + 件数 + 一条拉到末尾的细线。
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader({required this.group, required this.isFirst});
 
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+  final GoGroup group;
+  final bool isFirst;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? const Color(0x268AB4F8) : const Color(0x0DFFFFFF),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(
-            color: selected ? const Color(0x558AB4F8) : const Color(0x14FFFFFF),
+    final accent = participationAccent(group.type);
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, isFirst ? 12 : 20, 16, 4),
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
           ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-            color: selected ? const Color(Env.blue) : const Color(0xFF8A939F),
+          const SizedBox(width: 7),
+          Text(
+            group.label,
+            style: const TextStyle(
+              fontSize: 12,
+              height: 1.2,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFFC3CAD4),
+            ),
           ),
-        ),
+          const SizedBox(width: 6),
+          Text(
+            '${group.items.length}',
+            style: const TextStyle(
+              fontSize: 11,
+              height: 1.2,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF626B79),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Container(height: 1, color: const Color(0x0FFFFFFF))),
+        ],
       ),
     );
   }
 }
 
 class _Footer extends StatelessWidget {
-  const _Footer({
-    required this.loading,
-    required this.hasMore,
-    required this.onRetry,
-    this.error,
-  });
+  const _Footer({required this.loading, required this.onRetry, this.error});
 
   final bool loading;
-  final bool hasMore;
   final String? error;
   final VoidCallback onRetry;
 
@@ -248,7 +242,7 @@ class _Footer extends StatelessWidget {
   Widget build(BuildContext context) {
     if (error != null) {
       return Padding(
-        padding: const EdgeInsets.only(top: 18),
+        padding: const EdgeInsets.only(top: 16),
         child: Center(
           child: TextButton(onPressed: onRetry, child: Text('$error 点击重试')),
         ),
@@ -257,7 +251,7 @@ class _Footer extends StatelessWidget {
 
     if (loading) {
       return const Padding(
-        padding: EdgeInsets.only(top: 22),
+        padding: EdgeInsets.only(top: 20),
         child: Center(
           child: SizedBox(
             width: 16,
@@ -268,21 +262,7 @@ class _Footer extends StatelessWidget {
       );
     }
 
-    if (hasMore) return const SizedBox(height: 8);
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 22),
-      child: Center(
-        child: Text(
-          '就这些了',
-          style: TextStyle(
-            fontSize: 11.5,
-            letterSpacing: 0.6,
-            color: const Color(Env.muted).withValues(alpha: 0.6),
-          ),
-        ),
-      ),
-    );
+    return const SizedBox(height: 24);
   }
 }
 
@@ -298,21 +278,21 @@ class _EmptyState extends StatelessWidget {
       children: [
         const SizedBox(height: 110),
         Icon(
-          Icons.explore_outlined,
+          Icons.task_alt,
           size: 30,
           color: const Color(Env.muted).withValues(alpha: 0.5),
         ),
         const SizedBox(height: 12),
         const Center(
           child: Text(
-            '暂时没有匹配的参与项',
+            '暂时没有要做的事',
             style: TextStyle(fontSize: 13.5, color: Color(Env.muted)),
           ),
         ),
         const SizedBox(height: 6),
         Center(
           child: Text(
-            '换个筛选，或者下拉刷新',
+            '有新问题、新项目时会出现在这里',
             style: TextStyle(
               fontSize: 11.5,
               color: const Color(Env.muted).withValues(alpha: 0.55),
@@ -324,42 +304,52 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// 骨架：形状按真卡片走（徽章条 / 两行标题 / 摘要 / 底部统计），加载完不跳版。
+/// 骨架：组头 + 三行的形状，加载完不跳版。
 class _Skeleton extends StatelessWidget {
   const _Skeleton();
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      padding: const EdgeInsets.only(top: 6),
-      itemCount: 5,
-      itemBuilder: (context, index) => Container(
-        margin: const EdgeInsets.fromLTRB(14, 5, 14, 5),
-        padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
-        decoration: BoxDecoration(
-          color: const Color(Env.surface),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0x0FFFFFFF)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _bar(width: 58, height: 16, radius: 8),
-            const SizedBox(height: 11),
-            _bar(width: double.infinity, height: 15),
-            const SizedBox(height: 7),
-            _bar(width: 220, height: 12),
-            const SizedBox(height: 14),
-            Row(
+    return ListView(
+      padding: const EdgeInsets.only(top: 14),
+      children: [
+        for (var group = 0; group < 3; group++) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+            child: Row(
               children: [
-                _bar(width: 96, height: 9),
-                const Spacer(),
-                _bar(width: 62, height: 26, radius: 14),
+                _bar(width: 6, height: 6, radius: 3),
+                const SizedBox(width: 7),
+                _bar(width: 46, height: 10),
+                const SizedBox(width: 10),
+                const Expanded(child: SizedBox()),
               ],
             ),
-          ],
-        ),
-      ),
+          ),
+          for (var row = 0; row < 3; row++)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 9, 14, 9),
+              child: Row(
+                children: [
+                  _bar(width: 2.5, height: 32, radius: 2),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _bar(width: 210, height: 13),
+                        const SizedBox(height: 7),
+                        _bar(width: 130, height: 9),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  _bar(width: 56, height: 26, radius: 13),
+                ],
+              ),
+            ),
+        ],
+      ],
     );
   }
 

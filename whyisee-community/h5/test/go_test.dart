@@ -8,12 +8,12 @@ import 'package:whyisee_app/features/go/go_controller.dart';
 import 'package:whyisee_app/features/go/go_page.dart';
 import 'package:whyisee_app/features/go/go_repository.dart';
 
-/// 「出发」页三件事必须钉住：
-/// 1. 切筛选真的把 `filter` 带给服务端（不带就永远是「全部」）；
-/// 2. 切筛选后旧游标作废、从头开始；
-/// 3. 补页时按 targetType+targetId 去重，同一项不会在列表里出现两次。
+/// 任务台是「一行一件事」，和看见的卡片流不是同一东西。钉住三件事：
+/// 1. 按类型分组，顺序按紧迫度（待回答 → 可领取 → 求反馈），组内保留服务端排序；
+/// 2. 空组不出现；
+/// 3. 补页按 targetType+targetId 去重。
 void main() {
-  test('切筛选：带上 filter、游标重置', () async {
+  test('分组：按类型归组、顺序固定、空组不出现', () async {
     final repo = _FakeRepo();
     final container = ProviderContainer(
       overrides: [goRepositoryProvider.overrideWithValue(repo)],
@@ -23,20 +23,14 @@ void main() {
     container.listen(goControllerProvider, (_, _) {});
     await _settle();
 
-    expect(container.read(goControllerProvider).filter, GoFilter.all);
-    expect(container.read(goControllerProvider).items.length, 2);
-
-    await container.read(goControllerProvider.notifier).changeFilter(GoFilter.feedback);
-    await _settle();
-
-    final state = container.read(goControllerProvider);
-    expect(repo.lastFilter, GoFilter.feedback);
-    expect(repo.lastCursor, isNull);
-    expect(state.filter, GoFilter.feedback);
-    expect(state.items.map((e) => e.targetId), [3]);
+    final groups = container.read(goControllerProvider).groups;
+    // 数据里没有 resource，所以「可补充」整组不出现
+    expect(groups.map((g) => g.label), ['待回答', '可领取', '求反馈']);
+    expect(groups.first.items.map((e) => e.targetId), [1, 2]);
+    expect(container.read(goControllerProvider).items.length, 4);
   });
 
-  test('补页去重：同一项第二次出现不会被追加', () async {
+  test('补页去重：同一件事第二次出现不会被追加', () async {
     final repo = _FakeRepo(secondPageRepeatsFirst: true);
     final container = ProviderContainer(
       overrides: [goRepositoryProvider.overrideWithValue(repo)],
@@ -45,24 +39,23 @@ void main() {
 
     container.listen(goControllerProvider, (_, _) {});
     await _settle();
+    expect(container.read(goControllerProvider).items.length, 4);
 
-    final controller = container.read(goControllerProvider.notifier);
-    await controller.loadMore();
+    await container.read(goControllerProvider.notifier).loadMore();
     await _settle();
 
     final ids = container.read(goControllerProvider).items.map((e) => e.targetId).toList();
-    expect(ids, [1, 2, 4]); // 第 3 条是重复的 topic:1，被丢掉
+    expect(ids, [1, 2, 3, 4, 9]); // 第 5 条是重复的 question:1，被丢掉
   });
 
-  testWidgets('筛选条与卡片在手机宽度下渲染且能点切换（390 宽不溢出）', (tester) async {
+  testWidgets('任务台在手机宽度下渲染组头与行，不溢出（390 宽）', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    final repo = _FakeRepo();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [goRepositoryProvider.overrideWithValue(repo)],
+        overrides: [goRepositoryProvider.overrideWithValue(_FakeRepo())],
         child: const MaterialApp(home: GoPage()),
       ),
     );
@@ -70,20 +63,18 @@ void main() {
 
     expect(tester.takeException(), isNull);
 
-    // 头部与筛选
+    // 头部不是筛选条，而是一句话总结
     expect(find.text('出发'), findsOneWidget);
+    expect(find.text('今天有 4 件事可做 · 3 类'), findsOneWidget);
+
+    // 组头与行内容
     expect(find.text('待回答'), findsOneWidget);
+    expect(find.text('可领取'), findsOneWidget);
+    expect(find.text('怎么把超时重试做对'), findsOneWidget);
+    expect(find.text('去回答'), findsNWidgets(2));
 
-    // 卡片内容真的渲染出来了
-    expect(find.text('等一个后端复盘'), findsOneWidget);
-    expect(find.text('求反馈'), findsWidgets);
-    // 一行一张卡，每张卡右下都有行动按钮
-    expect(find.text('去点评'), findsNWidgets(2));
-
-    await tester.tap(find.text('可补充'));
-    await tester.pumpAndSettle();
-
-    expect(repo.lastFilter, GoFilter.supplement);
+    // 摘要不在任务台出现（那是「看见」的形态）
+    expect(find.text('摘要'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }
@@ -99,30 +90,19 @@ class _FakeRepo extends GoRepository {
 
   final bool secondPageRepeatsFirst;
 
-  GoFilter? lastFilter;
   String? lastCursor;
 
   @override
-  Future<ParticipationPageResult> load({
-    required GoFilter filter,
-    String? cursor,
-    int limit = 24,
-  }) async {
-    lastFilter = filter;
+  Future<ParticipationPageResult> load({String? cursor, int limit = 60}) async {
     lastCursor = cursor;
-
-    if (filter != GoFilter.all) {
-      return ParticipationPageResult(
-        items: [_item(targetId: 3, title: '补一篇文档')],
-        hasMore: false,
-      );
-    }
 
     if (cursor == null) {
       return ParticipationPageResult(
         items: [
-          _item(targetId: 1, title: '等一个后端复盘'),
-          _item(targetId: 2, title: 'VPS 能不能撑住'),
+          _item(type: 'question', id: 1, title: '怎么把超时重试做对', action: '去回答', reason: '这个问题还没人答'),
+          _item(type: 'question', id: 2, title: 'Postgres 索引怎么选', action: '去回答', reason: '刚发布，回复为 0'),
+          _item(type: 'community_task', id: 3, title: '整理一份部署清单', action: '领取任务', reason: '开放社区任务'),
+          _item(type: 'project', id: 4, title: 'Leap Home 该打磨什么', action: '去点评', reason: '作者在等具体反馈'),
         ],
         hasMore: true,
         nextCursor: 'page2',
@@ -131,22 +111,30 @@ class _FakeRepo extends GoRepository {
 
     return ParticipationPageResult(
       items: [
-        if (secondPageRepeatsFirst) _item(targetId: 1, title: '等一个后端复盘'),
-        _item(targetId: 4, title: '该更新了'),
+        if (secondPageRepeatsFirst)
+          _item(type: 'question', id: 1, title: '怎么把超时重试做对', action: '去回答', reason: '这个问题还没人答'),
+        _item(type: 'stale_content', id: 9, title: '两年前的部署文档', action: '去更新', reason: '内容已过期'),
       ],
       hasMore: false,
     );
   }
 
-  ParticipationItem _item({required int targetId, required String title}) =>
+  ParticipationItem _item({
+    required String type,
+    required int id,
+    required String title,
+    required String action,
+    required String reason,
+  }) =>
       ParticipationItem(
-        targetType: 'topic',
-        targetId: targetId,
+        targetType: type,
+        targetId: id,
         title: title,
         summary: '摘要',
-        href: '/t/$targetId',
-        actionLabel: '去点评',
-        reason: '作者正在等具体反馈。',
+        href: '/t/$id',
+        actionLabel: action,
+        reason: reason,
         category: const CategoryRef(id: 45, name: '项目', slug: 'projects', color: '#f3c969'),
+        replyCount: 0,
       );
 }
