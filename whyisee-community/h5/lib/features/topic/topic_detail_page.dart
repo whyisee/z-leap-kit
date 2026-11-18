@@ -351,9 +351,13 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
   ///
   /// 只做这两件事。改分区、置顶、加精这些留给网页后台 —— 手机上处理一篇
   /// 内容时，99% 的需求是「有个错字」或「发错地方了」。
-  Future<void> _openOwnerMenu() async {
+  Future<void> _openMoreMenu() async {
     final topic = _detail?.topic;
     if (topic == null) return;
+
+    // canEdit 由服务端给（作者本人或管理员）。举报对所有登录用户开放 ——
+    // 之前菜单只对作者出现，读者想举报还得自己拼 URL 去网页。
+    final canEdit = _detail?.me.canEdit == true;
 
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -368,30 +372,45 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (canEdit) ...[
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined, size: 20, color: Color(Env.text)),
+                  title: const Text(
+                    '编辑这篇',
+                    style: TextStyle(fontSize: 14, color: Color(Env.text)),
+                  ),
+                  subtitle: const Text(
+                    '改完要重新过一遍审核',
+                    style: TextStyle(fontSize: 11.5, color: Color(0xFF5F6875)),
+                  ),
+                  onTap: () => Navigator.of(context).pop('edit'),
+                ),
+                const Divider(height: 1, color: Color(Env.line)),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline, size: 20, color: Color(0xFFF08A8A)),
+                  title: const Text(
+                    '删除',
+                    style: TextStyle(fontSize: 14, color: Color(0xFFF08A8A)),
+                  ),
+                  subtitle: const Text(
+                    '会从列表里下线，回复不会丢',
+                    style: TextStyle(fontSize: 11.5, color: Color(0xFF5F6875)),
+                  ),
+                  onTap: () => Navigator.of(context).pop('delete'),
+                ),
+                const Divider(height: 1, color: Color(Env.line)),
+              ],
               ListTile(
-                leading: const Icon(Icons.edit_outlined, size: 20, color: Color(Env.text)),
+                leading: const Icon(Icons.flag_outlined, size: 20, color: Color(Env.text)),
                 title: const Text(
-                  '编辑这篇',
+                  '举报这篇',
                   style: TextStyle(fontSize: 14, color: Color(Env.text)),
                 ),
                 subtitle: const Text(
-                  '改完要重新过一遍审核',
+                  '广告、骚扰、抄袭都可以报',
                   style: TextStyle(fontSize: 11.5, color: Color(0xFF5F6875)),
                 ),
-                onTap: () => Navigator.of(context).pop('edit'),
-              ),
-              const Divider(height: 1, color: Color(Env.line)),
-              ListTile(
-                leading: const Icon(Icons.delete_outline, size: 20, color: Color(0xFFF08A8A)),
-                title: const Text(
-                  '删除',
-                  style: TextStyle(fontSize: 14, color: Color(0xFFF08A8A)),
-                ),
-                subtitle: const Text(
-                  '会从列表里下线，回复不会丢',
-                  style: TextStyle(fontSize: 11.5, color: Color(0xFF5F6875)),
-                ),
-                onTap: () => Navigator.of(context).pop('delete'),
+                onTap: () => Navigator.of(context).pop('report'),
               ),
             ],
           ),
@@ -407,6 +426,14 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
       await _refreshQuietly();
     } else if (action == 'delete') {
       await _confirmDelete(topic.id);
+    } else if (action == 'report') {
+      final reported = await context.push<bool>(
+        '/report?type=topic&id=${topic.id}&label=${Uri.encodeComponent(topic.title)}',
+      );
+      if (reported != true || !mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('已提交，管理员会看到')));
     }
   }
 
@@ -826,8 +853,9 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
               topInset: topInset,
               onBack: () => context.pop(),
               onOpenBrowser: _openInBrowser,
-              // canEdit 由服务端判（作者本人或管理员），客户端不自己比 id
-              onMore: _detail?.me.canEdit == true ? _openOwnerMenu : null,
+              // canEdit 由服务端判（作者本人或管理员），客户端不自己比 id。
+              // 菜单对所有人都在：作者看到编辑/删除，其他人看到举报。
+              onMore: _openMoreMenu,
             ),
           ),
         ),

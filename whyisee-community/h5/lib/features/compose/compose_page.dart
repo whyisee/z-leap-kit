@@ -17,13 +17,17 @@ import 'compose_repository.dart';
 /// 这里只有三行东西 —— 标题、分区、正文。分区（类型 + 分类）收成一行，
 /// 点开才展开选项，页面剩下的全部给正文，写作时不被选项打断。
 class ComposePage extends ConsumerStatefulWidget {
-  const ComposePage({super.key, this.editTopicId});
+  const ComposePage({super.key, this.editTopicId, this.initialType});
 
   /// 非空 = 编辑这篇已有的话题，而不是写新的。
   ///
   /// 编辑和发布共用这一页：分区选择、块编辑器、标题校验、返回确认全都一样，
   /// 差别只有「预填 + 提交到 /update」。分成两页会让两边慢慢长歪。
   final int? editTopicId;
+
+  /// 进来的默认类型。从「项目展示」点「写一篇」时传 `project`，
+  /// 免得用户还得自己想起来去分区里选一次。
+  final String? initialType;
 
   bool get isEditing => editTopicId != null;
 
@@ -40,7 +44,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
   final _requestId = newComposeRequestId();
 
   int? _categoryId;
-  String _type = 'discussion';
+  late String _type = widget.initialType ?? 'discussion';
   bool _submitting = false;
   String? _titleError;
 

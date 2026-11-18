@@ -5,7 +5,7 @@ import 'package:whyisee_app/core/api/models.dart';
 /// 1. 一条结果点开时能原生打开还是只能进网页 —— 判错就是把用户扔进 WebView；
 /// 2. 分组顺序稳定 —— 顺序乱跳会让人以为结果变了。
 void main() {
-  test('话题 / 用户 / 分类 / 标签都能原生打开，回复和未知类型留给网页', () {
+  test('话题 / 回复 / 用户 / 分类 / 标签都能原生打开，未知类型留给网页', () {
     SearchHit hit(String kind, String href) =>
         SearchHit(kind: kind, title: 't', href: href);
 
@@ -22,8 +22,10 @@ void main() {
       '/tag/${Uri.encodeComponent('路径设计')}',
     );
 
-    // 回复只带楼层锚点，没有独立的原生页面
-    expect(hit('reply', '/t/91#post-3').nativePath, isNull);
+    // 回复结果要落在那一层：`#post-3` 换成详情页的 ?post=3，否则只能从正文顶部往下数
+    expect(hit('reply', '/t/91#post-3').nativePath, '/t/91?post=3');
+    // 形状不对（只有话题没有楼层）时退回话题本身，不要整条丢弃
+    expect(hit('reply', '/t/91').nativePath, '/t/91');
 
     // href 形状不对时宁可不跳原生，也不要拼出一个打不开的地址
     expect(hit('topic', '/latest').nativePath, isNull);

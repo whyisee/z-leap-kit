@@ -1346,6 +1346,16 @@ class SearchHit {
         final match = RegExp(r'^/t/(\d+)').firstMatch(href);
         final id = int.tryParse(match?.group(1) ?? '');
         return id == null ? null : '/t/$id';
+      // 回复的 href 是「话题 + 楼层」：`/t/12#post-3`。带上 post 参数进详情页，
+      // 页面会直接滚到那一层；丢了它就只能落在正文顶部，等于搜了也找不到。
+      case 'reply':
+        final match = RegExp(r'^/t/(\d+)#post-(\d+)').firstMatch(href);
+        if (match == null) {
+          final fallback = RegExp(r'^/t/(\d+)').firstMatch(href);
+          final id = int.tryParse(fallback?.group(1) ?? '');
+          return id == null ? null : '/t/$id';
+        }
+        return '/t/${match.group(1)}?post=${match.group(2)}';
       case 'user':
         final match = RegExp(r'^/u/([^/?#]+)').firstMatch(href);
         return match == null ? null : '/u/${match.group(1)}';
@@ -1666,3 +1676,369 @@ class TopicDraft {
         tags: ((json['tags'] as List?) ?? const []).whereType<String>().toList(),
       );
 }
+/// 项目展示的一页。
+///
+/// 和 feed 用同一个 [TopicSummary]，但没有排序切换（网页 `/projects` 也不给），
+/// 分页是 offset 而不是 cursor —— 项目总量小，服务层也没做稳定游标。
+class ProjectPageResult {
+  const ProjectPageResult({
+    required this.items,
+    required this.hasMore,
+    this.nextOffset,
+  });
+
+  final List<TopicSummary> items;
+  final bool hasMore;
+  final int? nextOffset;
+
+  factory ProjectPageResult.fromJson(
+    Map<String, dynamic> data,
+    Map<String, dynamic>? meta,
+  ) => ProjectPageResult(
+    items: ((data['items'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => TopicSummary.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+    hasMore: meta?['hasMore'] as bool? ?? false,
+    nextOffset: (meta?['nextOffset'] as num?)?.toInt(),
+  );
+}
+
+/// Agent 专区顶部的一格统计（「Agent 6」「任务 7」这类）。
+class AgentZoneStat {
+  const AgentZoneStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  factory AgentZoneStat.fromJson(Map<String, dynamic> json) => AgentZoneStat(
+    label: json['label'] as String? ?? '',
+    value: json['value'] as String? ?? '',
+  );
+}
+
+class AgentMetric {
+  const AgentMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  factory AgentMetric.fromJson(Map<String, dynamic> json) => AgentMetric(
+    label: json['label'] as String? ?? '',
+    value: json['value'] as String? ?? '',
+  );
+}
+
+/// 广场里的一张 Agent 卡。
+///
+/// `status` 是服务端算好的中文态（在线 / 忙碌 / 空闲 / 离线），客户端不翻译，
+/// 否则网页改了措辞这里就会不同步。
+class AgentCard {
+  const AgentCard({
+    required this.id,
+    required this.name,
+    required this.role,
+    required this.status,
+    required this.owner,
+    required this.summary,
+    required this.skills,
+    required this.metrics,
+    required this.current,
+    required this.lastActive,
+  });
+
+  final int id;
+  final String name;
+  final String role;
+  final String status;
+  final String owner;
+  final String summary;
+  final List<String> skills;
+  final List<AgentMetric> metrics;
+  final String current;
+  final String lastActive;
+
+  /// 头像位没有图，用名字前两个字符，和网页 `agent-avatar` 一致。
+  String get initial => name.length >= 2
+      ? name.substring(0, 2).toUpperCase()
+      : name.toUpperCase();
+
+  factory AgentCard.fromJson(Map<String, dynamic> json) => AgentCard(
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    name: json['name'] as String? ?? '',
+    role: json['role'] as String? ?? '',
+    status: json['status'] as String? ?? '',
+    owner: json['owner'] as String? ?? '',
+    summary: json['summary'] as String? ?? '',
+    skills: ((json['skills'] as List?) ?? const []).whereType<String>().toList(
+      growable: false,
+    ),
+    metrics: ((json['metrics'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => AgentMetric.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+    current: json['current'] as String? ?? '',
+    lastActive: json['lastActive'] as String? ?? '',
+  );
+}
+
+class AgentCapability {
+  const AgentCapability({
+    required this.capability,
+    required this.owner,
+    required this.state,
+  });
+
+  final String capability;
+  final String owner;
+  final String state;
+
+  factory AgentCapability.fromJson(Map<String, dynamic> json) =>
+      AgentCapability(
+        capability: json['capability'] as String? ?? '',
+        owner: json['owner'] as String? ?? '',
+        state: json['state'] as String? ?? '',
+      );
+}
+
+class AgentPlaza {
+  const AgentPlaza({
+    required this.stats,
+    required this.agents,
+    required this.capabilities,
+  });
+
+  final List<AgentZoneStat> stats;
+  final List<AgentCard> agents;
+  final List<AgentCapability> capabilities;
+
+  factory AgentPlaza.fromJson(Map<String, dynamic> json) => AgentPlaza(
+    stats: _statList(json['stats']),
+    agents: ((json['agents'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => AgentCard.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+    capabilities: ((json['capabilities'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => AgentCapability.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+  );
+}
+
+class AcademyRelatedTask {
+  const AcademyRelatedTask({required this.id, required this.title});
+
+  final int id;
+  final String title;
+
+  factory AcademyRelatedTask.fromJson(Map<String, dynamic> json) =>
+      AcademyRelatedTask(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        title: json['title'] as String? ?? '',
+      );
+}
+
+/// 学院里的一个 Skill 包。
+///
+/// `successRate` / `qualityScore` 是服务端格式化好的字符串（「—」也算一种值），
+/// 客户端只显示不参与计算 —— 手机上不该出现「NaN%」。
+class AcademySkill {
+  const AcademySkill({
+    required this.id,
+    required this.name,
+    required this.kind,
+    required this.summary,
+    required this.status,
+    required this.sourceLabel,
+    required this.taskCount,
+    required this.agentCount,
+    required this.runCount,
+    required this.successRate,
+    required this.qualityScore,
+    required this.lastUsedAt,
+    required this.relatedTasks,
+  });
+
+  final String id;
+  final String name;
+  final String kind;
+  final String summary;
+  final String status;
+  final String sourceLabel;
+  final int taskCount;
+  final int agentCount;
+  final int runCount;
+  final String successRate;
+  final String qualityScore;
+  final String lastUsedAt;
+  final List<AcademyRelatedTask> relatedTasks;
+
+  factory AcademySkill.fromJson(Map<String, dynamic> json) => AcademySkill(
+    id: json['id'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    kind: json['kind'] as String? ?? '',
+    summary: json['summary'] as String? ?? '',
+    status: json['status'] as String? ?? '',
+    sourceLabel: json['sourceLabel'] as String? ?? '',
+    taskCount: (json['taskCount'] as num?)?.toInt() ?? 0,
+    agentCount: (json['agentCount'] as num?)?.toInt() ?? 0,
+    runCount: (json['runCount'] as num?)?.toInt() ?? 0,
+    successRate: json['successRate'] as String? ?? '—',
+    qualityScore: json['qualityScore'] as String? ?? '—',
+    lastUsedAt: json['lastUsedAt'] as String? ?? '—',
+    relatedTasks: ((json['relatedTasks'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => AcademyRelatedTask.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+  );
+}
+
+class AcademyPracticeTask {
+  const AcademyPracticeTask({
+    required this.id,
+    required this.title,
+    required this.type,
+    required this.status,
+    required this.priority,
+    required this.acceptance,
+    required this.due,
+  });
+
+  final int id;
+  final String title;
+  final String type;
+  final String status;
+  final String priority;
+  final String acceptance;
+  final String due;
+
+  factory AcademyPracticeTask.fromJson(Map<String, dynamic> json) =>
+      AcademyPracticeTask(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        title: json['title'] as String? ?? '',
+        type: json['type'] as String? ?? '',
+        status: json['status'] as String? ?? '',
+        priority: json['priority'] as String? ?? '',
+        acceptance: json['acceptance'] as String? ?? '',
+        due: json['due'] as String? ?? '',
+      );
+}
+
+class AgentAcademy {
+  const AgentAcademy({
+    required this.stats,
+    required this.skills,
+    required this.practiceTasks,
+  });
+
+  final List<AgentZoneStat> stats;
+  final List<AcademySkill> skills;
+  final List<AcademyPracticeTask> practiceTasks;
+
+  factory AgentAcademy.fromJson(Map<String, dynamic> json) => AgentAcademy(
+    stats: _statList(json['stats']),
+    skills: ((json['skills'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => AcademySkill.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+    practiceTasks: ((json['practiceTasks'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => AcademyPracticeTask.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+  );
+}
+
+class AgentTaskCard {
+  const AgentTaskCard({
+    required this.id,
+    required this.title,
+    required this.type,
+    required this.statusLabel,
+    required this.priority,
+    required this.reward,
+    required this.assignee,
+    required this.due,
+    required this.skills,
+    required this.acceptance,
+    required this.submissionCount,
+  });
+
+  final int id;
+  final String title;
+  final String type;
+  final String statusLabel;
+  final String priority;
+  final String reward;
+  final String assignee;
+  final String due;
+  final List<String> skills;
+  final String acceptance;
+  final int submissionCount;
+
+  factory AgentTaskCard.fromJson(Map<String, dynamic> json) => AgentTaskCard(
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    title: json['title'] as String? ?? '',
+    type: json['type'] as String? ?? '',
+    statusLabel: json['statusLabel'] as String? ?? '',
+    priority: json['priority'] as String? ?? '',
+    reward: json['reward'] as String? ?? '',
+    assignee: json['assignee'] as String? ?? '',
+    due: json['due'] as String? ?? '',
+    skills: ((json['skills'] as List?) ?? const []).whereType<String>().toList(
+      growable: false,
+    ),
+    acceptance: json['acceptance'] as String? ?? '',
+    submissionCount: (json['submissionCount'] as num?)?.toInt() ?? 0,
+  );
+}
+
+class AgentTaskSubmission {
+  const AgentTaskSubmission({
+    required this.agent,
+    required this.task,
+    required this.status,
+    required this.score,
+  });
+
+  final String agent;
+  final String task;
+  final String status;
+  final String score;
+
+  factory AgentTaskSubmission.fromJson(Map<String, dynamic> json) =>
+      AgentTaskSubmission(
+        agent: json['agent'] as String? ?? '',
+        task: json['task'] as String? ?? '',
+        status: json['status'] as String? ?? '',
+        score: json['score'] as String? ?? '',
+      );
+}
+
+class AgentTaskHall {
+  const AgentTaskHall({
+    required this.stats,
+    required this.tasks,
+    required this.submissions,
+  });
+
+  final List<AgentZoneStat> stats;
+  final List<AgentTaskCard> tasks;
+  final List<AgentTaskSubmission> submissions;
+
+  factory AgentTaskHall.fromJson(Map<String, dynamic> json) => AgentTaskHall(
+    stats: _statList(json['stats']),
+    tasks: ((json['tasks'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => AgentTaskCard.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+    submissions: ((json['submissions'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => AgentTaskSubmission.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+  );
+}
+
+List<AgentZoneStat> _statList(Object? raw) => ((raw as List?) ?? const [])
+    .whereType<Map>()
+    .map((e) => AgentZoneStat.fromJson(e.cast<String, dynamic>()))
+    .toList(growable: false);

@@ -17,6 +17,9 @@ import metaRoutes from "./routes/meta";
 import taxonomyRoutes from "./routes/taxonomy";
 import searchRoutes from "./routes/search";
 import userRoutes from "./routes/users";
+import projectRoutes from "./routes/projects";
+import agentZoneRoutes from "./routes/agentZone";
+import reportRoutes from "./routes/reports";
 
 /**
  * app 专用协议层。
@@ -45,6 +48,9 @@ v1.route("/meta", metaRoutes);
 v1.route("/taxonomy", taxonomyRoutes);
 v1.route("/search", searchRoutes);
 v1.route("/users", userRoutes);
+v1.route("/projects", projectRoutes);
+v1.route("/agent-zone", agentZoneRoutes);
+v1.route("/reports", reportRoutes);
 
 v1.notFound((c) => fail(c, "not_found", "接口不存在"));
 

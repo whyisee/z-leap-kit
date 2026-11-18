@@ -18,7 +18,8 @@ import 'me_repository.dart';
 /// - 顶部只留标题 + 通知入口（手机上没有第二个可点的位置）；
 /// - 资料卡把「头像/昵称/简介/四个计数」压成一张卡，统计与网页 service 同口径；
 /// - 我的话题直接列在页面上，点开进原生详情（走 `/me/t/:id`，返回回到本页）；
-/// - 设置三项（资料、密码、Agent 设备）都是原生页；只剩「关于」还走网页。
+/// - 设置三项（资料、密码、Agent 设备）和「发现」那几页（项目 / Agent 专区 /
+///   指南 / 关于）都是原生页 —— 这一页已经没有任何入口会掉进 WebView。
 class MePage extends ConsumerWidget {
   const MePage({super.key});
 
@@ -79,8 +80,6 @@ class MePage extends ConsumerWidget {
                             },
                             onEditProfile: () =>
                                 _openNative(context, ref, '/settings/profile'),
-                            onOpenWeb: (path, title) =>
-                                _openWeb(context, ref, path, title),
                             onOpenNative: (path) => _openNative(context, ref, path),
                             onOpenTopic: (id) => context.push('/me/t/$id'),
                             onOpenNotifications: () => _openNotifications(context, ref),
@@ -102,22 +101,6 @@ class MePage extends ConsumerWidget {
     String path,
   ) async {
     await context.push(path);
-    if (!context.mounted) return;
-    ref.invalidate(meOverviewProvider);
-    await ref.read(sessionProvider.notifier).refreshMe();
-  }
-
-  /// 设置类页面复用网页版：push 进来，返回走 pop。
-  /// 回来时清一次缓存，改完昵称/头像立刻能看到。
-  Future<void> _openWeb(
-    BuildContext context,
-    WidgetRef ref,
-    String path,
-    String title,
-  ) async {
-    await context.push(
-      '/me/page?path=${Uri.encodeComponent(path)}&title=${Uri.encodeComponent(title)}',
-    );
     if (!context.mounted) return;
     ref.invalidate(meOverviewProvider);
     await ref.read(sessionProvider.notifier).refreshMe();
@@ -236,7 +219,6 @@ class _Content extends StatelessWidget {
     required this.data,
     required this.onRefresh,
     required this.onEditProfile,
-    required this.onOpenWeb,
     required this.onOpenNative,
     required this.onOpenTopic,
     required this.onOpenNotifications,
@@ -246,8 +228,6 @@ class _Content extends StatelessWidget {
   final MeOverview data;
   final Future<void> Function() onRefresh;
   final VoidCallback onEditProfile;
-  final void Function(String path, String title) onOpenWeb;
-
   /// 原生设置页：push 进去，回来刷新缓存
   final void Function(String path) onOpenNative;
   final void Function(int topicId) onOpenTopic;
@@ -302,6 +282,29 @@ class _Content extends StatelessWidget {
             ],
           ),
           _MenuGroup(
+            title: '发现',
+            items: [
+              _MenuAction(
+                icon: Icons.rocket_launch_outlined,
+                label: '项目展示',
+                hint: '别人在做什么',
+                onTap: () => onOpenNative('/projects'),
+              ),
+              _MenuAction(
+                icon: Icons.smart_toy_outlined,
+                label: 'Agent 专区',
+                hint: 'Agent 与任务',
+                onTap: () => onOpenNative('/agent-zone'),
+              ),
+              _MenuAction(
+                icon: Icons.gavel_outlined,
+                label: '社区指南',
+                hint: '等级与规则',
+                onTap: () => onOpenNative('/guidelines'),
+              ),
+            ],
+          ),
+          _MenuGroup(
             title: '设置',
             items: [
               _MenuAction(
@@ -323,7 +326,7 @@ class _Content extends StatelessWidget {
               _MenuAction(
                 icon: Icons.info_outline,
                 label: '关于 whyisee',
-                onTap: () => onOpenWeb('/about', '关于'),
+                onTap: () => onOpenNative('/about'),
               ),
             ],
           ),
@@ -899,9 +902,16 @@ class _MenuTile extends StatelessWidget {
             ),
             const Spacer(),
             if (item.hint != null)
-              Text(
-                item.hint!,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF5C6675)),
+              // 窄屏（360）下 hint 是第一个被挤爆的东西：给它 Flexible，
+              // 宁可省略号也不要溢出条纹
+              Flexible(
+                child: Text(
+                  item.hint!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF5C6675)),
+                ),
               ),
             const SizedBox(width: 4),
             const Icon(Icons.chevron_right, size: 17, color: Color(0xFF4A5261)),

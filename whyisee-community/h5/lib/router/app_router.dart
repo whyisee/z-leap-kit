@@ -1,6 +1,9 @@
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../features/about/about_page.dart';
+import '../features/about/guidelines_page.dart';
+import '../features/agent_zone/agent_zone_page.dart';
 import '../features/auth/forgot_password_page.dart';
 import '../features/auth/login_page.dart';
 import '../features/auth/signup_page.dart';
@@ -10,6 +13,8 @@ import '../features/following/following_page.dart';
 import '../features/go/go_page.dart';
 import '../features/me/me_page.dart';
 import '../features/notifications/notification_page.dart';
+import '../features/projects/projects_page.dart';
+import '../features/report/report_page.dart';
 import '../features/review/review_page.dart';
 import '../features/search/search_page.dart';
 import '../features/settings/settings_account_page.dart';
@@ -221,12 +226,41 @@ final GoRouter appRouter = GoRouter(
       path: '/settings/agents',
       builder: (context, state) => const SettingsAgentsPage(),
     ),
+    // 内容扩展页：项目展示、Agent 专区、关于与指南
+    GoRoute(
+      path: '/projects',
+      builder: (context, state) => const ProjectsPage(),
+    ),
+    GoRoute(
+      path: '/agent-zone',
+      builder: (context, state) => const AgentZonePage(),
+    ),
+    GoRoute(
+      path: '/about',
+      builder: (context, state) => const AboutPage(),
+    ),
+    GoRoute(
+      path: '/guidelines',
+      builder: (context, state) => const GuidelinesPage(),
+    ),
+    // 举报：从详情页的 ⋮ 进来，带上被举报的对象
+    GoRoute(
+      path: '/report',
+      pageBuilder: (context, state) => _sheetPage(
+        state,
+        ReportPage(
+          targetType: state.uri.queryParameters['type'] ?? 'topic',
+          targetId: int.tryParse(state.uri.queryParameters['id'] ?? '') ?? 0,
+          targetLabel: state.uri.queryParameters['label'] ?? '',
+        ),
+      ),
+    ),
     // 发帖是全局动作，挂在 shell 外面：全屏盖住底部栏，返回回到原 tab
     GoRoute(
       path: '/compose',
       pageBuilder: (context, state) => CustomTransitionPage<void>(
         key: state.pageKey,
-        child: const ComposePage(),
+        child: ComposePage(initialType: state.uri.queryParameters['type']),
         fullscreenDialog: true,
         transitionDuration: const Duration(milliseconds: 260),
         reverseTransitionDuration: const Duration(milliseconds: 200),
