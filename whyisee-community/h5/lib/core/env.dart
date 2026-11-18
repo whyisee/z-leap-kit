@@ -3,10 +3,16 @@ class Env {
   Env._();
 
   /// 站点根地址。app 只加载远程 URL，不打包网页资源（见 ADR-2）。
-  static const String siteBase = 'https://whyisee.xyz';
+  ///
+  /// 用 `--dart-define=SITE_BASE=http://127.0.0.1:4321` 可以让调试包指向本机，
+  /// 配合 `adb reverse tcp:4321 tcp:4321` 在真机上验证还没部署的接口。默认仍是线上。
+  static const String siteBase = String.fromEnvironment(
+    'SITE_BASE',
+    defaultValue: 'https://whyisee.xyz',
+  );
 
   /// WebView 内允许停留的域名，其余一律交系统浏览器（见 §5.9）。
-  static const Set<String> allowedHosts = {'whyisee.xyz', 'www.whyisee.xyz'};
+  static const Set<String> allowedHosts = {'whyisee.xyz', 'www.whyisee.xyz', '127.0.0.1'};
 
   /// 与 pubspec version 同源，服务端用 X-App-Version 判断是否需要强升。
   static const String appVersion = '0.1.0';

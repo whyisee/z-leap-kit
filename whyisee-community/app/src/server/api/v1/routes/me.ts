@@ -6,10 +6,14 @@ import { getUserFollowStats } from "@server/services/interactions";
 import { fail, langOf, ok, type ApiEnv } from "../http";
 import { requireAuth, sessionOf } from "../middleware";
 import { toFeedItem } from "../serializers";
+import todoRoutes from "./todo";
 
 const me = new Hono<ApiEnv>();
 
 me.use("*", requireAuth);
+
+// 「出发」页的数据：我该做的事，和「我」页共用登录守卫
+me.route("/todo", todoRoutes);
 
 /**
  * 「我」页一次拿全：资料 + 统计 + 最近话题。

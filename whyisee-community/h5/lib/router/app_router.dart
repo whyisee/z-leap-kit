@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../features/compose/compose_page.dart';
 import '../features/feed/feed_page.dart';
 import '../features/go/go_page.dart';
 import '../features/me/me_page.dart';
@@ -96,6 +97,34 @@ final GoRouter appRouter = GoRouter(
           ],
         ),
       ],
+    ),
+    // 发帖是全局动作，挂在 shell 外面：全屏盖住底部栏，返回回到原 tab
+    GoRoute(
+      path: '/compose',
+      pageBuilder: (context, state) => CustomTransitionPage<void>(
+        key: state.pageKey,
+        child: const ComposePage(),
+        fullscreenDialog: true,
+        transitionDuration: const Duration(milliseconds: 260),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
+        transitionsBuilder: (_, animation, _, child) => SlideTransition(
+          position: Tween(begin: const Offset(0, 1), end: Offset.zero).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          ),
+          child: child,
+        ),
+      ),
+    ),
+    // 任意网页页的通用容器：从 shell 外（发帖页）也能打开登录这类页面
+    GoRoute(
+      path: '/web',
+      builder: (context, state) {
+        final query = state.uri.queryParameters;
+        return WebRoutePage(
+          path: query['path'] ?? '/',
+          title: query['title'] ?? '',
+        );
+      },
     ),
   ],
 );

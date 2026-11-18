@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { listCategories } from "@server/services/categories";
+import { listCategories, listTags } from "@server/services/categories";
 import { langOf, ok, type ApiEnv } from "../http";
 
 const meta = new Hono<ApiEnv>();
@@ -42,6 +42,44 @@ meta.get("/filters", async (c) => {
         color: category.color,
         topicCount: category.topicCount ?? 0,
       })),
+  });
+});
+
+/**
+ * 发布页用的选项：分类（含空分类，发帖时可选）+ 标签 + 话题类型。
+ * 和 `/filters` 的差别只在于这里不按篇数过滤 —— 发帖时任何分类都得能选。
+ */
+meta.get("/taxonomy", async (c) => {
+  const lang = langOf(c);
+  const [categories, tags] = await Promise.all([listCategories(lang), listTags(lang)]);
+
+  c.header("cache-control", "public, max-age=600");
+
+  return ok(c, {
+    categories: categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      slug: category.slug,
+      color: category.color,
+    })),
+    // 标签只给最常见的，避免手机上一屏几百个
+    tags: tags.slice(0, 60).map((tag) => ({ id: tag.id, name: tag.name, slug: tag.slug })),
+    types:
+      lang === "en"
+        ? [
+            { id: "discussion", label: "Discussion" },
+            { id: "question", label: "Question" },
+            { id: "article", label: "Article" },
+            { id: "project", label: "Project" },
+            { id: "resource", label: "Resource" },
+          ]
+        : [
+            { id: "discussion", label: "讨论" },
+            { id: "question", label: "提问" },
+            { id: "article", label: "文章" },
+            { id: "project", label: "项目" },
+            { id: "resource", label: "资源" },
+          ],
   });
 });
 

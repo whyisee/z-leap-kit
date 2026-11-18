@@ -666,6 +666,157 @@ class MeBadge {
       );
 }
 
+/// 「出发」页的一条待办（`GET /api/v1/me/todo`）。
+///
+/// 和 [TopicSummary] 的根本区别：这不是一篇内容，而是**一件和你有关的事** ——
+/// 谁做了什么、你该点什么。
+class TodoItem {
+  const TodoItem({
+    required this.id,
+    required this.kind,
+    required this.reason,
+    required this.title,
+    required this.actionLabel,
+    required this.href,
+    this.topicId,
+    this.actorName,
+    this.actorAvatarUrl,
+    this.unread = false,
+    this.at,
+  });
+
+  final String id;
+
+  /// reply / review / followed
+  final String kind;
+
+  /// 一句话说明发生了什么，例如「李明 回复了你的话题」。
+  final String reason;
+
+  /// 指向的对象标题（帖子标题 / 任务名）。
+  final String title;
+  final String actionLabel;
+  final String href;
+  final int? topicId;
+  final String? actorName;
+  final String? actorAvatarUrl;
+  final bool unread;
+  final DateTime? at;
+
+  factory TodoItem.fromJson(Map<String, dynamic> json) => TodoItem(
+        id: json['id'] as String? ?? '',
+        kind: json['kind'] as String? ?? 'reply',
+        reason: json['reason'] as String? ?? '',
+        title: json['title'] as String? ?? '',
+        actionLabel: json['actionLabel'] as String? ?? '去看看',
+        href: json['href'] as String? ?? '/',
+        topicId: (json['topicId'] as num?)?.toInt(),
+        actorName: json['actorName'] as String?,
+        actorAvatarUrl: json['actorAvatarUrl'] as String?,
+        unread: json['unread'] as bool? ?? false,
+        at: _parseTime(json['at']),
+      );
+}
+
+class TodoGroup {
+  const TodoGroup({
+    required this.key,
+    required this.label,
+    required this.items,
+  });
+
+  final String key;
+  final String label;
+  final List<TodoItem> items;
+
+  int get count => items.length;
+
+  factory TodoGroup.fromJson(Map<String, dynamic> json) => TodoGroup(
+        key: json['key'] as String? ?? '',
+        label: json['label'] as String? ?? '',
+        items: ((json['items'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => TodoItem.fromJson(e.cast<String, dynamic>()))
+            .toList(growable: false),
+      );
+}
+
+class TodoSummary {
+  const TodoSummary({this.total = 0, this.unread = 0, this.actionable = 0});
+
+  final int total;
+  final int unread;
+
+  /// 需要动手的件数（等你回应 + 等你验收），不含「你关注的在动」。
+  final int actionable;
+
+  factory TodoSummary.fromJson(Map<String, dynamic> json) => TodoSummary(
+        total: (json['total'] as num?)?.toInt() ?? 0,
+        unread: (json['unread'] as num?)?.toInt() ?? 0,
+        actionable: (json['actionable'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// 「出发」页一屏的数据。
+class TodoBoard {
+  const TodoBoard({this.summary = const TodoSummary(), this.groups = const []});
+
+  final TodoSummary summary;
+  final List<TodoGroup> groups;
+
+  bool get isEmpty => groups.isEmpty;
+
+  factory TodoBoard.fromJson(Map<String, dynamic> json) => TodoBoard(
+        summary: TodoSummary.fromJson(
+          (json['summary'] as Map?)?.cast<String, dynamic>() ?? const {},
+        ),
+        groups: ((json['groups'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => TodoGroup.fromJson(e.cast<String, dynamic>()))
+            .toList(growable: false),
+      );
+}
+
+/// 发布页用的选项（`GET /api/v1/meta/taxonomy`）。
+class Taxonomy {
+  const Taxonomy({
+    this.categories = const [],
+    this.tags = const [],
+    this.types = const [],
+  });
+
+  final List<CategoryRef> categories;
+  final List<TagRef> tags;
+  final List<TaxonomyType> types;
+
+  factory Taxonomy.fromJson(Map<String, dynamic> json) => Taxonomy(
+        categories: ((json['categories'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => CategoryRef.fromJson(e.cast<String, dynamic>()))
+            .toList(growable: false),
+        tags: ((json['tags'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => TagRef.fromJson(e.cast<String, dynamic>()))
+            .toList(growable: false),
+        types: ((json['types'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => TaxonomyType.fromJson(e.cast<String, dynamic>()))
+            .toList(growable: false),
+      );
+}
+
+class TaxonomyType {
+  const TaxonomyType({required this.id, required this.label});
+
+  final String id;
+  final String label;
+
+  factory TaxonomyType.fromJson(Map<String, dynamic> json) => TaxonomyType(
+        id: json['id'] as String? ?? 'discussion',
+        label: json['label'] as String? ?? '讨论',
+      );
+}
+
 DateTime? _parseTime(Object? value) {
   if (value is! String || value.isEmpty) return null;
   return DateTime.tryParse(value)?.toLocal();

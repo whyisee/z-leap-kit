@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { isAdmin } from "@lib/auth";
-import { getTopicById, listRelatedTopics } from "@server/services/topics";
+import { getTopicById, listRelatedTopics, createTopic } from "@server/services/topics";
+import { listCategories } from "@server/services/categories";
+import { notifyAdmins } from "@server/services/notifications";
 import { getPostForEdit, listPostsForTopic, topicHref, createPost } from "@server/services/posts";
 import { getTopicInteractionState, listPostInteractionStats } from "@server/services/interactions";
 import { recordUserContentEvent, listReadingRecommendations } from "@server/services/recommendations";
@@ -206,6 +208,122 @@ async function readJson<T>(request: Request): Promise<T | undefined> {
   } catch {
     return undefined;
   }
+}
+
+const topicTypes = new Set(["discussion", "question", "article", "project", "resource"]);
+
+/**
+ * 原生发帖。和网页 `/api/topics` 走同一个 `createTopic`，审核规则也一致：
+ * 普通用户只能 `draft` 或 `pending`，管理员才能直接发。
+ */
+topics.post("/", requireAuth, async (c) => {
+  const session = c.get("session");
+
+  const limit = takeToken(`write:${session.userId}`, writeRateLimit.limit, writeRateLimit.windowMs);
+  if (!limit.allowed) {
+    c.header("retry-after", String(limit.retryAfterSeconds));
+    return fail(c, "rate_limited", "发得太频繁，稍等一会儿");
+  }
+
+  const body = await readJson<{
+    title?: string;
+    contentMarkdown?: string;
+    summary?: string;
+    categoryId?: number;
+    type?: string;
+    tags?: string[];
+    status?: string;
+    clientRequestId?: string;
+  }>(c.req.raw);
+
+  const title = String(body?.title || "").trim();
+  const contentMarkdown = String(body?.contentMarkdown || "").trim();
+
+  if (title.length < 4) {
+    return fail(c, "validation_failed", "标题至少 4 个字", { title: "太短" });
+  }
+  if (title.length > 120) {
+    return fail(c, "validation_failed", "标题最多 120 个字", { title: "太长" });
+  }
+  if (contentMarkdown.length < 10) {
+    return fail(c, "validation_failed", "正文至少 10 个字", { contentMarkdown: "太短" });
+  }
+
+  const categories = await listCategories(langOf(c));
+  const categoryId = Number(body?.categoryId || 0);
+  if (!categories.some((category) => category.id === categoryId)) {
+    return fail(c, "validation_failed", "选一个分类", { categoryId: "无效" });
+  }
+
+  const type = topicTypes.has(String(body?.type)) ? String(body?.type) : "discussion";
+  const status = body?.status === "draft" ? "draft" : "pending";
+
+  const tags = Array.isArray(body?.tags)
+    ? body!.tags!.map((tag) => String(tag || "").trim()).filter(Boolean).slice(0, 5)
+    : [];
+
+  const { result, replayed } = await withIdempotency({
+    key: body?.clientRequestId ?? null,
+    userId: session.userId,
+    scope: "topic:create",
+    run: () =>
+      createTopic({
+        title,
+        slug: "",
+        summary: String(body?.summary || "").trim() || buildSummary(contentMarkdown),
+        contentMarkdown,
+        authorId: session.userId,
+        categoryId,
+        type: type as "discussion" | "question" | "article" | "project" | "resource",
+        status: status as "draft" | "pending",
+        isPinned: false,
+        isFeatured: false,
+        tags,
+      }),
+  });
+
+  if (!replayed) {
+    if (status === "pending") {
+      await notifyAdmins({
+        actorId: session.userId,
+        type: "topic_pending",
+        targetType: "topic",
+        targetId: result,
+        title: "新的待审核话题",
+        body: title,
+        href: "/admin?status=pending",
+      });
+    }
+
+    await recordUserContentEvent({
+      userId: session.userId,
+      eventType: "topic_create",
+      targetType: "topic",
+      targetId: result,
+      sourceSurface: "app",
+    });
+  }
+
+  c.header("x-idempotent-replay", replayed ? "1" : "0");
+
+  return ok(c, {
+    id: result,
+    status,
+    // 只有草稿能立刻在 App 里看到；pending 要等审核，不给可点链接避免 404
+    href: status === "draft" ? `/t/${result}` : null,
+  });
+});
+
+/** 和网页 `/api/topics` 的摘要生成保持一致，别让两边摘要长度不同。 */
+function buildSummary(contentMarkdown: string): string {
+  return contentMarkdown
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
+    .replace(/\[[^\]]+]\([^)]*\)/g, "$1")
+    .replace(/[#>*_`~|[\](){}-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 140);
 }
 
 export default topics;

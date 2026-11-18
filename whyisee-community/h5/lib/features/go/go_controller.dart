@@ -4,87 +4,37 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/api/models.dart';
+import '../../core/providers.dart';
 import 'go_repository.dart';
-
-/// 一组的标题与顺序：按「该动手的紧迫度」排，不跟随后端返回顺序。
-///
-/// 组内顺序仍用服务端的分数排序，客户端只负责归组，不重排。
-const _groupMeta = <String, String>{
-  'question': '待回答',
-  'community_task': '可领取',
-  'project': '求反馈',
-  'resource': '可补充',
-  'stale_content': '可更新',
-  'topic': '可参与',
-  'review_needed': '待判断',
-};
-
-class GoGroup {
-  const GoGroup({required this.type, required this.label, required this.items});
-
-  final String type;
-  final String label;
-  final List<ParticipationItem> items;
-}
 
 class GoState {
   const GoState({
-    this.items = const [],
-    this.cursor,
-    this.hasMore = false,
-    this.loadingFirst = false,
-    this.loadingMore = false,
+    this.board = const TodoBoard(),
+    this.loading = false,
     this.error,
   });
 
-  final List<ParticipationItem> items;
-  final String? cursor;
-  final bool hasMore;
-  final bool loadingFirst;
-  final bool loadingMore;
+  final TodoBoard board;
+  final bool loading;
   final ApiException? error;
 
-  bool get isInitialLoading => loadingFirst && items.isEmpty;
+  bool get isInitialLoading => loading && board.isEmpty;
 
-  bool get isEmpty => !loadingFirst && items.isEmpty && error == null;
+  /// 拉完确实没事可做 —— 和「还在加载」「加载失败」要区分开。
+  bool get isClear => !loading && error == null && board.isEmpty;
 
-  /// 按类型分组，空组不出现；未知类型归到「其他」并放到最后。
-  List<GoGroup> get groups {
-    final buckets = <String, List<ParticipationItem>>{};
-    for (final item in items) {
-      buckets.putIfAbsent(item.targetType, () => []).add(item);
-    }
-
-    final ordered = <GoGroup>[
-      for (final entry in _groupMeta.entries)
-        if (buckets[entry.key]?.isNotEmpty == true)
-          GoGroup(type: entry.key, label: entry.value, items: buckets[entry.key]!),
-    ];
-
-    final rest = <GoGroup>[
-      for (final entry in buckets.entries)
-        if (!_groupMeta.containsKey(entry.key))
-          GoGroup(type: entry.key, label: '其他', items: entry.value),
-    ];
-
-    return [...ordered, ...rest];
-  }
+  TodoSummary get summary => board.summary;
+  List<TodoGroup> get groups => board.groups;
 
   GoState copyWith({
-    List<ParticipationItem>? items,
-    String? cursor,
-    bool? hasMore,
-    bool? loadingFirst,
-    bool? loadingMore,
+    TodoBoard? board,
+    bool? loading,
     ApiException? error,
     bool clearError = false,
   }) =>
       GoState(
-        items: items ?? this.items,
-        cursor: cursor ?? this.cursor,
-        hasMore: hasMore ?? this.hasMore,
-        loadingFirst: loadingFirst ?? this.loadingFirst,
-        loadingMore: loadingMore ?? this.loadingMore,
+        board: board ?? this.board,
+        loading: loading ?? this.loading,
         error: clearError ? null : (error ?? this.error),
       );
 }
@@ -92,70 +42,78 @@ class GoState {
 final goControllerProvider =
     NotifierProvider<GoController, GoState>(GoController.new);
 
-/// 任务台状态：一次拿全量，客户端只做「补一页」和「下拉刷新」。
+/// 「我该做的事」状态：只有下拉刷新，没有分页 —— 待办本来就不该有几百条。
+///
+/// 未登录时不发请求（否则每次进 tab 都 401），页面直接显示登录引导。
 class GoController extends Notifier<GoState> {
   @override
   GoState build() {
+    final session = ref.watch(sessionProvider);
+    if (!session.isSignedIn) {
+      return const GoState();
+    }
+
     // Riverpod 3 禁止在 build() 的同步链里写 state，推迟一个微任务
-    Future.microtask(_load);
-    return const GoState(loadingFirst: true);
+    Future.microtask(refresh);
+    return const GoState(loading: true);
   }
 
   GoRepository get _repo => ref.read(goRepositoryProvider);
 
-  Future<void> refresh() => _load(keepItems: true);
+  Future<void> refresh() async {
+    if (!ref.read(sessionProvider).isSignedIn) return;
 
-  Future<void> _load({bool keepItems = false}) async {
-    state = state.copyWith(
-      items: keepItems ? state.items : const <ParticipationItem>[],
-      loadingFirst: true,
-      clearError: true,
-    );
+    state = state.copyWith(loading: true, clearError: true);
 
     try {
-      final page = await _repo.load();
-      state = state.copyWith(
-        items: page.items,
-        cursor: page.nextCursor,
-        hasMore: page.hasMore,
-        loadingFirst: false,
-        clearError: true,
-      );
+      final board = await _repo.load();
+      if (!ref.mounted) return;
+      state = GoState(board: board);
     } on ApiException catch (e) {
-      state = state.copyWith(loadingFirst: false, error: e);
+      if (!ref.mounted) return;
+      state = state.copyWith(loading: false, error: e);
     } catch (_) {
+      if (!ref.mounted) return;
       state = state.copyWith(
-        loadingFirst: false,
+        loading: false,
         error: ApiException(code: 'unknown', message: '加载失败，下拉重试。'),
       );
     }
   }
 
-  /// 补页：按 targetType+targetId 去重，同一件事不会在清单里出现两次。
-  Future<void> loadMore() async {
-    final cursor = state.cursor;
-    if (state.loadingMore || state.loadingFirst) return;
-    if (!state.hasMore || cursor == null) return;
+  /// 处理完一条后本地摘掉，不用整页重拉：用户刚回到列表就少一行，反馈更快。
+  /// 同时把通知标已读，否则下拉刷新它又会回来。
+  void dismiss(String id) {
+    _dropLocally(id);
 
-    state = state.copyWith(loadingMore: true, clearError: true);
-
-    try {
-      final page = await _repo.load(cursor: cursor);
-      final seen = state.items.map((e) => '${e.targetType}:${e.targetId}').toSet();
-
-      state = state.copyWith(
-        items: [
-          ...state.items,
-          ...page.items.where((e) => seen.add('${e.targetType}:${e.targetId}')),
-        ],
-        cursor: page.nextCursor,
-        hasMore: page.hasMore,
-        loadingMore: false,
-      );
-    } on ApiException catch (e) {
-      state = state.copyWith(loadingMore: false, error: e);
-    } catch (_) {
-      state = state.copyWith(loadingMore: false);
+    if (id.startsWith('n-')) {
+      // 标已读失败不该挡住用户看内容，静默即可
+      unawaited(_repo.markRead([id]).catchError((_) {}));
     }
+  }
+
+  void _dropLocally(String id) {
+    final groups = <TodoGroup>[];
+    for (final group in state.board.groups) {
+      final items = group.items.where((item) => item.id != id).toList(growable: false);
+      if (items.isEmpty) continue;
+      groups.add(TodoGroup(key: group.key, label: group.label, items: items));
+    }
+
+    final remaining = groups.fold<int>(0, (sum, group) => sum + group.items.length);
+    final actionable = groups
+        .where((group) => group.key != 'followed')
+        .fold<int>(0, (sum, group) => sum + group.items.length);
+
+    state = state.copyWith(
+      board: TodoBoard(
+        summary: TodoSummary(
+          total: remaining,
+          unread: state.board.summary.unread,
+          actionable: actionable,
+        ),
+        groups: groups,
+      ),
+    );
   }
 }

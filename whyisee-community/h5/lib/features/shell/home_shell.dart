@@ -75,6 +75,12 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
+  /// 中间的发帖按钮：全屏推一个原生编辑器，发布完回到原 tab。
+  void _onCompose() {
+    HapticFeedback.mediumImpact();
+    context.push('/compose');
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -92,6 +98,7 @@ class _HomeShellState extends State<HomeShell> {
         bottomNavigationBar: _BottomBar(
           currentIndex: widget.shell.currentIndex,
           onTap: _onTap,
+          onCompose: _onCompose,
         ),
       ),
     );
@@ -108,11 +115,18 @@ class _Destination {
 
 /// 底部导航：不用 M3 的 NavigationBar（深色底上会带一层浅色 surface 和胶囊指示器，
 /// 和站点风格不搭），这里做纯图标 + 小字、顶部一条 hairline 的扁平样式。
+///
+/// 中间多一个凸起的「写」按钮：发帖是全局动作，不该藏在某个 tab 的右上角。
 class _BottomBar extends StatelessWidget {
-  const _BottomBar({required this.currentIndex, required this.onTap});
+  const _BottomBar({
+    required this.currentIndex,
+    required this.onTap,
+    required this.onCompose,
+  });
 
   final int currentIndex;
   final ValueChanged<int> onTap;
+  final VoidCallback onCompose;
 
   @override
   Widget build(BuildContext context) {
@@ -127,7 +141,7 @@ class _BottomBar extends StatelessWidget {
           height: 54,
           child: Row(
             children: [
-              for (var index = 0; index < _HomeShellState._destinations.length; index++)
+              for (var index = 0; index < _HomeShellState._destinations.length; index++) ...[
                 Expanded(
                   child: _BottomItem(
                     destination: _HomeShellState._destinations[index],
@@ -135,7 +149,51 @@ class _BottomBar extends StatelessWidget {
                     onTap: () => onTap(index),
                   ),
                 ),
+                // 凸起按钮插在第 2、3 个 tab 之间（看见 / 出发 | 写 | 关注 / 我）
+                if (index == 1)
+                  SizedBox(
+                    width: 64,
+                    child: _ComposeButton(onTap: onCompose),
+                  ),
+              ],
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 抖音式发帖按钮：比导航条略高、圆角胶囊、主色实心，一眼能找到。
+class _ComposeButton extends StatelessWidget {
+  const _ComposeButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Transform.translate(
+        offset: const Offset(0, -3),
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            width: 48,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xFF8AB4F8),
+              borderRadius: BorderRadius.circular(9),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF8AB4F8).withValues(alpha: 0.28),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.add, size: 19, color: Color(0xFF0D1016)),
           ),
         ),
       ),

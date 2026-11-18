@@ -1,61 +1,76 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:whyisee_app/core/api/api_client.dart';
 import 'package:whyisee_app/core/api/models.dart';
-import 'package:whyisee_app/core/api/token_store.dart';
+import 'package:whyisee_app/core/providers.dart';
 import 'package:whyisee_app/features/go/go_controller.dart';
 import 'package:whyisee_app/features/go/go_page.dart';
 import 'package:whyisee_app/features/go/go_repository.dart';
 
-/// 任务台是「一行一件事」，和看见的卡片流不是同一东西。钉住三件事：
-/// 1. 按类型分组，顺序按紧迫度（待回答 → 可领取 → 求反馈），组内保留服务端排序；
-/// 2. 空组不出现；
-/// 3. 补页按 targetType+targetId 去重。
+/// 「出发」= 我该做的事。钉住四件事：
+/// 1. 分组顺序跟服务端走，空组不出现；
+/// 2. 点掉一条后本地摘掉，并回写已读（否则下拉刷新会复活）；
+/// 3. 未登录不发请求（不然每次进 tab 都 401）；
+/// 4. 390 宽下渲染不溢出。
 void main() {
-  test('分组：按类型归组、顺序固定、空组不出现', () async {
+  test('分组保留服务端顺序，空组不出现', () async {
+    final repo = _FakeRepo();
+    final container = _container(repo);
+
+    container.listen(goControllerProvider, (_, _) {});
+    await _settle();
+
+    final board = container.read(goControllerProvider).board;
+    expect(board.groups.map((g) => g.label), ['等你回应', '等你验收']);
+    expect(board.groups.first.items.map((e) => e.id), ['n-1', 'n-2']);
+    expect(board.summary.actionable, 3);
+  });
+
+  test('处理一条后本地摘掉，actionable 跟着减', () async {
+    final repo = _FakeRepo();
+    final container = _container(repo);
+
+    container.listen(goControllerProvider, (_, _) {});
+    await _settle();
+
+    container.read(goControllerProvider.notifier).dismiss('n-1');
+    await _settle();
+
+    final state = container.read(goControllerProvider);
+    expect(state.board.groups.first.items.map((e) => e.id), ['n-2']);
+    expect(state.summary.actionable, 2);
+    // 通知类必须回写已读，否则下拉刷新它又回来
+    expect(repo.markedRead, ['n-1']);
+  });
+
+  test('未登录不发请求', () async {
     final repo = _FakeRepo();
     final container = ProviderContainer(
-      overrides: [goRepositoryProvider.overrideWithValue(repo)],
+      overrides: [
+        goRepositoryProvider.overrideWithValue(repo),
+        sessionProvider.overrideWith(_SignedOutSession.new),
+      ],
     );
     addTearDown(container.dispose);
 
     container.listen(goControllerProvider, (_, _) {});
     await _settle();
 
-    final groups = container.read(goControllerProvider).groups;
-    // 数据里没有 resource，所以「可补充」整组不出现
-    expect(groups.map((g) => g.label), ['待回答', '可领取', '求反馈']);
-    expect(groups.first.items.map((e) => e.targetId), [1, 2]);
-    expect(container.read(goControllerProvider).items.length, 4);
+    expect(repo.calls, 0);
+    expect(container.read(goControllerProvider).board.isEmpty, isTrue);
   });
 
-  test('补页去重：同一件事第二次出现不会被追加', () async {
-    final repo = _FakeRepo(secondPageRepeatsFirst: true);
-    final container = ProviderContainer(
-      overrides: [goRepositoryProvider.overrideWithValue(repo)],
-    );
-    addTearDown(container.dispose);
-
-    container.listen(goControllerProvider, (_, _) {});
-    await _settle();
-    expect(container.read(goControllerProvider).items.length, 4);
-
-    await container.read(goControllerProvider.notifier).loadMore();
-    await _settle();
-
-    final ids = container.read(goControllerProvider).items.map((e) => e.targetId).toList();
-    expect(ids, [1, 2, 3, 4, 9]); // 第 5 条是重复的 question:1，被丢掉
-  });
-
-  testWidgets('任务台在手机宽度下渲染组头与行，不溢出（390 宽）', (tester) async {
+  testWidgets('出发页在 390 宽下渲染且不溢出', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [goRepositoryProvider.overrideWithValue(_FakeRepo())],
+        overrides: [
+          goRepositoryProvider.overrideWithValue(_FakeRepo()),
+          sessionProvider.overrideWith(_FakeSession.new),
+        ],
         child: const MaterialApp(home: GoPage()),
       ),
     );
@@ -63,78 +78,95 @@ void main() {
 
     expect(tester.takeException(), isNull);
 
-    // 头部不是筛选条，而是一句话总结
     expect(find.text('出发'), findsOneWidget);
-    expect(find.text('今天有 4 件事可做 · 3 类'), findsOneWidget);
-
-    // 组头与行内容
-    expect(find.text('待回答'), findsOneWidget);
-    expect(find.text('可领取'), findsOneWidget);
-    expect(find.text('怎么把超时重试做对'), findsOneWidget);
-    expect(find.text('去回答'), findsNWidgets(2));
-
-    // 摘要不在任务台出现（那是「看见」的形态）
-    expect(find.text('摘要'), findsNothing);
-    expect(tester.takeException(), isNull);
+    expect(find.text('3 件等你处理'), findsOneWidget);
+    expect(find.text('等你回应'), findsOneWidget);
+    expect(find.text('李明 回复了你的话题'), findsOneWidget);
+    expect(find.text('去回复'), findsWidgets);
+    expect(find.text('去验收'), findsOneWidget);
   });
 }
 
-/// Notifier 的 build 把请求推到微任务里，两轮足够让请求落地。
+ProviderContainer _container(_FakeRepo repo) {
+  final container = ProviderContainer(
+    overrides: [
+      goRepositoryProvider.overrideWithValue(repo),
+      sessionProvider.overrideWith(_FakeSession.new),
+    ],
+  );
+  addTearDown(container.dispose);
+  return container;
+}
+
 Future<void> _settle() async {
   await Future<void>.delayed(Duration.zero);
   await Future<void>.delayed(Duration.zero);
 }
 
-class _FakeRepo extends GoRepository {
-  _FakeRepo({this.secondPageRepeatsFirst = false}) : super(ApiClient(TokenStore()));
-
-  final bool secondPageRepeatsFirst;
-
-  String? lastCursor;
+class _FakeRepo implements GoRepository {
+  int calls = 0;
+  final markedRead = <String>[];
 
   @override
-  Future<ParticipationPageResult> load({String? cursor, int limit = 60}) async {
-    lastCursor = cursor;
-
-    if (cursor == null) {
-      return ParticipationPageResult(
-        items: [
-          _item(type: 'question', id: 1, title: '怎么把超时重试做对', action: '去回答', reason: '这个问题还没人答'),
-          _item(type: 'question', id: 2, title: 'Postgres 索引怎么选', action: '去回答', reason: '刚发布，回复为 0'),
-          _item(type: 'community_task', id: 3, title: '整理一份部署清单', action: '领取任务', reason: '开放社区任务'),
-          _item(type: 'project', id: 4, title: 'Leap Home 该打磨什么', action: '去点评', reason: '作者在等具体反馈'),
-        ],
-        hasMore: true,
-        nextCursor: 'page2',
-      );
-    }
-
-    return ParticipationPageResult(
-      items: [
-        if (secondPageRepeatsFirst)
-          _item(type: 'question', id: 1, title: '怎么把超时重试做对', action: '去回答', reason: '这个问题还没人答'),
-        _item(type: 'stale_content', id: 9, title: '两年前的部署文档', action: '去更新', reason: '内容已过期'),
+  Future<TodoBoard> load() async {
+    calls++;
+    return const TodoBoard(
+      summary: TodoSummary(total: 3, unread: 3, actionable: 3),
+      groups: [
+        TodoGroup(key: 'reply', label: '等你回应', items: [
+          TodoItem(
+            id: 'n-1',
+            kind: 'reply',
+            reason: '李明 回复了你的话题',
+            title: '为什么我不用 Flutter 写后台',
+            actionLabel: '去回复',
+            href: '/t/91#post-501',
+            topicId: 91,
+            actorName: '李明',
+            unread: true,
+          ),
+          TodoItem(
+            id: 'n-2',
+            kind: 'reply',
+            reason: '王芳 在回复里提到了你',
+            title: '数据开发转岗的几个问题',
+            actionLabel: '去回复',
+            href: '/t/92#post-502',
+            topicId: 92,
+            actorName: '王芳',
+            unread: true,
+          ),
+        ]),
+        TodoGroup(key: 'review', label: '等你验收', items: [
+          TodoItem(
+            id: 's-7',
+            kind: 'review',
+            reason: '阿强 提交了你的任务',
+            title: '整理 2026 年机器人产业链清单',
+            actionLabel: '去验收',
+            href: '/agent-zone/tasks/7',
+            unread: true,
+          ),
+        ]),
       ],
-      hasMore: false,
     );
   }
 
-  ParticipationItem _item({
-    required String type,
-    required int id,
-    required String title,
-    required String action,
-    required String reason,
-  }) =>
-      ParticipationItem(
-        targetType: type,
-        targetId: id,
-        title: title,
-        summary: '摘要',
-        href: '/t/$id',
-        actionLabel: action,
-        reason: reason,
-        category: const CategoryRef(id: 45, name: '项目', slug: 'projects', color: '#f3c969'),
-        replyCount: 0,
+  @override
+  Future<void> markRead(List<String> ids) async {
+    markedRead.addAll(ids);
+  }
+}
+
+class _FakeSession extends SessionController {
+  @override
+  SessionState build() => const SessionState(
+        status: SessionStatus.signedIn,
+        user: SessionUser(id: 7, username: 'zoukehui', displayName: '邹轲辉'),
       );
+}
+
+class _SignedOutSession extends SessionController {
+  @override
+  SessionState build() => const SessionState(status: SessionStatus.signedOut);
 }
