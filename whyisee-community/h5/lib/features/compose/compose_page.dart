@@ -24,7 +24,7 @@ class ComposePage extends ConsumerStatefulWidget {
 
 class _ComposePageState extends ConsumerState<ComposePage> {
   final _titleController = TextEditingController();
-  final _bodyController = MarkdownEditingController();
+  final _bodyController = MarkdownDocController();
   final _tagController = TextEditingController();
 
   /// 一次会话固定一个幂等 id：重试不会发两篇
@@ -36,15 +36,26 @@ class _ComposePageState extends ConsumerState<ComposePage> {
   String? _titleError;
 
   @override
+  void initState() {
+    super.initState();
+    // 正文结构变了（加块、转类型）要刷新返回确认逻辑和提交按钮
+    _bodyController.addListener(_onBodyChanged);
+  }
+
+  void _onBodyChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _bodyController.removeListener(_onBodyChanged);
     _titleController.dispose();
     _bodyController.dispose();
     _tagController.dispose();
     super.dispose();
   }
 
-  bool get _hasContent =>
-      _titleController.text.trim().isNotEmpty || _bodyController.text.trim().isNotEmpty;
+  bool get _hasContent => _titleController.text.trim().isNotEmpty || !_bodyController.isEmpty;
 
   List<String> get _tags => _tagController.text
       .split(RegExp(r'[,，\s]+'))
@@ -99,7 +110,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
     if (_submitting) return;
 
     final title = _titleController.text.trim();
-    final body = _bodyController.text.trim();
+    final body = _bodyController.markdown.trim();
     final taxonomy = ref.read(taxonomyProvider).asData?.value;
 
     // 前端先挡一次，省得为了一个错字跑一趟网络
@@ -300,11 +311,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
                       child: MarkdownEditor(
                         controller: _bodyController,
                         enabled: !_submitting,
-                        hintText: '开始写正文，标题、加粗都能点下面按钮',
-                        onChanged: (_) {
-                          // 正文变化要刷新返回确认逻辑（_hasContent）
-                          setState(() {});
-                        },
+                        hintText: '开始写正文，打 # 空格就是标题',
                       ),
                     ),
                   ],

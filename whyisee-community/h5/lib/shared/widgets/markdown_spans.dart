@@ -137,12 +137,32 @@ List<InlineSpan> _lineSpans(String line, TextStyle base, bool showSyntax) {
   return _inlineSpans(line, base, showSyntax);
 }
 
-/// 行内：加粗 / 斜体 / 行内代码 / 链接
-List<InlineSpan> _inlineSpans(String text, TextStyle base, bool showSyntax) {
+/// 行内：加粗 / 斜体 / 行内代码 / 链接。
+///
+/// [hideMarkers] 为 true 时把 `**`、`` ` `` 这类标记渲染成**零宽透明字符**：
+/// 视觉上完全不存在，但字符仍在（所以光标索引和选区都没问题）。块编辑器用它。
+/// 为 false 时符号淡化显示，给「整段源码高亮」用。
+List<InlineSpan> markdownInlineSpans(
+  String text, {
+  required TextStyle base,
+  bool hideMarkers = false,
+}) =>
+    _inlineCore(text, base, marker: hideMarkers ? _hidden : _syntax(base));
+
+/// 整段解析用：`showSyntax` 决定符号是淡化还是彻底不输出。
+List<InlineSpan> _inlineSpans(String text, TextStyle base, bool showSyntax) =>
+    _inlineCore(text, base, marker: showSyntax ? _syntax(base) : null);
+
+/// [marker] 为 null 表示标记不输出（只读预览，没有光标，可以自由删字符）。
+List<InlineSpan> _inlineCore(String text, TextStyle base, {required TextStyle? marker}) {
   if (text.isEmpty) return const [];
 
   final spans = <InlineSpan>[];
   var cursor = 0;
+
+  void pushMarker(String token) {
+    if (marker != null) spans.add(TextSpan(text: token, style: marker));
+  }
 
   for (final match in _inlinePattern.allMatches(text)) {
     if (match.start > cursor) {
@@ -152,15 +172,15 @@ List<InlineSpan> _inlineSpans(String text, TextStyle base, bool showSyntax) {
 
     final bold = match.group(2);
     if (bold != null) {
-      if (showSyntax) spans.add(TextSpan(text: match.group(1)!, style: _syntax(base)));
+      pushMarker(match.group(1)!);
       spans.add(TextSpan(text: bold, style: base.copyWith(fontWeight: FontWeight.w700)));
-      if (showSyntax) spans.add(TextSpan(text: match.group(1)!, style: _syntax(base)));
+      pushMarker(match.group(1)!);
       continue;
     }
 
     final code = match.group(3);
     if (code != null) {
-      if (showSyntax) spans.add(TextSpan(text: '`', style: _syntax(base)));
+      pushMarker('`');
       spans.add(
         TextSpan(
           text: code,
@@ -172,22 +192,22 @@ List<InlineSpan> _inlineSpans(String text, TextStyle base, bool showSyntax) {
           ),
         ),
       );
-      if (showSyntax) spans.add(TextSpan(text: '`', style: _syntax(base)));
+      pushMarker('`');
       continue;
     }
 
     final italic = match.group(4);
     if (italic != null) {
-      if (showSyntax) spans.add(TextSpan(text: '*', style: _syntax(base)));
+      pushMarker('*');
       spans.add(TextSpan(text: italic, style: base.copyWith(fontStyle: FontStyle.italic)));
-      if (showSyntax) spans.add(TextSpan(text: '*', style: _syntax(base)));
+      pushMarker('*');
       continue;
     }
 
     final label = match.group(5);
     final url = match.group(6);
     if (label != null && url != null) {
-      if (showSyntax) spans.add(TextSpan(text: '[', style: _syntax(base)));
+      pushMarker('[');
       spans.add(
         TextSpan(
           text: label,
@@ -198,11 +218,11 @@ List<InlineSpan> _inlineSpans(String text, TextStyle base, bool showSyntax) {
           ),
         ),
       );
-      if (showSyntax) {
-        spans.add(TextSpan(text: ']($url)', style: _syntax(base)));
-      } else {
-        // 预览态把网址留成小字尾巴：手机上点了也打不开，但知道指向哪
+      if (marker == null) {
+        // 只读预览：网址留成小字尾巴，知道指向哪就行
         spans.add(TextSpan(text: ' $url', style: _syntax(base).copyWith(fontSize: (base.fontSize ?? 15) - 2)));
+      } else {
+        pushMarker(']($url)');
       }
     }
   }
@@ -212,6 +232,10 @@ List<InlineSpan> _inlineSpans(String text, TextStyle base, bool showSyntax) {
   }
   return spans;
 }
+
+/// 零宽隐藏：0.1px 的透明字符，占宽几乎为 0，视觉上等于不存在。
+/// 不能直接删字符 —— 删了光标位置就和文本对不上了。
+const _hidden = TextStyle(fontSize: 0.1, color: Color(0x00000000), letterSpacing: 0);
 
 TextStyle _syntax(TextStyle base) => base.copyWith(
       color: const Color(0xFF4E5764),

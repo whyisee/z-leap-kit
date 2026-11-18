@@ -698,7 +698,14 @@ whyisee-app/
 
 不引：`get_it`（Riverpod 已覆盖 DI）、`provider`（重复）、`sqflite/drift`（P1 用 JSON 快照就够，需要局部更新再上）。
 
-富文本编辑器也不引 `flutter_quill` / `appflowy_editor` / `super_editor`：它们存的是自家文档模型（delta / 节点树），落库前得转回 Markdown，转出来和网页端编辑器渲染的结果对不上，跨端就是两套正文。正文一律以 Markdown 源文为准，手机上用 `shared/widgets/markdown_editor.dart` —— 一个带格式工具条的 TextField，选中文字点「粗」就包裹成 `**…**`，光标位置不动，没有任何中间格式。
+富文本编辑器也不引 `flutter_quill` / `appflowy_editor` / `super_editor`：它们存的是自家文档模型（delta / 节点树），落库前得转回 Markdown，转出来和网页端编辑器渲染的结果对不上，跨端就是两套正文。
+
+正文用块编辑器（`shared/widgets/markdown_doc.dart` + `markdown_editor.dart`），交互照飞书文档：
+
+- **块是唯一真相**：标题 / 列表 / 引用 / 代码块都是块的属性，`#` `-` `>` `1.` ` ``` ` 根本不存在于文本里，只有 `markdown` getter 序列化时才加。用户看不到也打不出这些符号。
+- 打 `# ` 变标题、`- ` 变列表、`> ` 变引用、` ``` ` 变代码块；回车拆块（空标题/空引用回车落回正文）；粘贴多行 Markdown 会自动拆成对应块。
+- 行内 `**`、`` ` `` 拆不掉（拆了就断词），渲染成**零宽透明字符**（fontSize 0.1 + 全透明）：视觉上不存在，字符仍在，所以光标索引、选区、复制出去的内容都是对的。
+- 不做「一个大 TextField 里视觉隐藏符号」：那要删字符，而光标位置按字符索引算，删一个 `#` 光标就偏一位。块模型没有这个矛盾，中文输入法也只在单块内组词。
 
 ### 4.3 导航结构
 
