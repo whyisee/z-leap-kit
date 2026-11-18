@@ -14,6 +14,12 @@ class MeRepository {
     final payload = await _api.get('/me/overview');
     return MeOverview.fromJson(payload.data);
   }
+
+  /// 我的文章：含待审核与草稿（feed 和 overview 都只给已发布的）。
+  Future<MyTopicsResult> myTopics() async {
+    final payload = await _api.get('/me/topics');
+    return MyTopicsResult.fromJson(payload.data);
+  }
 }
 
 final meRepositoryProvider = Provider<MeRepository>(

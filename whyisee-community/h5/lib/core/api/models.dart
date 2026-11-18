@@ -94,6 +94,8 @@ class TopicSummary {
     this.publishedAt,
     this.lastActivityAt,
     this.contentHtml = '',
+    this.status,
+    this.updatedAt,
   });
 
   final int id;
@@ -115,6 +117,12 @@ class TopicSummary {
 
   /// 正文 HTML。只有详情接口返回，feed 列表里恒为空串。
   final String contentHtml;
+
+  /// `published` / `pending` / `draft`。只有「我的文章」会带，feed 里是 null。
+  final String? status;
+
+  /// 最后修改时间，同样只有「我的文章」带 —— 待审的稿子没有发布时间可显示。
+  final DateTime? updatedAt;
 
   factory TopicSummary.fromJson(Map<String, dynamic> json) => TopicSummary(
         id: (json['id'] as num?)?.toInt() ?? 0,
@@ -141,6 +149,8 @@ class TopicSummary {
         publishedAt: _parseTime(json['publishedAt']),
         lastActivityAt: _parseTime(json['lastActivityAt']),
         contentHtml: json['contentHtml'] as String? ?? '',
+        status: json['status'] as String?,
+        updatedAt: _parseTime(json['updatedAt']),
       );
 
   /// 列表里优先展示“最后活跃”，没发过回复就退回发布时间。
@@ -164,6 +174,8 @@ class TopicSummary {
         publishedAt: publishedAt,
         lastActivityAt: lastActivityAt,
         contentHtml: contentHtml,
+        status: status,
+        updatedAt: updatedAt,
       );
 }
 
@@ -516,6 +528,8 @@ class MeOverview {
     this.badges = const [],
     this.recentTopics = const [],
     this.unreadCount = 0,
+    this.pendingCount = 0,
+    this.draftCount = 0,
   });
 
   final MeProfile profile;
@@ -523,6 +537,13 @@ class MeOverview {
   final List<MeBadge> badges;
   final List<TopicSummary> recentTopics;
   final int unreadCount;
+
+  /// 待审核 + 草稿。首页和「我的话题」都不显示这些，靠这两个数字提醒作者
+  /// 「你还有东西没公开」，否则发完一刷就以为丢了。
+  final int pendingCount;
+  final int draftCount;
+
+  int get unpublishedCount => pendingCount + draftCount;
 
   factory MeOverview.fromJson(Map<String, dynamic> json) => MeOverview(
         profile: MeProfile.fromJson(
@@ -540,6 +561,8 @@ class MeOverview {
             .map((e) => TopicSummary.fromJson(e.cast<String, dynamic>()))
             .toList(growable: false),
         unreadCount: (json['unreadCount'] as num?)?.toInt() ?? 0,
+        pendingCount: (json['pendingCount'] as num?)?.toInt() ?? 0,
+        draftCount: (json['draftCount'] as num?)?.toInt() ?? 0,
       );
 
   MeOverview copyWith({int? unreadCount}) => MeOverview(
@@ -548,7 +571,39 @@ class MeOverview {
         badges: badges,
         recentTopics: recentTopics,
         unreadCount: unreadCount ?? this.unreadCount,
+        pendingCount: pendingCount,
+        draftCount: draftCount,
       );
+}
+
+/// 「我的文章」列表（`GET /api/v1/me/topics`）：比 feed 多一个 `status`。
+class MyTopicsResult {
+  const MyTopicsResult({
+    this.items = const [],
+    this.published = 0,
+    this.pending = 0,
+    this.draft = 0,
+  });
+
+  final List<TopicSummary> items;
+  final int published;
+  final int pending;
+  final int draft;
+
+  factory MyTopicsResult.fromJson(Map<String, dynamic> data) {
+    final counts =
+        (data['counts'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
+
+    return MyTopicsResult(
+      items: ((data['items'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => TopicSummary.fromJson(e.cast<String, dynamic>()))
+          .toList(growable: false),
+      published: (counts['published'] as num?)?.toInt() ?? 0,
+      pending: (counts['pending'] as num?)?.toInt() ?? 0,
+      draft: (counts['draft'] as num?)?.toInt() ?? 0,
+    );
+  }
 }
 
 class MeProfile {
@@ -1086,7 +1141,7 @@ class NotificationTarget {
     this.topicId,
   });
 
-  /// `topic` 原生阅读器 / `review` 审核页 / `web` 网页容器
+  /// `topic` 原生阅读器 / `review` 审核页 / `mine` 我的文章 / `web` 网页容器
   final String kind;
 
   /// 目标话题；`web` 时为 null
@@ -1097,6 +1152,9 @@ class NotificationTarget {
 
   bool get opensReader => kind == 'topic' && (topicId ?? 0) > 0;
   bool get opensReview => kind == 'review' && (topicId ?? 0) > 0;
+
+  /// 「我的文章」是原生页，网页版没有这个地址
+  bool get opensMine => kind == 'mine';
 
   factory NotificationTarget.fromJson(
     Map<String, dynamic>? json, {

@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { isAdmin } from "@lib/auth";
 import { getTopicByIdForAdmin, updateTopicAdminState } from "@server/services/topics";
+import { createNotification } from "@server/services/notifications";
+import { topicHref } from "@server/services/posts";
 import { countPendingTopics, latestTopicVerdict, nextPendingTopicId } from "@server/services/reviewQueue";
 import { fail, intParam, langOf, ok, type ApiEnv } from "../http";
 import { requireAuth, sessionOf } from "../middleware";
@@ -76,6 +78,8 @@ admin.get("/review/topics/:id", async (c) => {
  */
 admin.post("/review/topics/:id", async (c) => {
   const id = intParam(c.req.param("id"));
+  const session = sessionOf(c);
+  if (!session) return fail(c, "unauthorized", "请先登录");
   if (id <= 0) return fail(c, "validation_failed", "话题 id 不合法");
 
   let body: { action?: unknown } | undefined;
@@ -99,6 +103,39 @@ admin.post("/review/topics/:id", async (c) => {
   }
 
   await updateTopicAdminState(id, { status: action === "publish" ? "published" : "draft" });
+
+  /**
+   * 结论要告诉作者。之前审完只在后台留个状态，作者那边一片安静：
+   * 文章自己从「待审核」变成能看了，人却不知道。
+   *
+   * 退回（draft）给的是「我的文章」的地址 —— 稿子还没公开，`/t/:id` 对作者
+   * 也是 404，指过去就是一条死链。
+   */
+  const message =
+    action === "publish"
+      ? {
+          type: "topic_approved",
+          title: "话题已通过审核",
+          body: topic.title,
+          href: topicHref(id, topic.slug),
+        }
+      : {
+          type: "topic_rejected",
+          title: "话题被退回，改完可以再提交",
+          body: topic.title,
+          href: "/me/topics",
+        };
+
+  await createNotification({
+    userId: topic.authorId,
+    actorId: session.userId,
+    type: message.type,
+    targetType: "topic",
+    targetId: id,
+    title: message.title,
+    body: message.body,
+    href: message.href,
+  });
 
   return ok(c, {
     id,

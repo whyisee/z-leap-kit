@@ -1,5 +1,7 @@
 import { Hono } from "hono";
+import { isTreeHoleCategorySlug } from "@lib/anonymous";
 import { queryOne } from "@server/db/client";
+import { listTopics } from "@server/services/topics";
 import { getUserById, listUserTopics } from "@server/services/users";
 import { getUserGrowthProfile } from "@server/services/reputation";
 import { getUserFollowStats } from "@server/services/interactions";
@@ -30,13 +32,24 @@ me.get("/overview", async (c) => {
 
   const lang = langOf(c);
 
-  const [user, growth, follows, topics, unread] = await Promise.all([
+  const [user, growth, follows, topics, unread, unpublished] = await Promise.all([
     getUserById(session.userId),
     getUserGrowthProfile(session.userId),
     getUserFollowStats(session.userId),
     listUserTopics(session.userId, lang, false),
     queryOne<{ count: string }>(
       "SELECT COUNT(*)::text AS count FROM notifications WHERE user_id = $1 AND read_at IS NULL",
+      [session.userId],
+    ),
+    // 待审核 + 草稿的数量：首页和「我的话题」都不显示这些，得让「我」页能提示
+    queryOne<{ pending: string; draft: string }>(
+      `
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'pending')::text AS pending,
+        COUNT(*) FILTER (WHERE status = 'draft')::text AS draft
+      FROM topics
+      WHERE author_id = $1 AND status IN ('pending', 'draft')
+      `,
       [session.userId],
     ),
   ]);
@@ -76,6 +89,46 @@ me.get("/overview", async (c) => {
     })),
     recentTopics: topics.slice(0, 6).map(toFeedItem),
     unreadCount: Number(unread?.count || 0),
+    pendingCount: Number(unpublished?.pending || 0),
+    draftCount: Number(unpublished?.draft || 0),
+  });
+});
+
+/**
+ * 「我的文章」：把自己还没公开的稿子也列出来。
+ *
+ * 首页和「我」页都只认 `published`，所以作者发完待审之后在 App 里一处都看不到
+ * —— 分不清「发出去了在等审」还是「压根没发成功」。这一页就是那个缺口：
+ * 带上 status，待审核 / 草稿都在这儿，点进去还能继续改。
+ */
+me.get("/topics", async (c) => {
+  const session = sessionOf(c);
+  if (!session) return fail(c, "unauthorized", "请先登录");
+
+  const rows = await listTopics({
+    authorId: session.userId,
+    limit: 60,
+    includeDrafts: true,
+    lang: langOf(c),
+  });
+
+  // 软删的不进列表；树洞匿名帖和「我的话题」保持同一口径
+  const items = rows.filter(
+    (topic) => topic.status !== "deleted" && !isTreeHoleCategorySlug(topic.category.slug),
+  );
+
+  const counts = { published: 0, pending: 0, draft: 0 };
+  for (const topic of items) {
+    if (topic.status in counts) counts[topic.status as keyof typeof counts] += 1;
+  }
+
+  return ok(c, {
+    items: items.map((topic) => ({
+      ...toFeedItem(topic),
+      status: topic.status,
+      updatedAt: topic.updatedAt,
+    })),
+    counts,
   });
 });
 

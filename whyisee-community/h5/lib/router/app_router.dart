@@ -12,6 +12,7 @@ import '../features/feed/feed_page.dart';
 import '../features/following/following_page.dart';
 import '../features/go/go_page.dart';
 import '../features/me/me_page.dart';
+import '../features/me/my_topics_page.dart';
 import '../features/notifications/notification_page.dart';
 import '../features/projects/projects_page.dart';
 import '../features/report/report_page.dart';
@@ -104,6 +105,12 @@ final GoRouter appRouter = GoRouter(
                 GoRoute(
                   path: 't/:id',
                   pageBuilder: (context, state) => _topicPage(state),
+                ),
+                // 我的文章：已发布 + 待审核 + 草稿。待审的稿子在别处一律看不到，
+                // 审核退回的通知也指到这里（服务端给 kind=mine）。
+                GoRoute(
+                  path: 'topics',
+                  builder: (context, state) => const MyTopicsPage(),
                 ),
                 // 通知是原生页：站内提醒（回复 / @ / 赞 / 系统）全部能在这里处理完
                 GoRoute(

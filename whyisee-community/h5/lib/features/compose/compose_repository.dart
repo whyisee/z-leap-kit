@@ -39,7 +39,9 @@ class ComposeRepository {
 
   final ApiClient _api;
 
-  /// 提交话题。普通用户只能存草稿或提交审核，直接发布由服务端兜底拒绝。
+  /// 提交话题。`status` 只在存草稿时显式给 —— 发布走服务端规则：
+  /// 管理员直接上线，普通用户进待审。客户端自己填 `pending` 的话，
+  /// 站长发帖也会被塞进审核队列（App 里没有那个入口，等于发不出去）。
   Future<ComposeResult> submit({
     required String title,
     required String contentMarkdown,
@@ -55,7 +57,7 @@ class ComposeRepository {
       'categoryId': categoryId,
       'type': type,
       'tags': tags,
-      'status': draft ? 'draft' : 'pending',
+      if (draft) 'status': 'draft',
       'clientRequestId': requestId,
     });
 

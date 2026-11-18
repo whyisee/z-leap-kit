@@ -8,6 +8,8 @@ import '../../core/env.dart';
 import '../../core/format.dart';
 import '../../core/providers.dart';
 import '../../shared/widgets/markdown_editor.dart';
+import '../feed/feed_controller.dart';
+import '../me/me_repository.dart';
 import '../topic/topic_repository.dart';
 import 'compose_repository.dart';
 
@@ -237,7 +239,22 @@ class _ComposePageState extends ConsumerState<ComposePage> {
           );
 
       if (!mounted) return;
-      _toast(result.isDraft ? '已存为草稿' : '已提交，审核通过后公开');
+      switch (result.status) {
+        case 'published':
+          _toast('已发布');
+          break;
+        case 'draft':
+          _toast('已存为草稿');
+          break;
+        default:
+          _toast('已提交，审核通过后公开');
+      }
+
+      // 发完立刻把列表刷一遍。不刷的话返回首页还是旧列表，
+      // 用户会以为刚发的那篇丢了（管理员直发时这一刷就是「看得见」）。
+      ref.read(feedControllerProvider.notifier).refresh();
+      ref.invalidate(meOverviewProvider);
+
       // 路由声明的是 Page<void>，不要带返回值 pop，否则 debug 下会类型断言失败
       context.pop();
     } on ApiException catch (e) {

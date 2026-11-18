@@ -274,6 +274,16 @@ class _Content extends StatelessWidget {
                 onTap: () => context.go('/following'),
               ),
               _MenuAction(
+                icon: Icons.article_outlined,
+                label: '我的文章',
+                // 待审/草稿在首页和「我的话题」里都不出现，这里必须给个数字，
+                // 否则发完一篇待审的文章，作者会以为没发出去
+                hint: data.pendingCount > 0
+                    ? '${data.pendingCount} 篇待审核'
+                    : (data.draftCount > 0 ? '${data.draftCount} 篇草稿' : '含待审核与草稿'),
+                onTap: () => onOpenNative('/me/topics'),
+              ),
+              _MenuAction(
                 icon: Icons.notifications_none,
                 label: '通知',
                 hint: data.unreadCount > 0 ? '${data.unreadCount} 条未读' : null,

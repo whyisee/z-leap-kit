@@ -62,6 +62,11 @@ function openTargetOf(item: NotificationItem, adminUser: boolean) {
     return { kind: "review", topicId: item.targetId, path: item.href };
   }
 
+  // 「我的文章」是 App 原生页，网页版没有对应地址 —— 不能落进网页容器
+  if (item.href === "/me/topics") {
+    return { kind: "mine", topicId: null, path: item.href };
+  }
+
   if (topicId) return { kind: "topic", topicId, path: item.href };
 
   return { kind: "web", topicId: null, path: item.href };

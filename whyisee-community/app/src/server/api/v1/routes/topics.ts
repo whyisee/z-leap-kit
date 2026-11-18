@@ -394,7 +394,10 @@ topics.post("/", requireAuth, async (c) => {
   }
 
   const type = topicTypes.has(String(body?.type)) ? String(body?.type) : "discussion";
-  const status = body?.status === "draft" ? "draft" : "pending";
+  // 和网页版 readSubmissionStatus(formData, isAdmin) 同一套规则：显式要草稿就是草稿，
+  // 否则管理员直接发，普通用户进待审。之前这里不看角色，导致站长自己在 App 里发帖
+  // 也得等审核，而 App 里的文章列表只认 published —— 发完就「不见了」。
+  const status = body?.status === "draft" ? "draft" : isAdmin(session) ? "published" : "pending";
 
   const tags = Array.isArray(body?.tags)
     ? body!.tags!.map((tag) => String(tag || "").trim()).filter(Boolean).slice(0, 5)
@@ -447,8 +450,8 @@ topics.post("/", requireAuth, async (c) => {
   return ok(c, {
     id: result,
     status,
-    // 只有草稿能立刻在 App 里看到；pending 要等审核，不给可点链接避免 404
-    href: status === "draft" ? `/t/${result}` : null,
+    // 只有 pending 拿不到可点链接（还没公开，点进去 404）；草稿和已发布都能看
+    href: status === "pending" ? null : topicHref(result, ""),
   });
 });
 

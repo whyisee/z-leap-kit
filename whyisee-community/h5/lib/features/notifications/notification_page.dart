@@ -159,6 +159,12 @@ class _NotificationPageState extends ConsumerState<NotificationPage> {
       return;
     }
 
+    // 「话题被退回」指到我的文章：稿子还没公开，`/t/:id` 对作者也是 404
+    if (target.opensMine) {
+      context.push('/me/topics');
+      return;
+    }
+
     final topicId = target.topicId;
     if (target.opensReader && topicId != null) {
       final postId = postAnchorOf(item.href);
