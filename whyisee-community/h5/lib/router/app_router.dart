@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../features/feed/feed_page.dart';
+import '../features/go/go_page.dart';
 import '../features/me/me_page.dart';
 import '../features/shell/home_shell.dart';
 import '../features/topic/topic_detail_page.dart';
@@ -10,7 +11,7 @@ import '../features/web/web_route_page.dart';
 
 /// 四个 tab 各自一条独立导航栈，indexedStack 保证切换不重建、WebView 不重载。
 ///
-/// P1 起「看见」「帖子详情」「我」是原生页；「出发」「关注」仍是 WebView。
+/// P1 起「看见」「出发」「帖子详情」「我」是原生页；只剩「关注」还是 WebView。
 /// 详情挂在第一个 branch 下，这样从 feed 进详情再返回，tab 状态不丢。
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
@@ -37,7 +38,25 @@ final GoRouter appRouter = GoRouter(
           routes: [
             GoRoute(
               path: '/go',
-              builder: (context, state) => const WebTabPage(tabIndex: 1, path: '/go'),
+              builder: (context, state) => const GoPage(),
+              routes: [
+                // 参与项里的帖子进原生阅读器，挂在「出发」这条栈下，返回回到本页
+                GoRoute(
+                  path: 't/:id',
+                  pageBuilder: (context, state) => _topicPage(state),
+                ),
+                // 社区任务这类没有原生实现的，仍用网页版容器
+                GoRoute(
+                  path: 'page',
+                  builder: (context, state) {
+                    final query = state.uri.queryParameters;
+                    return WebRoutePage(
+                      path: query['path'] ?? '/go',
+                      title: query['title'] ?? '出发',
+                    );
+                  },
+                ),
+              ],
             ),
           ],
         ),

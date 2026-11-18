@@ -726,6 +726,7 @@ StatefulShellRoute.indexedStack(
 | 服务端路径 | 客户端去向 |
 |---|---|
 | `/` | 原生 feed |
+| `/go` | 原生参与推荐（`GET /api/v1/participation`） |
 | `/t/:id` | 原生详情 |
 | `/login`、`/signup`、`/forgot-password` | WebView |
 | `/search`、`/settings/*`、`/u/*`、`/agent-zone/*`、`/new-topic`、`/notifications` | WebView |

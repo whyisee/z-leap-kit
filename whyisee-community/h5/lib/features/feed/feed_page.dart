@@ -128,7 +128,8 @@ class _FeedPageState extends ConsumerState<FeedPage> {
       return ErrorView(
         title: '加载失败',
         message: state.error!.message,
-        onRetry: () => controller.changeSort(state.sort),
+        // 不能用 changeSort(state.sort)：同值会被短路，等于点了没反应
+        onRetry: controller.refresh,
       );
     }
 

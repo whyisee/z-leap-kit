@@ -394,6 +394,120 @@ class FeedPageResult {
       );
 }
 
+/// 「出发」页的一项：待回答 / 求反馈 / 可领取 / 可补充 / 可更新。
+///
+/// 打分与排序全在服务端（和网页 `/go` 共用 `listParticipationRecommendations`），
+/// 客户端只负责展示，不重排。
+class ParticipationItem {
+  const ParticipationItem({
+    required this.targetType,
+    required this.targetId,
+    required this.title,
+    required this.summary,
+    required this.href,
+    required this.actionLabel,
+    required this.reason,
+    this.category,
+    this.tags = const [],
+    this.score = 0,
+    this.replyCount,
+    this.viewCount,
+    this.submissionCount,
+    this.rewardLabel,
+  });
+
+  final String targetType;
+  final int targetId;
+  final String title;
+  final String summary;
+
+  /// 站内路径：`/t/<id>` 或 `/agent-zone/tasks/<id>`。
+  final String href;
+  final String actionLabel;
+  final String reason;
+  final CategoryRef? category;
+  final List<TagRef> tags;
+  final double score;
+
+  final int? replyCount;
+  final int? viewCount;
+  final int? submissionCount;
+  final String? rewardLabel;
+
+  /// 帖子类可以直接进原生详情；其余（如社区任务）仍走网页版。
+  bool get isTopic => href.startsWith('/t/');
+
+  /// `/t/123` → 123，其它返回 null。
+  int? get topicId {
+    if (!isTopic) return null;
+    return int.tryParse(href.substring(3).split('/').first);
+  }
+
+  /// 类型徽章文案，与网页 `ParticipationCard` 的中文标签保持一致。
+  String get typeLabel => switch (targetType) {
+        'question' => '待回答',
+        'topic' => '待参与',
+        'project' => '求反馈',
+        'resource' => '可补充',
+        'community_task' => '可领取',
+        'review_needed' => '待判断',
+        'stale_content' => '可更新',
+        _ => '可参与',
+      };
+
+  factory ParticipationItem.fromJson(Map<String, dynamic> json) {
+    final stats = (json['stats'] as Map?)?.cast<String, dynamic>() ?? const {};
+
+    return ParticipationItem(
+      targetType: json['targetType'] as String? ?? '',
+      targetId: (json['targetId'] as num?)?.toInt() ?? 0,
+      title: json['title'] as String? ?? '',
+      summary: json['summary'] as String? ?? '',
+      href: json['href'] as String? ?? '',
+      actionLabel: json['actionLabel'] as String? ?? '去看看',
+      reason: json['reason'] as String? ?? '',
+      category: json['category'] is Map
+          ? CategoryRef.fromJson((json['category'] as Map).cast<String, dynamic>())
+          : null,
+      tags: ((json['tags'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => TagRef.fromJson(e.cast<String, dynamic>()))
+          .toList(growable: false),
+      score: (json['score'] as num?)?.toDouble() ?? 0,
+      replyCount: (stats['replyCount'] as num?)?.toInt(),
+      viewCount: (stats['viewCount'] as num?)?.toInt(),
+      submissionCount: (stats['submissionCount'] as num?)?.toInt(),
+      rewardLabel: stats['rewardLabel'] as String?,
+    );
+  }
+}
+
+/// 「出发」一页结果。游标语义与服务端一致，客户端原样回传。
+class ParticipationPageResult {
+  const ParticipationPageResult({
+    required this.items,
+    required this.hasMore,
+    this.nextCursor,
+  });
+
+  final List<ParticipationItem> items;
+  final bool hasMore;
+  final String? nextCursor;
+
+  factory ParticipationPageResult.fromJson(
+    Map<String, dynamic> data,
+    Map<String, dynamic>? meta,
+  ) =>
+      ParticipationPageResult(
+        items: ((data['items'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => ParticipationItem.fromJson(e.cast<String, dynamic>()))
+            .toList(growable: false),
+        hasMore: meta?['hasMore'] as bool? ?? false,
+        nextCursor: meta?['nextCursor'] as String?,
+      );
+}
+
 /// 「我」页一次拿全的数据（`GET /api/v1/me/overview`）。
 class MeOverview {
   const MeOverview({
