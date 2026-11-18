@@ -35,7 +35,7 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('回复通知：说明来由 + 已定位', (tester) async {
+    testWidgets('回复通知：说明来由 + 能点开那条回复', (tester) async {
       var locatedTaps = 0;
       await pumpBanner(
         tester,
@@ -49,7 +49,8 @@ void main() {
       );
 
       expect(find.text('李雷 回复了你的话题'), findsOneWidget);
-      expect(find.textContaining('已定位到这条回复'), findsOneWidget);
+      // 评论搬进抽屉后不再自动滚到楼层，这里改成提示「点这里看这条回复」
+      expect(find.textContaining('点这里看这条回复'), findsOneWidget);
       expect(find.textContaining('3 分钟前'), findsOneWidget);
 
       await tester.tap(find.text('李雷 回复了你的话题'));
@@ -91,7 +92,7 @@ void main() {
       );
 
       expect(find.text('韩梅梅 赞了你的话题'), findsOneWidget);
-      expect(find.textContaining('已定位'), findsNothing);
+      expect(find.textContaining('点这里看'), findsNothing);
       expect(find.textContaining('可能已被删除'), findsNothing);
     });
 

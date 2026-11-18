@@ -6,6 +6,7 @@ import 'package:whyisee_app/core/api/models.dart';
 import 'package:whyisee_app/features/auth/login_page.dart';
 import 'package:whyisee_app/features/topic/topic_repository.dart';
 import 'package:whyisee_app/features/topic/widgets/post_tile.dart';
+import 'package:whyisee_app/features/topic/widgets/comment_sheet.dart';
 import 'package:whyisee_app/features/topic/widgets/reply_composer.dart';
 import 'package:whyisee_app/features/topic/widgets/reply_fab.dart';
 
@@ -259,6 +260,50 @@ void main() {
     expect(find.text('回复'), findsOneWidget);
   });
 
+  testWidgets('评论抽屉：从底部升起，带条数、楼层和输入条', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final posts = [
+      _post(id: 6001, author: '小张', text: '主楼说的这个我有同感'),
+      _post(id: 6002, author: '老王', text: '我不同意', parentId: 6001),
+    ];
+
+    await _openSheet(tester, posts: posts);
+
+    // 标题是条数，下面就是楼层本身，底部一条输入框
+    expect(find.text('2 条评论'), findsOneWidget);
+    expect(find.text('主楼说的这个我有同感'), findsOneWidget);
+    expect(find.text('回复 @小张'), findsOneWidget);
+    // 未登录时底部条换成「登录后参与评论」，点它是去登录
+    expect(find.text('登录后参与评论'), findsOneWidget);
+  });
+
+  testWidgets('评论抽屉：一条都没有时给一句话，不是一片黑', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await _openSheet(tester, posts: const []);
+
+    expect(find.text('评论'), findsOneWidget);
+    expect(find.text('还没有评论，说两句'), findsOneWidget);
+  });
+
+  testWidgets('评论抽屉 360 窄屏不溢出', (tester) async {
+    tester.view.physicalSize = const Size(360, 760);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await _openSheet(
+      tester,
+      posts: [_post(id: 6003, author: '一个名字特别长特别长的老哥', text: '这条评论本身也很长，长到需要换好几行才能放下，用来看看窄屏下会不会把点赞挤出屏幕。')],
+    );
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('登录页：空表单不可提交，填完两栏才亮', (tester) async {
     await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: LoginPage())));
 
@@ -278,6 +323,30 @@ void main() {
     await tester.pumpAndSettle();
     expect(button().onPressed, isNotNull);
   });
+}
+
+/// 拉起评论抽屉。抽屉本身依赖 ProviderScope + Material 环境，
+/// 这里给一个最小脚手架，点一次「open」就行。
+Future<void> _openSheet(WidgetTester tester, {required List<TopicPost> posts}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      child: MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: ElevatedButton(
+                onPressed: () => showCommentSheet(context, topicId: 91, posts: posts, onChanged: (_) {}),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  await tester.tap(find.text('open'));
+  await tester.pumpAndSettle();
 }
 
 TopicPost _post({required int id, required String author, required String text, int? parentId}) => TopicPost(

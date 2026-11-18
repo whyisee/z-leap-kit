@@ -31,7 +31,7 @@ class EntryBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final hint = switch (true) {
       _ when !hasTarget => null,
-      _ when located => '已定位到这条回复',
+      _ when located => '点这里看这条回复',
       _ => '这条回复可能已被删除',
     };
 

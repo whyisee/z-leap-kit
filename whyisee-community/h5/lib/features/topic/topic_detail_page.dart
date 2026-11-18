@@ -19,9 +19,8 @@ import 'topic_repository.dart';
 import 'widgets/article_webview.dart';
 import 'widgets/entry_banner.dart';
 import 'widgets/float_dock.dart';
-import 'widgets/post_tile.dart';
+import 'widgets/comment_sheet.dart';
 import 'widgets/reader_top_bar.dart';
-import 'widgets/reply_composer.dart';
 import 'widgets/reply_fab.dart';
 import 'widgets/topic_ai_sheet.dart';
 
@@ -29,19 +28,14 @@ import 'widgets/topic_ai_sheet.dart';
 ///
 /// - 滚动后顶栏变毛玻璃、文章标题浮出（ReaderTopBar）；
 /// - 右下角竖排操作条（FloatDock），AI/点赞/收藏/分享/关注作者；
-/// - 操作条下面一个评论圆钮，弹出回复层（不让底栏钉住阅读区）；
+/// - 操作条下面一个评论圆钮，点开从底部上滑出评论区（正文下面不挂回复）；
 /// - 已读到底后继续上滑，切到服务端推荐的下一篇；
 /// - 正文用 WebView 保真渲染，回帖降级成纯文本。
 ///
 /// 从通知点进来时多带两样东西：[entry] 说明来由（顶部一条），[postId] 指向
-/// 被回复的那一层（滚过去并高亮）。
+/// 被回复的那一层（自动拉开评论区并高亮那层）。
 class TopicDetailPage extends ConsumerStatefulWidget {
-  const TopicDetailPage({
-    super.key,
-    required this.topicId,
-    this.entry,
-    this.postId,
-  });
+  const TopicDetailPage({super.key, required this.topicId, this.entry, this.postId});
 
   final int topicId;
 
@@ -63,15 +57,11 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
   final _scroll = ScrollController();
   final _offset = ValueNotifier<double>(0);
 
-  /// 每个楼层一个 GlobalKey，用来滚到被通知指向的那一条。
-  /// 用 Map 复用：点赞等操作触发重建时不会重新造 key，滚动位置才不会跳。
-  final _postKeys = <int, GlobalKey>{};
-
   /// 来由条可以收起来 —— 用户已经知道怎么回事了，别一直占着首屏
   bool _bannerOpen = true;
 
-  /// 定位只做一次：下拉刷新不该把正在看的人拽回那条回复
-  bool _locateScheduled = false;
+  /// 通知带楼层时自动拉开评论区，只做一次：下拉刷新不该再把抽屉弹出来
+  bool _commentsAutoOpened = false;
 
   TopicDetail? _detail;
   ApiException? _error;
@@ -79,7 +69,6 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
   bool _topicLikeBusy = false;
   bool _bookmarkBusy = false;
   bool _followBusy = false;
-  final Set<int> _postLikeBusy = {};
 
   /// 到底后继续拖的累计距离，够了就切篇。
   double _overscroll = 0;
@@ -113,54 +102,17 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
     return (id != null && id > 0) ? id : null;
   }
 
-  /// 滚到被通知指向的那一层。
+  /// 通知带楼层进来时，拉开评论区并滚到那一层。
   ///
-  /// 正文是 WebView，高度靠 JS 异步上报（最长 1.5s 才稳定）。跳一次会被后来
-  /// 的长高顶走，所以分几拍：先跳，随后在高度稳定前后各纠一次偏。
-  void _scheduleLocate() {
+  /// 正文里已经没有楼层了，所以「定位」的意思变成了「打开抽屉 + 跳到那层」，
+  /// 不再需要等 WebView 长高再纠偏几拍。
+  void _autoOpenComments() {
     final id = _targetPostId;
-    if (id == null) return;
-
-    for (final ms in const [160, 480, 900, 1500, 2400]) {
-      Timer(Duration(milliseconds: ms), () {
-        if (!mounted) return;
-        _locatePost(id, first: ms == 160);
-      });
-    }
-  }
-
-  void _locatePost(int postId, {bool first = false}) {
-    final ctx = _postKeys[postId]?.currentContext;
-    if (ctx == null) return;
-
-    // 0.12 屏高 ≈ 100px，正好落在顶栏下方而不是被毛玻璃压住
-    const alignment = 0.12;
-
-    if (first) {
-      Scrollable.ensureVisible(
-        ctx,
-        alignment: alignment,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
-      return;
-    }
-
-    // 纠偏只补「已经看不见了」的情况，否则每一拍都把用户往上拽一下
-    final box = ctx.findRenderObject();
-    if (box is! RenderBox || !box.attached) return;
-
-    final top = box.localToGlobal(Offset.zero).dy;
-    final screen = MediaQuery.of(context).size.height;
-    final barBottom = MediaQuery.of(context).padding.top + kToolbarHeight;
-    if (top < barBottom - 12 || top > screen * 0.62) {
-      Scrollable.ensureVisible(
-        ctx,
-        alignment: alignment,
-        duration: const Duration(milliseconds: 240),
-        curve: Curves.easeOutCubic,
-      );
-    }
+    if (id == null || _commentsAutoOpened) return;
+    _commentsAutoOpened = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _openComments(focusPostId: id, auto: true);
+    });
   }
 
   Future<void> _load() async {
@@ -187,10 +139,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
         _loading = false;
       });
 
-      if (!_locateScheduled) {
-        _locateScheduled = true;
-        _scheduleLocate();
-      }
+      _autoOpenComments();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -250,17 +199,13 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
     });
 
     try {
-      final result = await ref.read(topicRepositoryProvider).toggleLike(
-            targetType: 'topic',
-            targetId: widget.topicId,
-          );
+      final result = await ref
+          .read(topicRepositoryProvider)
+          .toggleLike(targetType: 'topic', targetId: widget.topicId);
       if (!mounted) return;
       setState(() {
         _detail = _detail!.copyWith(
-          interactions: _detail!.interactions.copyWith(
-            liked: result.liked,
-            likeCount: result.likeCount,
-          ),
+          interactions: _detail!.interactions.copyWith(liked: result.liked, likeCount: result.likeCount),
         );
       });
       ref.read(feedControllerProvider.notifier).patchLike(widget.topicId, likeCount: result.likeCount);
@@ -298,9 +243,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
       final bookmarked = await ref.read(topicRepositoryProvider).toggleBookmark(widget.topicId);
       if (!mounted) return;
       setState(() {
-        _detail = _detail!.copyWith(
-          interactions: _detail!.interactions.copyWith(bookmarked: bookmarked),
-        );
+        _detail = _detail!.copyWith(interactions: _detail!.interactions.copyWith(bookmarked: bookmarked));
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -325,18 +268,14 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
     final before = detail.interactions;
     setState(() {
       _followBusy = true;
-      _detail = detail.copyWith(
-        interactions: before.copyWith(followed: !before.followed),
-      );
+      _detail = detail.copyWith(interactions: before.copyWith(followed: !before.followed));
     });
 
     try {
       final following = await ref.read(topicRepositoryProvider).toggleFollowUser(authorId);
       if (!mounted) return;
       setState(() {
-        _detail = _detail!.copyWith(
-          interactions: _detail!.interactions.copyWith(followed: following),
-        );
+        _detail = _detail!.copyWith(interactions: _detail!.interactions.copyWith(followed: following));
       });
       _toast(following ? '已关注' : '已取消关注');
     } on ApiException catch (e) {
@@ -366,20 +305,14 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
       builder: (context) => SafeArea(
         child: Container(
           margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-          decoration: BoxDecoration(
-            color: const Color(Env.surface),
-            borderRadius: BorderRadius.circular(14),
-          ),
+          decoration: BoxDecoration(color: const Color(Env.surface), borderRadius: BorderRadius.circular(14)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (canEdit) ...[
                 ListTile(
                   leading: const Icon(Icons.edit_outlined, size: 20, color: Color(Env.text)),
-                  title: const Text(
-                    '编辑这篇',
-                    style: TextStyle(fontSize: 14, color: Color(Env.text)),
-                  ),
+                  title: const Text('编辑这篇', style: TextStyle(fontSize: 14, color: Color(Env.text))),
                   subtitle: const Text(
                     '改完要重新过一遍审核',
                     style: TextStyle(fontSize: 11.5, color: Color(0xFF5F6875)),
@@ -389,10 +322,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
                 const Divider(height: 1, color: Color(Env.line)),
                 ListTile(
                   leading: const Icon(Icons.delete_outline, size: 20, color: Color(0xFFF08A8A)),
-                  title: const Text(
-                    '删除',
-                    style: TextStyle(fontSize: 14, color: Color(0xFFF08A8A)),
-                  ),
+                  title: const Text('删除', style: TextStyle(fontSize: 14, color: Color(0xFFF08A8A))),
                   subtitle: const Text(
                     '会从列表里下线，回复不会丢',
                     style: TextStyle(fontSize: 11.5, color: Color(0xFF5F6875)),
@@ -403,10 +333,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
               ],
               ListTile(
                 leading: const Icon(Icons.flag_outlined, size: 20, color: Color(Env.text)),
-                title: const Text(
-                  '举报这篇',
-                  style: TextStyle(fontSize: 14, color: Color(Env.text)),
-                ),
+                title: const Text('举报这篇', style: TextStyle(fontSize: 14, color: Color(Env.text))),
                 subtitle: const Text(
                   '广告、骚扰、抄袭都可以报',
                   style: TextStyle(fontSize: 11.5, color: Color(0xFF5F6875)),
@@ -466,16 +393,12 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
     try {
       await ref.read(topicRepositoryProvider).deleteTopic(topicId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已删除')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已删除')));
       // 这篇已经不在列表里了，留在详情页只会到处 404
       context.pop();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('删除失败，稍后再试')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('删除失败，稍后再试')));
     }
   }
 
@@ -490,51 +413,27 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
     }
   }
 
-  /// 写回复：没登录先去登录，登录完直接接着编辑，不用再点一次。
+  /// 打开评论区抽屉。正文下面不挂回复，评论全靠这一下冒出来。
   ///
-  /// [replyTo] 为空是给主楼回一条，非空是回某一条评论（入口在每条回复
-  /// 右下角的「回复」上）。两条路共用同一个编辑层，差别只有标题、
-  /// 被回复内容的摘要和 parentPostId。
-  ///
-  /// 发布成功后把服务端回的那一层直接插进列表并滚过去 —— 自己刚说的话
-  /// 必须马上看得见，否则用户会以为没发出去再发一遍。
-  Future<void> _openReply({TopicPost? replyTo}) async {
-    if (!_signedIn) {
-      final reason = replyTo == null ? '登录后就能回复这篇。' : '登录后就能回复这条评论。';
-      await context.push('/login?reason=${Uri.encodeComponent(reason)}');
-      if (!mounted || !_signedIn) return;
-    }
-
-    final post = await showReplyComposer(
-      context,
-      topicId: widget.topicId,
-      replyTo: replyTo,
-    );
-    if (!mounted || post == null) return;
-
+  /// [focusPostId] 是从通知带进来的楼层，打开后直接停在那一层。
+  /// [auto] 表示这次是加载完自动弹的：用户没点过任何东西，
+  /// 所以抽屉要先浅一点（别一上来就盖掉半屏），让它自己能被拖高。
+  Future<void> _openComments({int? focusPostId, bool auto = false}) async {
     final detail = _detail;
     if (detail == null) return;
 
-    setState(() {
-      _detail = detail.copyWith(posts: [...detail.posts, post]);
-    });
-    _toast('已发布');
-    _scrollToPost(post.id);
-  }
-
-  /// 滚到刚发出的那一层。列表可能刚插入新行，要等一帧布局完再算位置。
-  void _scrollToPost(int postId) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final ctx = _postKeys[postId]?.currentContext;
-      if (ctx == null) return;
-      Scrollable.ensureVisible(
-        ctx,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-        alignment: 0.2,
-      );
-    });
+    await showCommentSheet(
+      context,
+      topicId: widget.topicId,
+      posts: detail.posts,
+      focusPostId: focusPostId,
+      // 没点过任何东西就自动弹的，先浅一点，别一上来盖掉半屏
+      initialSize: auto ? 0.55 : 0.78,
+      onChanged: (posts) {
+        if (!mounted) return;
+        setState(() => _detail = _detail?.copyWith(posts: posts));
+      },
+    );
   }
 
   Future<void> _share() async {
@@ -554,81 +453,6 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
       return;
     }
     showTopicAiSheet(context, topicId: widget.topicId);
-  }
-
-  Future<void> _togglePostLike(TopicPost post) async {
-    if (_postLikeBusy.contains(post.id)) return;
-    if (!_signedIn) {
-      _needLogin();
-      return;
-    }
-
-    final detail = _detail;
-    if (detail == null) return;
-
-    final index = detail.posts.indexWhere((p) => p.id == post.id);
-    if (index < 0) return;
-
-    final optimistic = post.copyWith(
-      liked: !post.liked,
-      likeCount: (post.likeCount + (post.liked ? -1 : 1)).clamp(0, 1 << 30),
-    );
-
-    setState(() {
-      _postLikeBusy.add(post.id);
-      _detail = detail.copyWith(posts: _replacePost(detail.posts, index, optimistic));
-    });
-
-    try {
-      final result = await ref.read(topicRepositoryProvider).toggleLike(
-            targetType: 'post',
-            targetId: post.id,
-          );
-      if (!mounted) return;
-      final current = _detail;
-      if (current == null) return;
-      final at = current.posts.indexWhere((p) => p.id == post.id);
-      if (at < 0) return;
-      setState(() {
-        _detail = current.copyWith(
-          posts: _replacePost(
-            current.posts,
-            at,
-            current.posts[at].copyWith(liked: result.liked, likeCount: result.likeCount),
-          ),
-        );
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      final current = _detail;
-      if (current == null) return;
-      final at = current.posts.indexWhere((p) => p.id == post.id);
-      if (at >= 0) {
-        setState(() {
-          _detail = current.copyWith(posts: _replacePost(current.posts, at, post));
-        });
-      }
-      _toast(e.message);
-    } finally {
-      if (mounted) setState(() => _postLikeBusy.remove(post.id));
-    }
-  }
-
-  /// 找某一层被回复的是哪一条。找不到（那条被删了）就返回 null，
-  /// 界面上退化成「回复了一条已删除的评论」。
-  static TopicPost? _parentOf(List<TopicPost> posts, TopicPost post) {
-    final parentId = post.parentPostId;
-    if (parentId == null) return null;
-    for (final p in posts) {
-      if (p.id == parentId) return p;
-    }
-    return null;
-  }
-
-  static List<TopicPost> _replacePost(List<TopicPost> posts, int index, TopicPost next) {
-    final copy = List<TopicPost>.of(posts);
-    copy[index] = next;
-    return copy;
   }
 
   // ---------------------------------------------------------------- 切篇
@@ -670,9 +494,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
     if (next == null) {
       _switching = true;
       try {
-        queue.push(
-          await repo.nextCandidates(topicId: widget.topicId, exclude: queue.seenIds),
-        );
+        queue.push(await repo.nextCandidates(topicId: widget.topicId, exclude: queue.seenIds));
         next = queue.take();
       } on ApiException catch (e) {
         _toast(e.message);
@@ -700,9 +522,6 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
 
   // ---------------------------------------------------------------- 内容
 
-  GlobalKey _keyFor(int postId) =>
-      _postKeys.putIfAbsent(postId, () => GlobalKey(debugLabel: 'post-$postId'));
-
   List<Widget> _content() {
     final detail = _detail!;
     final topic = detail.topic;
@@ -716,7 +535,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
           entry: entry,
           located: targetFound,
           hasTarget: targetId != null,
-          onLocate: () => _locatePost(targetId!, first: true),
+          onLocate: () => _openComments(focusPostId: targetId),
           onDismiss: () => setState(() => _bannerOpen = false),
         ),
       _Header(topic: topic),
@@ -726,57 +545,19 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
           child: ArticleWebView(html: topic.contentHtml),
         ),
       if (topic.tags.isNotEmpty) _Tags(tags: topic.tags),
-      _RepliesHeader(count: detail.posts.length),
-      if (detail.posts.isEmpty)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 26),
-          child: Center(
-            child: Text(
-              '还没有回复，去做第一个',
-              style: TextStyle(fontSize: 13, color: Color(Env.muted)),
-            ),
-          ),
-        )
-      else
-        for (var i = 0; i < detail.posts.length; i++)
-          PostTile(
-            key: _keyFor(detail.posts[i].id),
-            post: detail.posts[i],
-            floor: i + 1,
-            parent: _parentOf(detail.posts, detail.posts[i]),
-            highlighted: targetId != null && detail.posts[i].id == targetId,
-            likeBusy: _postLikeBusy.contains(detail.posts[i].id),
-            onLike: () => _togglePostLike(detail.posts[i]),
-            onReply: () => _openReply(replyTo: detail.posts[i]),
-            onJumpToParent: () {
-              final parentId = detail.posts[i].parentPostId;
-              if (parentId != null) _scrollToPost(parentId);
-            },
-          ),
+      // 正文到此为止。评论放在底部抽屉里，滚到底就是到底，
+      // 不会在长文后面再排几十条回复把人困住
+      if (detail.posts.isNotEmpty) _CommentHint(count: detail.posts.length, onTap: () => _openComments()),
       // 从通知进来不串推荐：用户带着「看那条回复」的任务来，
       // 快速上滑到底就被换成另一篇，是会让人愣住的那种意外
       if (entry == null) _NextHint(next: ref.read(readingQueueProvider).peek),
-      const SizedBox(height: 112),
+      const SizedBox(height: 96),
     ];
   }
 
   Widget _scrollArea(double topInset) {
     final children = _content();
     final padding = EdgeInsets.only(top: topInset + kToolbarHeight);
-
-    // 需要定位到某一层时改成全量构建：ListView 只建视口附近的子项，
-    // 深层的楼层根本没有 Element，ensureVisible 拿不到目标（不是位置算错）。
-    if (_targetPostId != null) {
-      return SingleChildScrollView(
-        controller: _scroll,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: padding,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: children,
-        ),
-      );
-    }
 
     return ListView(
       controller: _scroll,
@@ -793,10 +574,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
     final topInset = MediaQuery.of(context).padding.top;
     final signedIn = ref.watch(sessionProvider).isSignedIn;
 
-    return Scaffold(
-      backgroundColor: const Color(Env.bg),
-      body: _buildBody(topInset, signedIn),
-    );
+    return Scaffold(backgroundColor: const Color(Env.bg), body: _buildBody(topInset, signedIn));
   }
 
   Widget _buildBody(double topInset, bool signedIn) {
@@ -854,11 +632,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
         Positioned(
           right: 10,
           bottom: 10 + MediaQuery.of(context).padding.bottom,
-          child: ReplyFab(
-            count: detail.posts.length,
-            signedIn: signedIn,
-            onTap: () => _openReply(),
-          ),
+          child: ReplyFab(count: detail.posts.length, signedIn: signedIn, onTap: () => _openComments()),
         ),
         // 顶栏放最上层，遮住滚上来的内容并做模糊
         Positioned(
@@ -922,13 +696,10 @@ class _SkeletonBody extends StatelessWidget {
   }
 
   Widget _bar(double width, double height) => Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1F28),
-          borderRadius: BorderRadius.circular(4),
-        ),
-      );
+    width: width,
+    height: height,
+    decoration: BoxDecoration(color: const Color(0xFF1A1F28), borderRadius: BorderRadius.circular(4)),
+  );
 }
 
 class _Header extends StatelessWidget {
@@ -1022,10 +793,7 @@ class _Tags extends StatelessWidget {
                 color: const Color(Env.panel),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(
-                '#${tag.name}',
-                style: const TextStyle(fontSize: 11.5, color: Color(Env.muted)),
-              ),
+              child: Text('#${tag.name}', style: const TextStyle(fontSize: 11.5, color: Color(Env.muted))),
             ),
         ],
       ),
@@ -1033,26 +801,37 @@ class _Tags extends StatelessWidget {
   }
 }
 
-class _RepliesHeader extends StatelessWidget {
-  const _RepliesHeader({required this.count});
+/// 正文末尾那行「共 N 条评论」。
+///
+/// 评论已经不在正文下面了，但长文读到最后一个字直接断掉会像是没加载完；
+/// 留一行很轻的入口，点了就是把抽屉拉起来。它只是提示，不是把评论区搬回来。
+class _CommentHint extends StatelessWidget {
+  const _CommentHint({required this.count, required this.onTap});
 
   final int count;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
-      child: Row(
-        children: [
-          Text(
-            count == 0 ? '回复' : '$count 条回复',
-            style: const TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w600,
-              color: Color(Env.text),
-            ),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(color: const Color(0x0DFFFFFF), borderRadius: BorderRadius.circular(10)),
+          child: Row(
+            children: [
+              const Icon(Icons.chat_bubble_outline, size: 15, color: Color(0xFF6E7887)),
+              const SizedBox(width: 7),
+              Text('共 $count 条评论', style: const TextStyle(fontSize: 12.5, color: Color(0xFF8B95A5))),
+              const Spacer(),
+              const Icon(Icons.keyboard_arrow_up, size: 18, color: Color(0xFF6E7887)),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1081,10 +860,7 @@ class _NextHint extends StatelessWidget {
             target == null ? '继续下滑 · 换一批推荐' : '继续下滑 · ${target.title}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              color: const Color(Env.muted).withValues(alpha: 0.8),
-            ),
+            style: TextStyle(fontSize: 12, color: const Color(Env.muted).withValues(alpha: 0.8)),
           ),
         ],
       ),
@@ -1115,16 +891,10 @@ class _Avatar extends StatelessWidget {
   }
 
   Widget _fallback() => Container(
-        width: 24,
-        height: 24,
-        alignment: Alignment.center,
-        decoration: const BoxDecoration(
-          color: Color(Env.panel),
-          shape: BoxShape.circle,
-        ),
-        child: Text(
-          author.initial,
-          style: const TextStyle(fontSize: 10.5, color: Color(Env.muted)),
-        ),
-      );
+    width: 24,
+    height: 24,
+    alignment: Alignment.center,
+    decoration: const BoxDecoration(color: Color(Env.panel), shape: BoxShape.circle),
+    child: Text(author.initial, style: const TextStyle(fontSize: 10.5, color: Color(Env.muted))),
+  );
 }
