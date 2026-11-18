@@ -6,11 +6,11 @@ import '../../../core/format.dart';
 /// 右下角的评论按钮。
 ///
 /// 原来详情页底部钉着一条「写回复…」，占了整整一行：读到一半想往下滑，
-/// 手指总落在它上面；想看最后一条回复，又永远被它挡住。改成浮起来一个圆钮，
-/// 点开才弹出编辑层，阅读区域整块还给了内容。
+/// 手指总落在它上面。改成浮起来的小圆钮（视觉 40、触达 48），点开才弹输入层，
+/// 阅读区域整块还给了内容。
 ///
-/// 数字角标和右边那条竖排操作条上的口径一致（都是楼层总数），
-/// 所以这里不再单独去数「未读」之类的东西。
+/// 尺寸刻意做小：它是「跳到说话」的入口，不是主按钮。第一版做成 52 的实心圆，
+/// 压在正文上比正文还重。
 class ReplyFab extends StatelessWidget {
   const ReplyFab({super.key, required this.count, required this.onTap, this.signedIn = true});
 
@@ -29,51 +29,51 @@ class ReplyFab extends StatelessWidget {
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
         child: SizedBox(
-          // 视觉 52，外面再留 2px：拇指落点要 ≥48，圆钮边上也不至于点空
-          width: 56,
-          height: 56,
+          // 视觉 40，外面留 4px 撑到 48 的落点，边上不至于点空
+          width: 48,
+          height: 48,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
               Positioned(
-                left: 2,
-                top: 2,
+                left: 4,
+                top: 4,
                 child: Container(
-                  width: 52,
-                  height: 52,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xF21A2130),
-                    border: Border.all(color: const Color(0x4D8AB4F8)),
+                    color: const Color(0xE61A2130),
+                    border: Border.all(color: const Color(0x3D8AB4F8)),
                     boxShadow: const [
-                      BoxShadow(color: Color(0x66000000), blurRadius: 14, offset: Offset(0, 4)),
+                      BoxShadow(color: Color(0x59000000), blurRadius: 10, offset: Offset(0, 3)),
                     ],
                   ),
                   child: Icon(
-                    signedIn ? Icons.mode_comment_outlined : Icons.lock_outline,
-                    size: 23,
+                    signedIn ? Icons.chat_bubble_outline : Icons.lock_outline,
+                    size: 18,
                     color: const Color(Env.blue),
                   ),
                 ),
               ),
               if (count > 0)
                 Positioned(
-                  right: -2,
-                  top: -3,
+                  right: -1,
+                  top: 0,
                   child: Container(
-                    constraints: const BoxConstraints(minWidth: 20),
-                    height: 19,
-                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    constraints: const BoxConstraints(minWidth: 16),
+                    height: 16,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: const Color(0xFF8AB4F8),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(Env.bg), width: 1.5),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(Env.bg), width: 1.2),
                     ),
                     child: Text(
                       compactCount(count),
                       style: const TextStyle(
-                        fontSize: 10,
+                        fontSize: 9,
                         height: 1,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF0D1016),

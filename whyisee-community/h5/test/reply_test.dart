@@ -28,7 +28,7 @@ void main() {
     );
     // 未登录：锁，不是评论图标
     expect(find.byIcon(Icons.lock_outline), findsOneWidget);
-    expect(find.byIcon(Icons.mode_comment_outlined), findsNothing);
+    expect(find.byIcon(Icons.chat_bubble_outline), findsNothing);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -39,14 +39,14 @@ void main() {
         ),
       ),
     );
-    expect(find.byIcon(Icons.mode_comment_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
     expect(find.text('12'), findsOneWidget);
 
     await tester.tap(find.byType(ReplyFab));
     expect(taps, 1);
   });
 
-  testWidgets('回复层：不指定楼层时标题就是「回复」，parentPostId 为空', (tester) async {
+  testWidgets('回复层：从圆钮进来是给主楼留言，空内容发不出去', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -74,13 +74,18 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    expect(find.text('回复'), findsOneWidget);
-    final publish = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '发布'));
-    expect(publish.onPressed, isNull);
+    // 抖音式窄面板：只有一行输入框，不再占半屏
+    expect(find.text('留下你的评论…'), findsOneWidget);
+    expect(find.text('发送'), findsOneWidget);
+
+    // 空内容点「发送」不动作
+    await tester.tap(find.text('发送'));
+    await tester.pumpAndSettle();
+    expect(repo.calls, isEmpty);
 
     await tester.enterText(find.byType(TextField), '先说结论：这条我同意');
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '发布'));
+    await tester.tap(find.text('发送'));
     await tester.pumpAndSettle();
 
     expect(repo.calls.single, '91|null|先说结论：这条我同意');
@@ -124,7 +129,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField), '成本这块我有数据');
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '发布'));
+    await tester.tap(find.text('发送'));
     await tester.pumpAndSettle();
 
     expect(repo.calls.single, '91|5001|成本这块我有数据');
@@ -156,11 +161,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '内容还在吗');
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '发布'));
+    await tester.tap(find.text('发送'));
     await tester.pumpAndSettle();
 
     expect(find.text('发得太频繁了，歇一会儿再发'), findsOneWidget);
-    expect(find.text('回复'), findsOneWidget);
+    // 面板还在、字还在，重试一次就行
+    expect(find.text('内容还在吗'), findsOneWidget);
   });
 
   testWidgets('楼层：回了某一条就写「回复 @谁」，点「回复」回的是这一条', (tester) async {

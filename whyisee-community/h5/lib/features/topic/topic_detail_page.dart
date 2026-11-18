@@ -833,11 +833,11 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
             ),
           ),
         ),
-        // 右下角竖排操作条。位置比原来高 40px：下面那块让给评论圆钮，
+        // 右下角竖排操作条。位置比原来高：下面那块让给评论圆钮，
         // 两个都贴着底会叠在一起
         Positioned(
           right: 10,
-          bottom: 82 + MediaQuery.of(context).padding.bottom,
+          bottom: 74 + MediaQuery.of(context).padding.bottom,
           child: FloatDock(
             author: topic.author,
             interactions: detail.interactions,
@@ -853,7 +853,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
         // 评论圆钮：点开是弹层，不抢滚动位置
         Positioned(
           right: 10,
-          bottom: 14 + MediaQuery.of(context).padding.bottom,
+          bottom: 10 + MediaQuery.of(context).padding.bottom,
           child: ReplyFab(
             count: detail.posts.length,
             signedIn: signedIn,
