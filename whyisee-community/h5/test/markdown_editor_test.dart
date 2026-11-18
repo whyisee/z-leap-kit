@@ -81,7 +81,9 @@ void main() {
 
     final field = tester.widget<TextField>(find.byType(TextField).first);
     final controller = field.controller!;
-    controller.selection = const TextSelection(baseOffset: 0, extentOffset: 2);
+    // controller 前面有一个零宽哨兵，可见第 0 个字在偏移 1
+    final base = doc.blocks.first.caretBase;
+    controller.selection = TextSelection(baseOffset: base, extentOffset: base + 2);
     await tester.tap(find.byTooltip('加粗'));
     await tester.pumpAndSettle();
 
@@ -106,6 +108,73 @@ void main() {
     // 7 个字符里 4 个星号是标记，字数只算「一二三四」
     expect(doc.charCount, 4);
     expect(find.text('4 字'), findsOneWidget);
+  });
+
+  testWidgets('空块上按退格：空块消失，光标回到上一块末尾', (tester) async {
+    final doc = await _pump(tester);
+
+    await tester.enterText(find.byType(TextField).first, '第一段\n');
+    await tester.pumpAndSettle();
+    expect(doc.blocks.length, 2);
+
+    // 软键盘退格只会让 controller 的文本变短，这里就模拟「哨兵被吃掉」
+    doc.blocks[1].editing.value = const TextEditingValue(
+      text: '',
+      selection: TextSelection.collapsed(offset: 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(doc.blocks.length, 1);
+    expect(doc.blocks.first.text, '第一段');
+    expect(doc.blocks.first.caret, 3);
+  });
+
+  testWidgets('行首退格：整块并进上一块，不是只删一个字', (tester) async {
+    final doc = await _pump(tester);
+
+    await tester.enterText(find.byType(TextField).first, '上段\n下段');
+    await tester.pumpAndSettle();
+    expect(doc.blocks.length, 2);
+
+    doc.blocks[1].editing.value = const TextEditingValue(
+      text: '下段',
+      selection: TextSelection.collapsed(offset: 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(doc.blocks.length, 1);
+    expect(doc.markdown, '上段下段');
+  });
+
+  testWidgets('第一块退格不会把内容吃掉', (tester) async {
+    final doc = await _pump(tester);
+
+    await tester.enterText(find.byType(TextField).first, '只有一段');
+    await tester.pumpAndSettle();
+
+    // 把哨兵删掉（等价于在第一块行首按退格）
+    doc.blocks.first.editing.value = const TextEditingValue(
+      text: '只有一段',
+      selection: TextSelection.collapsed(offset: 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(doc.blocks.length, 1);
+    expect(doc.blocks.first.text, '只有一段');
+    // 哨兵补回来了，下一次退格还能被感知
+    expect(doc.blocks.first.editing.text.startsWith(MdBlock.sentinel), isTrue);
+  });
+
+  testWidgets('空列表项回车落回正文，不会困在列表里', (tester) async {
+    final doc = await _pump(tester);
+
+    await tester.enterText(find.byType(TextField).first, '- 一条\n');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(1), '\n');
+    await tester.pumpAndSettle();
+
+    expect(doc.blocks.length, 3);
+    expect(doc.blocks[2].type, MdBlockType.paragraph);
   });
 
   testWidgets('390 宽下渲染不溢出', (tester) async {

@@ -73,20 +73,50 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
 
   // ---------------------------------------------------------------- 文本事件
 
-  /// 块内文本变了：先处理换行拆块，再处理行首语法转块型
-  void _onBlockTextChanged(MdBlock block) {
+  /// 块内文本变了：先处理「行首退格」，再处理换行拆块与行首语法转块型。
+  ///
+  /// [deletedFromStart] 由输入框判断（见 `_BlockFieldState._onChanged`）：
+  /// 软键盘在空文本上按退格不会触发任何事件，只能靠行首哨兵被吃掉来间接得知。
+  void _onBlockTextChanged(MdBlock block, {bool deletedFromStart = false}) {
     if (_mutating || !mounted) return;
 
+    MdBlock? target;
+    var atStart = false;
+    var merged = false;
+
     _mutating = true;
-    MdBlock last;
     try {
-      last = _normalize(block);
+      final hasSentinel = block.editing.text.startsWith(MdBlock.sentinel);
+
+      if (!hasSentinel && deletedFromStart) {
+        // 光标在块首按了退格：整块并进上一块，空块就是直接消失
+        merged = true;
+        target = _doc.mergeIntoPrevious(block);
+        // 第一块没有上一块可并，把哨兵补回来、光标留在原地
+        if (target == null) block.ensureSentinel();
+      } else {
+        // 粘贴、程序替换整段文本时哨兵会没了，补回来再走常规流程
+        if (!hasSentinel) block.ensureSentinel();
+        final last = _normalize(block);
+        if (last != block) {
+          target = last;
+          atStart = true;
+        }
+      }
     } finally {
       _mutating = false;
     }
 
-    // 焦点跟到新块：只在真的拆出东西时才跳，否则会把光标从当前行拽走
-    if (last != block) _focusBlock(last, atStart: true);
+    if (target != null) {
+      if (atStart) {
+        _focusBlock(target, atStart: true);
+      } else {
+        // 合并后光标停在拼接处，别把它拽到行尾
+        _focusExisting(target);
+      }
+    } else if (merged) {
+      block.placeCaret(0);
+    }
     setState(() {});
   }
 
@@ -124,10 +154,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
 
     final (type, rest) = converted;
     block.type = type;
-    block.editing.value = TextEditingValue(
-      text: rest,
-      selection: TextSelection.collapsed(offset: rest.length),
-    );
+    block.setText(rest, caret: rest.length);
     return true;
   }
 
@@ -168,8 +195,17 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       block.focus.requestFocus();
-      final text = block.text;
-      block.editing.selection = TextSelection.collapsed(offset: atStart ? 0 : text.length);
+      block.placeCaret(atStart ? 0 : block.text.length);
+      setState(() => _focused = block);
+    });
+  }
+
+  /// 只把焦点移过去，不动光标 —— 合并块时用户的光标应该停在拼接点
+  void _focusExisting(MdBlock block) {
+    _attachFocus(block);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_doc.blocks.contains(block)) return;
+      block.focus.requestFocus();
       setState(() => _focused = block);
     });
   }
@@ -192,18 +228,23 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
 
   void _wrapSelection(String token) {
     final block = _activeBlock;
-    final controller = block.editing;
-    final text = controller.text;
-    var selection = controller.selection;
-    if (!selection.isValid) selection = TextSelection.collapsed(offset: text.length);
+    final text = block.text;
+    final selection = block.editing.selection;
 
-    final selected = text.substring(selection.start, selection.end);
-    final next = text.replaceRange(selection.start, selection.end, '$token$selected$token');
-    final caret = selection.start + token.length;
+    // 选区一律按「可见文本」算：controller 前面还有行首哨兵，直接拿索引会差一位
+    final start = selection.isValid ? selection.start - block.caretBase : text.length;
+    final end = selection.isValid ? selection.end - block.caretBase : text.length;
+    final from = start.clamp(0, text.length);
+    final to = end.clamp(from, text.length);
 
-    controller.value = TextEditingValue(
-      text: next,
-      selection: TextSelection(baseOffset: caret, extentOffset: caret + selected.length),
+    final selected = text.substring(from, to);
+    final next = text.replaceRange(from, to, '$token$selected$token');
+    final caret = from + token.length;
+    block.setText(next, caret: caret);
+    // 加粗后仍框住原文，接着按别的按钮能叠加
+    block.editing.selection = TextSelection(
+      baseOffset: block.caretBase + caret,
+      extentOffset: block.caretBase + caret + selected.length,
     );
     block.focus.requestFocus();
   }
@@ -236,7 +277,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
                 doc: _doc,
                 enabled: widget.enabled,
                 hintText: _doc.isBlank ? widget.hintText : null,
-                onChanged: () => _onBlockTextChanged(block),
+                onChanged: (deletedFromStart) =>
+                    _onBlockTextChanged(block, deletedFromStart: deletedFromStart),
               );
             },
           ),
@@ -274,20 +316,22 @@ class _BlockField extends StatefulWidget {
   final MarkdownDocController doc;
   final bool enabled;
   final String? hintText;
-  final VoidCallback onChanged;
+
+  /// [deletedFromStart]：这次变化是不是「从块首往回删」
+  final ValueChanged<bool> onChanged;
 
   @override
   State<_BlockField> createState() => _BlockFieldState();
 }
 
 class _BlockFieldState extends State<_BlockField> {
-  /// 已经处理过的文本，用来识别「文本没变、只是按了退格」这类情况
-  String _lastText = '';
+  /// 上一次的原始文本（含行首哨兵），用来识别「行首退格」
+  String _lastRaw = '';
 
   @override
   void initState() {
     super.initState();
-    _lastText = widget.block.text;
+    _lastRaw = widget.block.editing.text;
     widget.block.editing.addListener(_onChanged);
   }
 
@@ -298,17 +342,25 @@ class _BlockFieldState extends State<_BlockField> {
   }
 
   void _onChanged() {
-    final text = widget.block.text;
-    // 退格删到空不会改变「已经是空」的状态，这类操作在块模型里交给工具栏处理
-    if (text == _lastText) return;
-    _lastText = text;
-    widget.onChanged();
+    final raw = widget.block.editing.text;
+    if (raw == _lastRaw) return;
+
+    // 行首退格的判据：哨兵没了，且剩下的文本正好是删之前文本的后缀。
+    // 只判「哨兵没了」不够 —— 粘贴、整段替换也会没；只判前后缀也不够 ——
+    // 末尾删掉一个重复字符（`**` → `*`）会误判成行首删除。
+    final deletedFromStart = !raw.startsWith(MdBlock.sentinel) &&
+        _lastRaw.startsWith(MdBlock.sentinel) &&
+        raw.length < _lastRaw.length &&
+        _lastRaw.endsWith(raw);
+
+    _lastRaw = raw;
+    widget.onChanged(deletedFromStart);
   }
 
   @override
   Widget build(BuildContext context) {
     final block = widget.block;
-    final field = TextField(
+    Widget field = TextField(
       controller: block.editing,
       focusNode: block.focus,
       enabled: widget.enabled,
@@ -327,16 +379,36 @@ class _BlockFieldState extends State<_BlockField> {
         _ => 21,
       },
       style: _styleFor(block.type),
-      decoration: InputDecoration(
+      decoration: const InputDecoration(
         isDense: true,
-        hintText: widget.hintText,
-        hintStyle: const TextStyle(fontSize: 14, height: 1.75, color: Color(0xFF4A5462)),
         border: InputBorder.none,
         contentPadding: EdgeInsets.zero,
       ),
       // 点正文空白不该收键盘
       onTapOutside: (_) {},
     );
+
+    // 块里始终有一个零宽哨兵，TextField 自己的 hint 永远不会显示（文本不算空），
+    // 所以提示语自己叠一层
+    if (widget.hintText != null && block.text.isEmpty) {
+      field = Stack(
+        fit: StackFit.passthrough,
+        children: [
+          field,
+          Positioned(
+            left: 0,
+            top: 1,
+            right: 0,
+            child: IgnorePointer(
+              child: Text(
+                widget.hintText!,
+                style: const TextStyle(fontSize: 14, height: 1.75, color: Color(0xFF4A5462)),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
 
     return switch (block.type) {
       MdBlockType.h1 => Padding(
