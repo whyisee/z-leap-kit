@@ -20,6 +20,29 @@ class TopicRepository {
     return TopicDetail.fromJson(payload.data);
   }
 
+  /// 发回复。服务端会回一条完整的楼层 DTO（含渲染好的 HTML 和作者），
+  /// 客户端直接插进列表就行，不用为了看见自己那句话再拉一次详情。
+  Future<TopicPost> createPost({
+    required int topicId,
+    required String contentMarkdown,
+    int? parentPostId,
+  }) async {
+    final payload = await _api.post(
+      '/topics/$topicId/posts',
+      body: {
+        'contentMarkdown': contentMarkdown,
+        if (parentPostId != null && parentPostId > 0) 'parentPostId': parentPostId,
+      },
+    );
+
+    final post = (payload.data['post'] as Map?)?.cast<String, dynamic>();
+    if (post == null) {
+      // 服务端说成功却没回内容：宁可报错，也不要凭空造一条空楼层
+      throw ApiException(code: 'unknown', message: '发出去了，但没取回内容，下拉刷新看看');
+    }
+    return TopicPost.fromJson(post);
+  }
+
   /// 点赞是 toggle，返回服务端裁决后的真实状态，避免乐观更新和实际不一致。
   Future<({bool liked, int likeCount})> toggleLike({
     required String targetType,

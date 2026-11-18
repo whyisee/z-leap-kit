@@ -21,6 +21,7 @@ import 'widgets/entry_banner.dart';
 import 'widgets/float_dock.dart';
 import 'widgets/post_tile.dart';
 import 'widgets/reader_top_bar.dart';
+import 'widgets/reply_bar.dart';
 import 'widgets/topic_ai_sheet.dart';
 
 /// 帖子详情，交互对齐网页版的沉浸阅读器：
@@ -207,7 +208,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
   bool get _signedIn => ref.read(sessionProvider).isSignedIn;
 
   bool _needLogin() {
-    _toast('登录后才能操作，可在「我」里登录');
+    context.push('/login?reason=${Uri.encodeComponent('登录后才能点赞、回复和关注。')}');
     return false;
   }
 
@@ -355,6 +356,44 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
       curve: Curves.easeOutCubic,
       alignment: 0.02,
     );
+  }
+
+  /// 写回复：没登录先去登录，登录完直接接着编辑，不用再点一次。
+  ///
+  /// 发布成功后把服务端回的那一层直接插进列表并滚过去 —— 自己刚说的话
+  /// 必须马上看得见，否则用户会以为没发出去再发一遍。
+  Future<void> _openReply() async {
+    if (!_signedIn) {
+      await context.push('/login?reason=${Uri.encodeComponent('登录后就能回复这篇。')}');
+      if (!mounted || !_signedIn) return;
+    }
+
+    final post = await showReplyComposer(context, topicId: widget.topicId);
+    if (!mounted || post == null) return;
+
+    final detail = _detail;
+    if (detail == null) return;
+
+    setState(() {
+      _detail = detail.copyWith(posts: [...detail.posts, post]);
+    });
+    _toast('已发布');
+    _scrollToPost(post.id);
+  }
+
+  /// 滚到刚发出的那一层。列表可能刚插入新行，要等一帧布局完再算位置。
+  void _scrollToPost(int postId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _postKeys[postId]?.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        alignment: 0.2,
+      );
+    });
   }
 
   Future<void> _share() async {
@@ -594,10 +633,16 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> {
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
+    final signedIn = ref.watch(sessionProvider).isSignedIn;
 
     return Scaffold(
       backgroundColor: const Color(Env.bg),
       body: _buildBody(topInset),
+      // 读到一半想回一句，入口就在拇指下面；详情没加载出来时不摆这一条，
+      // 免得点了对着骨架发呆
+      bottomNavigationBar: _detail == null
+          ? null
+          : ReplyBar(signedIn: signedIn, onTap: _openReply),
     );
   }
 

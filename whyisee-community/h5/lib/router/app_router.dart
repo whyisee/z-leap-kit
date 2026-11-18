@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../features/auth/login_page.dart';
 import '../features/compose/compose_page.dart';
 import '../features/feed/feed_page.dart';
 import '../features/following/following_page.dart';
@@ -125,6 +126,23 @@ final GoRouter appRouter = GoRouter(
           ],
         ),
       ],
+    ),
+    // 登录是全局动作：从任何 tab（含发帖页）都能推开，登录完 pop 回来路
+    GoRoute(
+      path: '/login',
+      pageBuilder: (context, state) => CustomTransitionPage<void>(
+        key: state.pageKey,
+        child: LoginPage(reason: state.uri.queryParameters['reason']),
+        fullscreenDialog: true,
+        transitionDuration: const Duration(milliseconds: 240),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
+        transitionsBuilder: (_, animation, _, child) => SlideTransition(
+          position: Tween(begin: const Offset(0, 1), end: Offset.zero).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          ),
+          child: child,
+        ),
+      ),
     ),
     // 发帖是全局动作，挂在 shell 外面：全屏盖住底部栏，返回回到原 tab
     GoRoute(

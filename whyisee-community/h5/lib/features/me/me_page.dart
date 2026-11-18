@@ -940,9 +940,7 @@ class _SignedOutView extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: () => context.push(
-                    '/me/page?path=${Uri.encodeComponent('/login')}&title=${Uri.encodeComponent('登录')}',
-                  ),
+                  onPressed: () => context.push('/login'),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(Env.blue),
                     foregroundColor: const Color(0xFF0D1016),

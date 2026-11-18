@@ -681,9 +681,7 @@ class _LoginWall extends StatelessWidget {
                       ),
                       const SizedBox(height: 18),
                       FilledButton(
-                        onPressed: () => context.push(
-                          '/web?path=${Uri.encodeComponent('/login')}&title=${Uri.encodeComponent('登录')}',
-                        ),
+                        onPressed: () => context.push('/login'),
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(Env.blue),
                           foregroundColor: const Color(0xFF0D1016),

@@ -102,6 +102,17 @@ class MarkdownDocController extends ChangeNotifier {
 
   final List<MdBlock> blocks = [];
 
+  /// 块内的每一次输入也要算「文档变了」。
+  ///
+  /// 结构变化（拆块、删块、转块型）自己会 notify，但纯打字不会 —— 块有自己的
+  /// controller。不接管这个信号，外面就只能在提交时才看到内容，那时发送按钮
+  /// 一直是灰的、字数一直是 0。
+  void _watch(MdBlock block) => block.editing.addListener(_onBlockEdited);
+
+  void _unwatch(MdBlock block) => block.editing.removeListener(_onBlockEdited);
+
+  void _onBlockEdited() => notifyListeners();
+
   /// 整篇是否没有任何内容
   bool get isEmpty => blocks.every((block) => block.isEmpty);
 
@@ -115,13 +126,20 @@ class MarkdownDocController extends ChangeNotifier {
 
   void load(String markdown) {
     for (final block in blocks) {
+      _unwatch(block);
       block.dispose();
     }
     blocks
       ..clear()
-      ..addAll(parseMarkdown(markdown));
-    if (blocks.isEmpty) blocks.add(MdBlock(type: MdBlockType.paragraph));
+      ..addAll(parseMarkdown(markdown).map(_adopt));
+    if (blocks.isEmpty) blocks.add(_adopt(MdBlock(type: MdBlockType.paragraph)));
     notifyListeners();
+  }
+
+  /// 入列即开始监听，出列前必须 _unwatch（否则块 dispose 后还挂着回调）
+  MdBlock _adopt(MdBlock block) {
+    _watch(block);
+    return block;
   }
 
   String get markdown {
@@ -165,7 +183,7 @@ class MarkdownDocController extends ChangeNotifier {
 
   /// 在 [block] 之后插入新块，返回它（列表和引用要延续同类型）
   MdBlock insertAfter(MdBlock block, {MdBlockType? type, String text = ''}) {
-    final next = MdBlock(type: type ?? block.type, text: text);
+    final next = _adopt(MdBlock(type: type ?? block.type, text: text));
     final index = blocks.indexOf(block);
     blocks.insert(index < 0 ? blocks.length : index + 1, next);
     notifyListeners();
@@ -204,7 +222,7 @@ class MarkdownDocController extends ChangeNotifier {
   }
 
   MdBlock appendBlock({MdBlockType type = MdBlockType.paragraph}) {
-    final next = MdBlock(type: type);
+    final next = _adopt(MdBlock(type: type));
     blocks.add(next);
     notifyListeners();
     return next;
@@ -254,6 +272,7 @@ class MarkdownDocController extends ChangeNotifier {
   /// 合并/删除往往发生在「某个块的 controller 正在 notifyListeners」的调用栈里，
   /// 当场 dispose 会改动正在遍历的监听器列表（Flutter 会断言失败），推迟一个微任务。
   void _disposeLater(MdBlock block) {
+    _unwatch(block);
     scheduleMicrotask(block.dispose);
   }
 
@@ -281,7 +300,7 @@ class MarkdownDocController extends ChangeNotifier {
 
   /// 复制一块插在它后面，返回副本
   MdBlock duplicateBlock(MdBlock block) {
-    final copy = MdBlock(type: block.type, text: block.text);
+    final copy = _adopt(MdBlock(type: block.type, text: block.text));
     final index = blocks.indexOf(block);
     blocks.insert(index < 0 ? blocks.length : index + 1, copy);
     notifyListeners();
@@ -291,6 +310,7 @@ class MarkdownDocController extends ChangeNotifier {
   @override
   void dispose() {
     for (final block in blocks) {
+      _unwatch(block);
       block.dispose();
     }
     blocks.clear();
