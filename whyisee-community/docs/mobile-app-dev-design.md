@@ -92,7 +92,7 @@ Astro 版本 `6.4.2`，`security.checkOrigin` 默认 `true`（`node_modules/astr
 │  │ Native (Dart)            │ WebView (Astro SSR)          │    │
 │  │  · 看见 feed              │  · /login /signup            │    │
 │  │  · 帖子详情                │  · /search /settings/*       │    │
-│  │  · 通知（P2）              │  · /u/* /agent-zone/*        │    │
+│  │  · 通知                  │  · /u/* /agent-zone/*        │    │
 │  │  · 发帖（P2）              │  · /new-topic                │    │
 │  └──────────────────────────┴──────────────────────────────┘    │
 │         │                              │                        │
@@ -357,7 +357,8 @@ export const optionalAuth: MiddlewareHandler = async (c, next) => {
 | POST | `/api/v1/uploads/images` | Bearer | multipart，字段名 `image`（与网页一致） |
 | POST | `/api/v1/events` | 可选 | 批量埋点，`{events:[...]}`，上限 50 条/次 |
 | GET | `/api/v1/following` | Bearer | `filter=all\|topics\|users\|categories\|tags`、`limit`、`cursor` → 订阅流（复用 `listFollowingFeed`） |
-| GET | `/api/v1/notifications` | Bearer | 游标分页 |
+| GET | `/api/v1/notifications` | Bearer | `filter=all\|replies\|mentions\|likes\|system`、`limit`、`cursor` → 通知列表 + 各档未读数（复用 `listNotifications`） |
+| POST | `/api/v1/notifications/read` | Bearer | `{ids:[...]}` 精确标记，或 `{all:true}` 一键清空；回最新计数 |
 
 **P2（按需）**
 
@@ -743,7 +744,8 @@ StatefulShellRoute.indexedStack(
 | `/t/:id` | 原生详情 |
 | `/new-topic` | 原生 `/compose`（`POST /api/v1/topics`），网页版仍保留给桌面 |
 | `/login`、`/signup`、`/forgot-password` | WebView |
-| `/search`、`/settings/*`、`/u/*`、`/agent-zone/*`、`/notifications` | WebView |
+| `/notifications` | 原生通知（`GET /api/v1/notifications`），私信仍走网页 |
+| `/search`、`/settings/*`、`/u/*`、`/agent-zone/*` | WebView |
 | `/following` | 原生订阅流（`GET /api/v1/following`），四个 tab 全部原生 |
 | `/c/:slug`、`/tag/:slug`、`/latest` | WebView，P2 视情况转原生 |
 | `/admin/*` | 系统浏览器 |
@@ -1225,6 +1227,33 @@ App           WebView(/login)        Server(/api/login)     Server(v1)
   「这条是谁带来的」，所以来源必须显式回给客户端，不能塞进 feed 的 topic DTO；
 - 必须登录（`requireAuth`），未登录 401，客户端出登录引导而不是空列表。
 
+通知同理单独开了 `GET /api/v1/notifications`（`routes/notifications.ts`）：
+
+- 复用 `listNotifications`（新增 `kinds` / `outsideKinds` / `offset` 三个可选过滤，
+  网页不传，行为不变），分类规则放在服务端 —— 客户端只认 `kind`（reply / mention /
+  like / system），不解析 `topic_reply`、`bot_post_reply` 这类内部 type，以后加新类型不用发版；
+- **「系统」这一档是「其余全部」**（`type <> ALL(socialTypes)`），不是 `actor_id IS NULL`：
+  否则 `topic_auto_approved` / `topic_pending` 这类由 bot 账号发出的系统通知，
+  在「全部」里看得到、五档里一档都点不到；
+- 一次回 `counts`（total / replies / mentions / likes / system）；
+  每档未读分四次 count 就是四个来回，用 `COUNT(*) FILTER` 一条就够；
+- 分页是 offset 游标，和 feed / following 同一套 `encodeCursor`；多取一条判 `hasMore`，
+  省掉 count 查询；
+- 私信（`direct_message`）不在这个接口里 —— 服务层本来就排除了。私信是聊天，
+  需要气泡、输入框、已读回执，塞进通知列表两边都不好用，先继续走网页。
+
+App 侧（`features/notifications/`）：
+
+- 顶部分档 `全部 / 回复 / @我 / 赞 / 系统`，**每档后面直接挂未读数** ——
+  通知页最痛的是「哪一档有新东西」得逐档点进去找；
+- 列表按「今天 / 昨天 / 本周 / 更早」分段（摊平成 `header + row` 交给一个 ListView，
+  分页续接时只要在末尾追加）；
+- 点开一条：本地先置已读再发请求（`POST /notifications/read` 带单个 id），
+  返回列表时那一行不会再亮着；接口失败不回滚，下次刷新自愈；
+- 右上「全部已读」只在有未读时出现，走 `{all:true}`；
+- 从通知返回「我」页会 `invalidate(meOverviewProvider)` + `refreshMe()`，
+  顶部角标跟着掉。
+
 ### 12.2 网页侧改动（共 3 处，均不影响普通浏览器）
 
 1. `src/layouts/BaseLayout.astro`：viewport 加 `viewport-fit=cover`。
@@ -1267,8 +1296,9 @@ App           WebView(/login)        Server(/api/login)     Server(v1)
 
 ### 12.5 还没做的
 
-- `POST /topics`（发帖）、`/notifications`、`/devices`、`/search`：P2。
-- 客户端 P1 原生 feed / 详情页：服务端已就绪，客户端未开始。
+- `/devices`（推送设备注册）、`/search`：P2。应用内通知红点已由 `/me/overview` 的 `unreadCount` 覆盖，系统推送通道没做。
+- 私信（`direct_message`）仍走网页 `/notifications?tab=messages`：聊天界面需要气泡、输入框、已读回执，不是列表能解决的。
+- 客户端 P1 原生 feed / 详情页 / 出发 / 关注 / 我 / 发帖 / 通知：**均已完成**（四个 tab 全是原生页）。
 - `npm run check` 有 3 个既有错误，都在 `src/pages/app.astro`（与本方案无关，未改动）。
 
 ## 13. 部署 runbook（服务端）

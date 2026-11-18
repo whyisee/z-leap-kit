@@ -39,7 +39,7 @@ class MePage extends ConsumerWidget {
             _TopBar(
               unread: signedIn ? unread : 0,
               onOpenNotifications: signedIn
-                  ? () => _openWeb(context, ref, '/notifications', '通知')
+                  ? () => _openNotifications(context, ref)
                   : null,
             ),
             Expanded(
@@ -82,6 +82,7 @@ class MePage extends ConsumerWidget {
                             onOpenWeb: (path, title) =>
                                 _openWeb(context, ref, path, title),
                             onOpenTopic: (id) => context.push('/me/t/$id'),
+                            onOpenNotifications: () => _openNotifications(context, ref),
                             onSignOut: () => _signOut(context, ref),
                           ),
                   ),
@@ -104,6 +105,14 @@ class MePage extends ConsumerWidget {
     await context.push(
       '/me/page?path=${Uri.encodeComponent(path)}&title=${Uri.encodeComponent(title)}',
     );
+    if (!context.mounted) return;
+    ref.invalidate(meOverviewProvider);
+    await ref.read(sessionProvider.notifier).refreshMe();
+  }
+
+  /// 通知是原生页。看完回来角标要跟着掉，所以返回后重拉一次概览与登录态。
+  Future<void> _openNotifications(BuildContext context, WidgetRef ref) async {
+    await context.push('/me/notifications');
     if (!context.mounted) return;
     ref.invalidate(meOverviewProvider);
     await ref.read(sessionProvider.notifier).refreshMe();
@@ -216,6 +225,7 @@ class _Content extends StatelessWidget {
     required this.onEditProfile,
     required this.onOpenWeb,
     required this.onOpenTopic,
+    required this.onOpenNotifications,
     required this.onSignOut,
   });
 
@@ -224,6 +234,7 @@ class _Content extends StatelessWidget {
   final VoidCallback onEditProfile;
   final void Function(String path, String title) onOpenWeb;
   final void Function(int topicId) onOpenTopic;
+  final VoidCallback onOpenNotifications;
   final VoidCallback onSignOut;
 
   @override
@@ -268,7 +279,7 @@ class _Content extends StatelessWidget {
                 icon: Icons.notifications_none,
                 label: '通知',
                 hint: data.unreadCount > 0 ? '${data.unreadCount} 条未读' : null,
-                onTap: () => onOpenWeb('/notifications', '通知'),
+                onTap: onOpenNotifications,
               ),
             ],
           ),

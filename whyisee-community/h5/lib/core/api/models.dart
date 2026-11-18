@@ -916,6 +916,183 @@ class FollowingPageResult {
       );
 }
 
+enum NotificationFilter {
+  all('全部', 'all'),
+  replies('回复', 'replies'),
+  mentions('@我', 'mentions'),
+  likes('赞', 'likes'),
+  system('系统', 'system');
+
+  const NotificationFilter(this.label, this.wire);
+
+  final String label;
+  final String wire;
+}
+
+/// 各档未读数。切档时不用重新算角标，一次拉回来。
+class NotificationCounts {
+  const NotificationCounts({
+    this.total = 0,
+    this.replies = 0,
+    this.mentions = 0,
+    this.likes = 0,
+    this.system = 0,
+  });
+
+  final int total;
+  final int replies;
+  final int mentions;
+  final int likes;
+  final int system;
+
+  int of(NotificationFilter filter) => switch (filter) {
+        NotificationFilter.all => total,
+        NotificationFilter.replies => replies,
+        NotificationFilter.mentions => mentions,
+        NotificationFilter.likes => likes,
+        NotificationFilter.system => system,
+      };
+
+  factory NotificationCounts.fromJson(Map<String, dynamic>? json) => NotificationCounts(
+        total: (json?['total'] as num?)?.toInt() ?? 0,
+        replies: (json?['replies'] as num?)?.toInt() ?? 0,
+        mentions: (json?['mentions'] as num?)?.toInt() ?? 0,
+        likes: (json?['likes'] as num?)?.toInt() ?? 0,
+        system: (json?['system'] as num?)?.toInt() ?? 0,
+      );
+
+  /// 点开某条后本地减一，省一次整页刷新
+  NotificationCounts markRead(NotificationFilter kind) {
+    int dec(int value) => value > 0 ? value - 1 : 0;
+    return NotificationCounts(
+      total: dec(total),
+      replies: kind == NotificationFilter.replies ? dec(replies) : replies,
+      mentions: kind == NotificationFilter.mentions ? dec(mentions) : mentions,
+      likes: kind == NotificationFilter.likes ? dec(likes) : likes,
+      system: kind == NotificationFilter.system ? dec(system) : system,
+    );
+  }
+}
+
+/// 一条通知。
+///
+/// `kind` 由服务端给（reply / mention / like / system），客户端不解析 `type` ——
+/// 以后加新 type 不用发版。
+class NotificationItem {
+  const NotificationItem({
+    required this.id,
+    required this.type,
+    required this.kind,
+    required this.title,
+    required this.body,
+    required this.href,
+    required this.read,
+    required this.timeLabel,
+    this.topicId,
+    this.actorName,
+    this.actorUsername,
+    this.actorAvatarUrl,
+    this.at,
+  });
+
+  final int id;
+  final String type;
+
+  /// `reply` / `mention` / `like` / `system`
+  final String kind;
+
+  final String title;
+  final String body;
+  final String href;
+  final bool read;
+
+  /// 相对时间（「3 分钟前」或日期），服务端按 locale 算好
+  final String timeLabel;
+
+  /// 能从 href 解析出帖子 id 就走原生阅读器，否则交给网页容器
+  final int? topicId;
+
+  final String? actorName;
+  final String? actorUsername;
+  final String? actorAvatarUrl;
+  final DateTime? at;
+
+  NotificationFilter get filterOf => switch (kind) {
+        'reply' => NotificationFilter.replies,
+        'mention' => NotificationFilter.mentions,
+        'like' => NotificationFilter.likes,
+        _ => NotificationFilter.system,
+      };
+
+  /// 头像里显示的那个字：系统通知没有作者，用符号占位
+  String get initial {
+    final name = (actorName ?? '').trim();
+    return name.isEmpty ? '' : name.substring(0, 1).toUpperCase();
+  }
+
+  NotificationItem asRead() => NotificationItem(
+        id: id,
+        type: type,
+        kind: kind,
+        title: title,
+        body: body,
+        href: href,
+        read: true,
+        timeLabel: timeLabel,
+        topicId: topicId,
+        actorName: actorName,
+        actorUsername: actorUsername,
+        actorAvatarUrl: actorAvatarUrl,
+        at: at,
+      );
+
+  factory NotificationItem.fromJson(Map<String, dynamic> json) => NotificationItem(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        type: json['type'] as String? ?? '',
+        kind: json['kind'] as String? ?? 'system',
+        title: json['title'] as String? ?? '',
+        body: json['body'] as String? ?? '',
+        href: json['href'] as String? ?? '/',
+        read: json['read'] as bool? ?? false,
+        timeLabel: json['timeLabel'] as String? ?? '',
+        topicId: (json['topicId'] as num?)?.toInt(),
+        actorName: json['actorName'] as String?,
+        actorUsername: json['actorUsername'] as String?,
+        actorAvatarUrl: json['actorAvatarUrl'] as String?,
+        at: _parseTime(json['at']),
+      );
+}
+
+class NotificationPageResult {
+  const NotificationPageResult({
+    required this.items,
+    required this.counts,
+    required this.hasMore,
+    this.nextCursor,
+  });
+
+  final List<NotificationItem> items;
+  final NotificationCounts counts;
+  final bool hasMore;
+  final String? nextCursor;
+
+  factory NotificationPageResult.fromJson(
+    Map<String, dynamic> data,
+    Map<String, dynamic>? meta,
+  ) =>
+      NotificationPageResult(
+        items: ((data['items'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => NotificationItem.fromJson(e.cast<String, dynamic>()))
+            .toList(growable: false),
+        counts: NotificationCounts.fromJson(
+          (data['counts'] as Map?)?.cast<String, dynamic>(),
+        ),
+        hasMore: meta?['hasMore'] as bool? ?? false,
+        nextCursor: meta?['nextCursor'] as String?,
+      );
+}
+
 DateTime? _parseTime(Object? value) {
   if (value is! String || value.isEmpty) return null;
   return DateTime.tryParse(value)?.toLocal();

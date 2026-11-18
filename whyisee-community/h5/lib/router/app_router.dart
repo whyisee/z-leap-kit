@@ -6,6 +6,7 @@ import '../features/feed/feed_page.dart';
 import '../features/following/following_page.dart';
 import '../features/go/go_page.dart';
 import '../features/me/me_page.dart';
+import '../features/notifications/notification_page.dart';
 import '../features/shell/home_shell.dart';
 import '../features/topic/topic_detail_page.dart';
 import '../features/web/web_route_page.dart';
@@ -87,7 +88,19 @@ final GoRouter appRouter = GoRouter(
                   path: 't/:id',
                   pageBuilder: (context, state) => _topicPage(state),
                 ),
-                // 设置、通知、公开主页这些低频页继续用网页版，push 一个带返回条的容器
+                // 通知是原生页：站内提醒（回复 / @ / 赞 / 系统）全部能在这里处理完
+                GoRoute(
+                  path: 'notifications',
+                  builder: (context, state) => const NotificationPage(),
+                  routes: [
+                    // 通知里的帖子进原生阅读器，挂在通知栈下，返回回到通知列表
+                    GoRoute(
+                      path: 't/:id',
+                      pageBuilder: (context, state) => _topicPage(state),
+                    ),
+                  ],
+                ),
+                // 设置、公开主页这些低频页继续用网页版，push 一个带返回条的容器
                 GoRoute(
                   path: 'page',
                   builder: (context, state) {

@@ -175,7 +175,14 @@ export async function listNotificationGroups(userId: number, limit = 30): Promis
 export async function listNotifications(
   userId: number,
   limit = 50,
-  filter: { actorId?: number; systemOnly?: boolean } = {},
+  filter: {
+    actorId?: number;
+    systemOnly?: boolean;
+    kinds?: string[];
+    /** 排除这些 type（和 kinds 互补，用来表达「其余都算」这种分类） */
+    outsideKinds?: string[];
+    offset?: number;
+  } = {},
 ): Promise<NotificationItem[]> {
   const rows = await query<NotificationRow>(
     `
@@ -200,14 +207,20 @@ export async function listNotifications(
         OR ($3 = 'system' AND notifications.actor_id IS NULL)
         OR ($3 = 'actor' AND notifications.actor_id = $4)
       )
+      -- $5 为 null 表示不按类型过滤（网页版就是这条路）
+      AND ($5::text[] IS NULL OR notifications.type = ANY($5::text[]))
+      AND ($7::text[] IS NULL OR notifications.type <> ALL($7::text[]))
     ORDER BY notifications.created_at DESC, notifications.id DESC
-    LIMIT $2
+    LIMIT $2 OFFSET $6
     `,
     [
       userId,
       limit,
       filter.systemOnly ? "system" : typeof filter.actorId === "number" ? "actor" : "all",
       filter.actorId || 0,
+      filter.kinds && filter.kinds.length > 0 ? filter.kinds : null,
+      filter.offset && filter.offset > 0 ? filter.offset : 0,
+      filter.outsideKinds && filter.outsideKinds.length > 0 ? filter.outsideKinds : null,
     ],
   );
 
@@ -233,6 +246,67 @@ export async function countUnreadNotifications(userId: number) {
   );
 
   return Number(row?.count || 0);
+}
+
+/**
+ * 「有人在跟你说话」的那几类。回复、AI 回复、关注的话题有动静都算同一件事：
+ * 有话要接。@ 和赞单独算，因为它们要的反应不一样（回话 vs 看一眼）。
+ *
+ * 网页版在 notifications.astro 里内联过一份同样的集合，先不动它 ——
+ * 那边的过滤是取 100 条后内存筛，改成 SQL 会改变它现有的分页行为。
+ */
+export const replyNotificationTypes = [
+  "topic_reply",
+  "post_reply",
+  "bot_reply",
+  "bot_post_reply",
+  "topic_followed_activity",
+];
+
+export interface NotificationUnreadCounts {
+  total: number;
+  replies: number;
+  mentions: number;
+  likes: number;
+  system: number;
+}
+
+/**
+ * 一次查出各分类的未读数。
+ *
+ * App 顶部的分段条要给每档标未读，分四次 count 就是四个来回；
+ * 用 FILTER 聚合一条就够，代价是这条 SQL 得知道分类怎么划。
+ */
+export async function countUnreadNotificationsByKind(userId: number): Promise<NotificationUnreadCounts> {
+  const row = await queryOne<{
+    total: string;
+    replies: string;
+    mentions: string;
+    likes: string;
+    system: string;
+  }>(
+    `
+    SELECT
+      COUNT(*)::text AS total,
+      COUNT(*) FILTER (WHERE type = ANY($2::text[]))::text AS replies,
+      COUNT(*) FILTER (WHERE type = 'mention')::text AS mentions,
+      COUNT(*) FILTER (WHERE type = 'like')::text AS likes,
+      COUNT(*) FILTER (
+        WHERE type <> ALL($2::text[]) AND type <> 'mention' AND type <> 'like'
+      )::text AS system
+    FROM notifications
+    WHERE user_id = $1 AND read_at IS NULL AND type <> 'direct_message'
+    `,
+    [userId, replyNotificationTypes],
+  );
+
+  return {
+    total: Number(row?.total || 0),
+    replies: Number(row?.replies || 0),
+    mentions: Number(row?.mentions || 0),
+    likes: Number(row?.likes || 0),
+    system: Number(row?.system || 0),
+  };
 }
 
 export async function markNotificationsRead(userId: number) {

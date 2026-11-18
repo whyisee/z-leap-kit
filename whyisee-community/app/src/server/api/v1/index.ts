@@ -11,6 +11,7 @@ import aiRoutes from "./routes/ai";
 import meRoutes from "./routes/me";
 import participationRoutes from "./routes/participation";
 import followingRoutes from "./routes/following";
+import notificationRoutes from "./routes/notifications";
 import metaRoutes from "./routes/meta";
 
 /**
@@ -34,6 +35,7 @@ v1.route("/ai", aiRoutes);
 v1.route("/me", meRoutes);
 v1.route("/participation", participationRoutes);
 v1.route("/following", followingRoutes);
+v1.route("/notifications", notificationRoutes);
 v1.route("/meta", metaRoutes);
 
 v1.notFound((c) => fail(c, "not_found", "接口不存在"));
