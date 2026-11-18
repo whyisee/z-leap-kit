@@ -94,6 +94,14 @@ void main() {
     expect(doc.charCount, 2);
   });
 
+  test('四级标题往返无损，五级以上收成四级', () {
+    final doc = MarkdownDocController(markdown: '#### 四级标题\n##### 五级');
+    expect(doc.blocks[0].type, MdBlockType.h4);
+    expect(doc.blocks[1].type, MdBlockType.h4);
+    expect(doc.blocks[0].text, '四级标题');
+    expect(doc.markdown, '#### 四级标题\n#### 五级');
+  });
+
   test('空正文也是合法的：至少留一个可编辑块', () {
     final doc = MarkdownDocController(markdown: '');
     expect(doc.blocks.length, 1);

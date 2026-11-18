@@ -165,7 +165,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         switch (heading.group(1)!.length) {
           1 => MdBlockType.h1,
           2 => MdBlockType.h2,
-          _ => MdBlockType.h3,
+          3 => MdBlockType.h3,
+          _ => MdBlockType.h4,
         },
         heading.group(2)!,
       );
@@ -286,7 +287,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         _Toolbar(
           enabled: widget.enabled,
           length: _doc.charCount,
-          onHeading: () => _toggleType(MdBlockType.h2),
+          currentType: _activeBlock.type,
+          onHeading: _toggleType,
           onBold: () => _wrapSelection('**'),
           onBullet: () => _toggleType(MdBlockType.bullet),
           onQuote: () => _toggleType(MdBlockType.quote),
@@ -376,6 +378,7 @@ class _BlockFieldState extends State<_BlockField> {
         MdBlockType.h1 => 30,
         MdBlockType.h2 => 26,
         MdBlockType.h3 => 23,
+        MdBlockType.h4 => 22,
         _ => 21,
       },
       style: _styleFor(block.type),
@@ -421,6 +424,10 @@ class _BlockFieldState extends State<_BlockField> {
         ),
       MdBlockType.h3 => Padding(
           padding: const EdgeInsets.only(top: 6, bottom: 2),
+          child: field,
+        ),
+      MdBlockType.h4 => Padding(
+          padding: const EdgeInsets.only(top: 5, bottom: 1),
           child: field,
         ),
       MdBlockType.paragraph => Padding(
@@ -478,6 +485,12 @@ class _BlockFieldState extends State<_BlockField> {
             height: 1.5,
             fontWeight: FontWeight.w600,
             color: Color(Env.text),
+          ),
+        MdBlockType.h4 => const TextStyle(
+            fontSize: 15.5,
+            height: 1.55,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFFDCE3ED),
           ),
         MdBlockType.quote => const TextStyle(
             fontSize: 15,
@@ -552,6 +565,7 @@ class _Toolbar extends StatelessWidget {
   const _Toolbar({
     required this.enabled,
     required this.length,
+    required this.currentType,
     required this.onHeading,
     required this.onBold,
     required this.onBullet,
@@ -563,7 +577,10 @@ class _Toolbar extends StatelessWidget {
 
   final bool enabled;
   final int length;
-  final VoidCallback onHeading;
+
+  /// 光标所在块的类型：标题菜单要标出当前是几级
+  final MdBlockType currentType;
+  final ValueChanged<MdBlockType> onHeading;
   final VoidCallback onBold;
   final VoidCallback onBullet;
   final VoidCallback onQuote;
@@ -582,7 +599,7 @@ class _Toolbar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _ToolButton(icon: Icons.title, tooltip: '标题', onTap: enabled ? onHeading : null),
+          _HeadingButton(current: currentType, enabled: enabled, onPick: onHeading),
           _ToolButton(icon: Icons.format_bold, tooltip: '加粗', onTap: enabled ? onBold : null),
           _ToolButton(
             icon: Icons.format_list_bulleted,
@@ -614,6 +631,87 @@ class _Toolbar extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 标题级别按钮：点开悬浮菜单选「正文 / T1–T4」。
+///
+/// 直接在工具条上摆四个 T 会把工具条撑爆，所以收进一个菜单里；
+/// 菜单项按各自字号显示预览字，选之前就能看出层级差别。
+class _HeadingButton extends StatelessWidget {
+  const _HeadingButton({required this.current, required this.enabled, required this.onPick});
+
+  final MdBlockType current;
+  final bool enabled;
+  final ValueChanged<MdBlockType> onPick;
+
+  /// (块类型, 标签, 预览字号, 字重)
+  static const _levels = <(MdBlockType, String, double, FontWeight)>[
+    (MdBlockType.paragraph, '正文', 15, FontWeight.w400),
+    (MdBlockType.h1, 'T1', 21, FontWeight.w700),
+    (MdBlockType.h2, 'T2', 18, FontWeight.w700),
+    (MdBlockType.h3, 'T3', 16, FontWeight.w600),
+    (MdBlockType.h4, 'T4', 14.5, FontWeight.w600),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<MdBlockType>(
+      enabled: enabled,
+      tooltip: '标题级别',
+      // 工具条贴在屏幕底部：菜单要往上弹，否则一屏放不下
+      position: PopupMenuPosition.over,
+      offset: const Offset(0, -6),
+      padding: EdgeInsets.zero,
+      color: const Color(0xFF1B222C),
+      elevation: 14,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      constraints: const BoxConstraints(minWidth: 172),
+      onSelected: onPick,
+      itemBuilder: (context) => [
+        for (final (type, label, size, weight) in _levels)
+          PopupMenuItem<MdBlockType>(
+            value: type,
+            height: 40,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 26,
+                  child: Text(
+                    label,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF7C8798)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '标题文字',
+                  style: TextStyle(
+                    fontSize: size,
+                    fontWeight: weight,
+                    height: 1.2,
+                    color: const Color(Env.text),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                if (current == type)
+                  const Icon(Icons.check, size: 15, color: Color(0xFF8AB4F8))
+                else
+                  const SizedBox(width: 15),
+              ],
+            ),
+          ),
+      ],
+      child: SizedBox(
+        width: 38,
+        height: 44,
+        child: Icon(
+          Icons.title,
+          size: 19,
+          color: enabled ? const Color(0xFF9AA5B4) : const Color(0xFF3D4551),
+        ),
       ),
     );
   }

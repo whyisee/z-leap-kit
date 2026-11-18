@@ -177,6 +177,48 @@ void main() {
     expect(doc.blocks[2].type, MdBlockType.paragraph);
   });
 
+  testWidgets('标题按钮弹悬浮菜单，可选 1–4 级', (tester) async {
+    final doc = await _pump(tester);
+
+    await tester.enterText(find.byType(TextField).first, '小标题');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('标题级别'));
+    await tester.pumpAndSettle();
+
+    // 五档都在：正文 + T1~T4
+    expect(find.text('正文'), findsOneWidget);
+    for (final level in ['T1', 'T2', 'T3', 'T4']) {
+      expect(find.text(level), findsOneWidget);
+    }
+
+    await tester.tap(find.text('T3'));
+    await tester.pumpAndSettle();
+
+    expect(doc.blocks.first.type, MdBlockType.h3);
+    expect(doc.blocks.first.text, '小标题');
+    expect(doc.markdown, '### 小标题');
+  });
+
+  testWidgets('再点同一级标题退回正文', (tester) async {
+    final doc = await _pump(tester);
+
+    await tester.enterText(find.byType(TextField).first, '小标题');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('标题级别'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('T2'));
+    await tester.pumpAndSettle();
+    expect(doc.blocks.first.type, MdBlockType.h2);
+
+    await tester.tap(find.byTooltip('标题级别'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('T2'));
+    await tester.pumpAndSettle();
+    expect(doc.blocks.first.type, MdBlockType.paragraph);
+  });
+
   testWidgets('390 宽下渲染不溢出', (tester) async {
     await _pump(tester);
     await tester.pumpAndSettle();

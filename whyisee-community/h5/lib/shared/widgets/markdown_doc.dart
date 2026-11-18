@@ -8,7 +8,7 @@ import 'markdown_spans.dart';
 ///
 /// 列表/标题/引用这些在飞书里是「段落属性」，不是文本内容 —— 这里同理：
 /// 用户永远打不出也看不到 `#` `-` `>`，它们只存在于落库的 Markdown 里。
-enum MdBlockType { paragraph, h1, h2, h3, bullet, ordered, quote, code, divider }
+enum MdBlockType { paragraph, h1, h2, h3, h4, bullet, ordered, quote, code, divider }
 
 /// 一个可编辑的块。
 ///
@@ -136,6 +136,8 @@ class MarkdownDocController extends ChangeNotifier {
           lines.add('## ${block.text}');
         case MdBlockType.h3:
           lines.add('### ${block.text}');
+        case MdBlockType.h4:
+          lines.add('#### ${block.text}');
         case MdBlockType.bullet:
           lines.add('- ${block.text}');
         case MdBlockType.ordered:
@@ -186,7 +188,11 @@ class MarkdownDocController extends ChangeNotifier {
     // 空标题/空引用/空列表项再回车，就是「这一段写完了」，落回正文
     final tailEmpty = tail.trim().isEmpty;
     final nextType = switch (block.type) {
-      MdBlockType.h1 || MdBlockType.h2 || MdBlockType.h3 => MdBlockType.paragraph,
+      MdBlockType.h1 ||
+      MdBlockType.h2 ||
+      MdBlockType.h3 ||
+      MdBlockType.h4 =>
+        MdBlockType.paragraph,
       MdBlockType.quote || MdBlockType.bullet || MdBlockType.ordered =>
         tailEmpty ? MdBlockType.paragraph : block.type,
       _ => block.type,
@@ -357,7 +363,9 @@ List<MdBlock> parseMarkdown(String markdown) {
           type: switch (level) {
             1 => MdBlockType.h1,
             2 => MdBlockType.h2,
-            _ => MdBlockType.h3,
+            3 => MdBlockType.h3,
+            // h5/h6 收成 h4：社区正文用不到 5 级以上，多留两级只会让工具条变长
+            _ => MdBlockType.h4,
           },
           text: heading.group(2)!,
         ),
