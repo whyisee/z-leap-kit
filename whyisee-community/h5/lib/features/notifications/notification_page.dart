@@ -143,20 +143,31 @@ class _NotificationPageState extends ConsumerState<NotificationPage> {
 
   /// 点开：先本地置已读（返回时那一行不再亮着），再跳目标。
   ///
-  /// 能解析出帖子 id 就走原生阅读器，其余的（任务、举报、设置类）交给网页容器。
+  /// 去哪儿由服务端定（`target.kind`）：话题进原生阅读器，待审话题进审核页，
+  /// 其余的（举报、设置类）交给网页容器。客户端不按 `type` 猜——猜错就是把
+  /// 普通用户扔进后台。
+  ///
   /// 走原生时把「谁、什么时候、指向哪一层」一起带过去 —— 否则落地的是一篇
   /// 从标题开始的文章，用户得自己数到第 12 楼才能看到回复他的那句。
   void _open(NotificationItem item, NotificationController controller) {
     controller.markRead(item);
 
-    final topicId = item.topicId;
-    if (topicId != null && topicId > 0) {
+    final target = item.target;
+
+    if (target.opensReview) {
+      context.push('/me/notifications/review/${target.topicId}');
+      return;
+    }
+
+    final topicId = target.topicId;
+    if (target.opensReader && topicId != null) {
       final postId = postAnchorOf(item.href);
       final query = postId == null ? '' : '?post=$postId';
       context.push(
         '/me/notifications/t/$topicId$query',
         extra: TopicEntry(
           kind: item.kind,
+          title: item.title,
           actorName: item.actorName,
           actorAvatarUrl: item.actorAvatarUrl,
           timeLabel: item.timeLabel,
@@ -525,7 +536,9 @@ class _NotificationRow extends StatelessWidget {
       'mention' => '$who 在回复里提到了你',
       'like' => '$who 赞了你',
       'reply' => '$who 的这条回复',
-      _ => item.type == 'topic_pending' ? '等待审核' : '$who · 系统通知',
+      // 待审通知只发给管理员，点开就是审核页 —— 文案要说「等你处理」，
+      // 而不是一句看不出该干什么的「等待审核」
+      _ => item.type == 'topic_pending' ? '待你审核 · 点开处理' : '$who · 系统通知',
     };
   }
 

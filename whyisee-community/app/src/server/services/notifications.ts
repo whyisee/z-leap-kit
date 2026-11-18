@@ -4,6 +4,8 @@ import { execute, query, queryOne } from "../db/client.ts";
 export interface NotificationItem {
   id: number;
   type: string;
+  targetType: string;
+  targetId: number;
   title: string;
   body: string;
   href: string;
@@ -31,6 +33,8 @@ export interface NotificationGroup {
 interface NotificationRow {
   id: number;
   type: string;
+  target_type: string;
+  target_id: number;
   title: string;
   body: string;
   href: string;
@@ -189,6 +193,8 @@ export async function listNotifications(
     SELECT
       notifications.id,
       notifications.type,
+      notifications.target_type,
+      notifications.target_id,
       notifications.title,
       notifications.body,
       notifications.href,
@@ -227,6 +233,8 @@ export async function listNotifications(
   return rows.map((row) => ({
     id: row.id,
     type: row.type,
+    targetType: row.target_type,
+    targetId: row.target_id,
     title: row.title,
     body: row.body,
     href: row.href,

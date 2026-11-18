@@ -359,6 +359,8 @@ export const optionalAuth: MiddlewareHandler = async (c, next) => {
 | GET | `/api/v1/following` | Bearer | `filter=all\|topics\|users\|categories\|tags`、`limit`、`cursor` → 订阅流（复用 `listFollowingFeed`） |
 | GET | `/api/v1/notifications` | Bearer | `filter=all\|replies\|mentions\|likes\|system`、`limit`、`cursor` → 通知列表 + 各档未读数（复用 `listNotifications`） |
 | POST | `/api/v1/notifications/read` | Bearer | `{ids:[...]}` 精确标记，或 `{all:true}` 一键清空；回最新计数 |
+| GET | `/api/v1/admin/review/topics/:id` | Bearer + 管理员 | 待审话题：`topic`（正文 HTML）+ `verdict`（自动预审结论 / 风险分 / 理由）+ `queue{remaining,nextId}` |
+| POST | `/api/v1/admin/review/topics/:id` | Bearer + 管理员 | `{action:"publish"\|"draft"}`，回 `{status, queue{remaining,nextId}}` |
 
 **P2（按需）**
 
@@ -1271,6 +1273,28 @@ App 侧（`features/notifications/`）：
   换一篇」——那会把用户从「看某条回复」的任务里甩出去（快速上滑很容易误触）。
 - `post` 走 query 而不是 `extra`：进程被回收重建后 `extra` 会丢，
   但「跳到那一层」这件事仍然成立。
+
+#### 系统通知的落地页：审核队列
+
+系统类通知里只有一种「点开就得干活」的：`topic_pending`（新的待审核话题）。
+它的 href 是 `/admin?status=pending`，照原样丢进网页容器，手机上先看到一屏筛选器
+和表格，再滚到那一行点「发布」——手机上审核基本就废在这一步。
+
+所以单独做了原生审核页（`features/review/`）：
+
+- **点开去哪儿由服务端决定**。通知接口多回一个 `target{kind,topicId,path}`：
+  管理员拿到的 `topic_pending` 是 `kind:"review"`，其余能解析出帖子的是
+  `kind:"topic"`，都不行才是 `kind:"web"`。权限判断留在服务端，客户端不按
+  `type` 字符串猜——猜错就是把普通用户扔进后台。
+- **把 AI 预审结论放在正文上面**。`content_review_results` 里已经有
+  `decision` / `risk_score` / `reasons_json`，直接读来展示（`services/reviewQueue.ts`）。
+  多数内容扫一眼理由就能拍板，只有分歧时才认真读正文；没有预审记录的写一句
+  「直接读正文判断」，不假装有结论。
+- **底部两个动作常驻**：退回草稿（描边，带二次确认）/ 通过并发布（实心）。
+  通过后自动换到下一条（`pushReplacement`），队列能一口气清完；没有下一条才回列表。
+- **已发布的话题不再给按钮**：网页后台已经发布过的，审核页只留一个「打开话题」，
+  避免「点了通过没反应」（服务端对重复发布是幂等的）。
+- 退回只到 `draft`，不做「删除」：一次误触不该等于删号，那个入口留给网页后台。
 
 ### 12.2 网页侧改动（共 3 处，均不影响普通浏览器）
 

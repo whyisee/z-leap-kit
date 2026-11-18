@@ -48,6 +48,25 @@ function readTopicId(href: string) {
   return Number.isFinite(id) && id > 0 ? id : null;
 }
 
+/**
+ * 点开这一条该去哪儿。
+ *
+ * 判断放服务端而不是客户端，理由是权限：待审话题的 href 是 `/admin?status=pending`，
+ * 客户端只能从 type 字符串猜「这是不是我能审的」，一旦猜错就是把非管理员扔进后台。
+ * 这里直接用会话里的角色决定，客户端照 kind 走。
+ */
+function openTargetOf(item: NotificationItem, adminUser: boolean) {
+  const topicId = readTopicId(item.href);
+
+  if (item.type === "topic_pending" && adminUser && item.targetType === "topic" && item.targetId > 0) {
+    return { kind: "review", topicId: item.targetId, path: item.href };
+  }
+
+  if (topicId) return { kind: "topic", topicId, path: item.href };
+
+  return { kind: "web", topicId: null, path: item.href };
+}
+
 notifications.get("/", requireAuth, async (c) => {
   const session = sessionOf(c);
   if (!session) return fail(c, "unauthorized", "请先登录");
@@ -75,6 +94,7 @@ notifications.get("/", requireAuth, async (c) => {
   const page = hasMore ? rows.slice(0, limit) : rows;
 
   const counts = await countUnreadNotificationsByKind(session.userId);
+  const adminUser = session.role === "admin";
 
   return ok(
     c,
@@ -88,7 +108,9 @@ notifications.get("/", requireAuth, async (c) => {
         title: item.title,
         body: item.body,
         href: item.href,
+        // 旧版本客户端只认这个字段（能解析出话题才算有目标），保留一版
         topicId: readTopicId(item.href),
+        target: openTargetOf(item, adminUser),
         actorName: item.actorName,
         actorUsername: item.actorUsername,
         actorAvatarUrl: item.actorAvatarUrl,

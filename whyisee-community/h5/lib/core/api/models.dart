@@ -989,6 +989,7 @@ class NotificationItem {
     required this.read,
     required this.timeLabel,
     this.topicId,
+    this.target = const NotificationTarget(kind: 'web', path: '/'),
     this.actorName,
     this.actorUsername,
     this.actorAvatarUrl,
@@ -1010,7 +1011,11 @@ class NotificationItem {
   final String timeLabel;
 
   /// 能从 href 解析出帖子 id 就走原生阅读器，否则交给网页容器
+  /// （老字段，保留是为了兼容还没升级的服务端）
   final int? topicId;
+
+  /// 点开去哪儿：阅读器 / 审核页 / 网页。判断在服务端做。
+  final NotificationTarget target;
 
   final String? actorName;
   final String? actorUsername;
@@ -1040,6 +1045,7 @@ class NotificationItem {
         read: true,
         timeLabel: timeLabel,
         topicId: topicId,
+        target: target,
         actorName: actorName,
         actorUsername: actorUsername,
         actorAvatarUrl: actorAvatarUrl,
@@ -1056,11 +1062,63 @@ class NotificationItem {
         read: json['read'] as bool? ?? false,
         timeLabel: json['timeLabel'] as String? ?? '',
         topicId: (json['topicId'] as num?)?.toInt(),
+        target: NotificationTarget.fromJson(
+          (json['target'] as Map?)?.cast<String, dynamic>(),
+          href: json['href'] as String? ?? '/',
+          topicId: (json['topicId'] as num?)?.toInt(),
+        ),
         actorName: json['actorName'] as String?,
         actorUsername: json['actorUsername'] as String?,
         actorAvatarUrl: json['actorAvatarUrl'] as String?,
         at: _parseTime(json['at']),
       );
+}
+
+/// 点开一条通知该去哪儿。
+///
+/// 由服务端判定（它知道当前账号是不是管理员），客户端只照 `kind` 走。
+/// 客户端自己按 type 字符串猜的话，「待审话题」这种 href 是后台地址的通知
+/// 迟早会把普通用户扔进 /admin。
+class NotificationTarget {
+  const NotificationTarget({
+    required this.kind,
+    required this.path,
+    this.topicId,
+  });
+
+  /// `topic` 原生阅读器 / `review` 审核页 / `web` 网页容器
+  final String kind;
+
+  /// 目标话题；`web` 时为 null
+  final int? topicId;
+
+  /// 兜底地址（网页容器用）
+  final String path;
+
+  bool get opensReader => kind == 'topic' && (topicId ?? 0) > 0;
+  bool get opensReview => kind == 'review' && (topicId ?? 0) > 0;
+
+  factory NotificationTarget.fromJson(
+    Map<String, dynamic>? json, {
+    required String href,
+    int? topicId,
+  }) {
+    final id = (json?['topicId'] as num?)?.toInt() ?? topicId;
+    final kind = json?['kind'] as String?;
+    if (kind == null) {
+      // 老服务端只给 topicId：能解析出帖子就走阅读器，否则网页
+      return NotificationTarget(
+        kind: (id ?? 0) > 0 ? 'topic' : 'web',
+        topicId: id,
+        path: href,
+      );
+    }
+    return NotificationTarget(
+      kind: kind,
+      topicId: id,
+      path: json?['path'] as String? ?? href,
+    );
+  }
 }
 
 class NotificationPageResult {
@@ -1096,4 +1154,153 @@ class NotificationPageResult {
 DateTime? _parseTime(Object? value) {
   if (value is! String || value.isEmpty) return null;
   return DateTime.tryParse(value)?.toLocal();
+}
+
+// ---------------------------------------------------------------- 审核
+
+/// 自动审核给的预判。
+///
+/// 它是「审核页」存在的理由：没有它，管理员得从头读完再自己下判断；
+/// 有了它，多数内容扫一眼理由就能拍板，只有分歧时才认真读正文。
+class ReviewVerdict {
+  const ReviewVerdict({
+    required this.decision,
+    required this.riskScore,
+    required this.reasons,
+    required this.resultStatus,
+    required this.model,
+    this.at,
+  });
+
+  /// `approve` / `reject` / `needs_human` / `unknown`
+  final String decision;
+
+  /// 0-100，越大越该拦
+  final int riskScore;
+  final List<String> reasons;
+
+  /// `applied` / `needs_human` / `failed`
+  final String resultStatus;
+  final String model;
+  final DateTime? at;
+
+  /// 一句话结论，直接用 AI 的原话级别判断
+  String get headline => switch (decision) {
+        'approve' => '建议通过',
+        'reject' => '建议退回',
+        'needs_human' => '需要人工判断',
+        _ => '没有预审结论',
+      };
+
+  factory ReviewVerdict.fromJson(Map<String, dynamic> json) => ReviewVerdict(
+        decision: json['decision'] as String? ?? 'unknown',
+        riskScore: (json['riskScore'] as num?)?.toInt() ?? 0,
+        reasons: ((json['reasons'] as List?) ?? const [])
+            .whereType<String>()
+            .where((e) => e.trim().isNotEmpty)
+            .toList(growable: false),
+        resultStatus: json['resultStatus'] as String? ?? '',
+        model: json['model'] as String? ?? '',
+        at: _parseTime(json['createdAt']),
+      );
+}
+
+/// 待审话题（管理员视角：draft/pending 也能读到正文）。
+class ReviewTopic {
+  const ReviewTopic({
+    required this.id,
+    required this.title,
+    required this.summary,
+    required this.contentHtml,
+    required this.type,
+    required this.status,
+    required this.author,
+    required this.category,
+    required this.tags,
+    this.createdAt,
+  });
+
+  final int id;
+  final String title;
+  final String summary;
+  final String contentHtml;
+  final String type;
+  final String status;
+  final Author author;
+  final CategoryRef category;
+  final List<TagRef> tags;
+  final DateTime? createdAt;
+
+  factory ReviewTopic.fromJson(Map<String, dynamic> json) => ReviewTopic(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        title: json['title'] as String? ?? '',
+        summary: json['summary'] as String? ?? '',
+        contentHtml: json['contentHtml'] as String? ?? '',
+        type: json['type'] as String? ?? '',
+        status: json['status'] as String? ?? '',
+        author: Author.fromJson((json['author'] as Map?)?.cast<String, dynamic>() ?? const {}),
+        category: CategoryRef.fromJson((json['category'] as Map?)?.cast<String, dynamic>() ?? const {}),
+        tags: ((json['tags'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => TagRef.fromJson(e.cast<String, dynamic>()))
+            .toList(growable: false),
+        createdAt: _parseTime(json['createdAt']),
+      );
+}
+
+class ReviewDetail {
+  const ReviewDetail({
+    required this.topic,
+    required this.remaining,
+    this.verdict,
+    this.nextId,
+  });
+
+  final ReviewTopic topic;
+  final ReviewVerdict? verdict;
+
+  /// 除这一条之外还有几条待审
+  final int remaining;
+
+  /// 队列里的下一条
+  final int? nextId;
+
+  factory ReviewDetail.fromJson(Map<String, dynamic> json) {
+    final queue = (json['queue'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return ReviewDetail(
+      topic: ReviewTopic.fromJson(
+        (json['topic'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      verdict: json['verdict'] is Map
+          ? ReviewVerdict.fromJson((json['verdict'] as Map).cast<String, dynamic>())
+          : null,
+      remaining: (queue['remaining'] as num?)?.toInt() ?? 0,
+      nextId: (queue['nextId'] as num?)?.toInt(),
+    );
+  }
+}
+
+/// 审核动作的结果：给了下一步去哪儿，页面不必自己算队列。
+class ReviewActionResult {
+  const ReviewActionResult({
+    required this.id,
+    required this.status,
+    required this.remaining,
+    this.nextId,
+  });
+
+  final int id;
+  final String status;
+  final int remaining;
+  final int? nextId;
+
+  factory ReviewActionResult.fromJson(Map<String, dynamic> json) {
+    final queue = (json['queue'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return ReviewActionResult(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      status: json['status'] as String? ?? '',
+      remaining: (queue['remaining'] as num?)?.toInt() ?? 0,
+      nextId: (queue['nextId'] as num?)?.toInt(),
+    );
+  }
 }

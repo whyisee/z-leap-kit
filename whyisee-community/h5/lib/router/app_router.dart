@@ -7,6 +7,7 @@ import '../features/following/following_page.dart';
 import '../features/go/go_page.dart';
 import '../features/me/me_page.dart';
 import '../features/notifications/notification_page.dart';
+import '../features/review/review_page.dart';
 import '../features/shell/home_shell.dart';
 import '../features/topic/topic_detail_page.dart';
 import '../features/topic/topic_entry.dart';
@@ -98,6 +99,13 @@ final GoRouter appRouter = GoRouter(
                     GoRoute(
                       path: 't/:id',
                       pageBuilder: (context, state) => _topicPage(state),
+                    ),
+                    // 审核队列：管理员点「新的待审核话题」直接进内容 + 通过/退回
+                    GoRoute(
+                      path: 'review/:id',
+                      builder: (context, state) => ReviewTopicPage(
+                        topicId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
+                      ),
                     ),
                   ],
                 ),

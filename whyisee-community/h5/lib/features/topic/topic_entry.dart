@@ -19,6 +19,7 @@ int? postAnchorOf(String href) {
 class TopicEntry {
   const TopicEntry({
     required this.kind,
+    this.title,
     this.actorName,
     this.actorAvatarUrl,
     this.timeLabel = '',
@@ -26,6 +27,10 @@ class TopicEntry {
 
   /// `reply` / `mention` / `like` / `system`，和后端 `kind` 一致
   final String kind;
+
+  /// 通知原文标题。系统通知（审核结果、关注动态）没有「谁回复了你」这种句式，
+  /// 直接用它当来由，比兜一句「站内通知」有用得多。
+  final String? title;
 
   final String? actorName;
   final String? actorAvatarUrl;
@@ -42,6 +47,8 @@ class TopicEntry {
         'reply' => '$who 回复了你的话题',
         'mention' => '$who 在回复里提到了你',
         'like' => '$who 赞了你的话题',
-        _ => who == '系统' ? '站内通知' : '$who · 站内通知',
+        _ => (title ?? '').trim().isNotEmpty
+            ? title!.trim()
+            : (who == '系统' ? '站内通知' : '$who · 站内通知'),
       };
 }
