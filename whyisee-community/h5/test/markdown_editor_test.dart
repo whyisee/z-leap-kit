@@ -6,7 +6,7 @@ import 'package:whyisee_app/shared/widgets/markdown_editor.dart';
 /// 这类偏移计算最容易写错一位，所以单独锁一遍。
 void main() {
   testWidgets('选中文字点加粗：包裹选区，光标仍框住原文字', (tester) async {
-    final controller = TextEditingController(text: '这是一段正文内容');
+    final controller = MarkdownEditingController(text: '这是一段正文内容');
     addTearDown(controller.dispose);
 
     await _pump(tester, controller);
@@ -22,7 +22,7 @@ void main() {
   });
 
   testWidgets('没选中就点加粗：插入成对标记，光标落在中间', (tester) async {
-    final controller = TextEditingController(text: '开头');
+    final controller = MarkdownEditingController(text: '开头');
     addTearDown(controller.dispose);
 
     await _pump(tester, controller);
@@ -37,7 +37,7 @@ void main() {
   });
 
   testWidgets('列表前缀可以反复点：加上、去掉', (tester) async {
-    final controller = TextEditingController(text: '第一行\n第二行');
+    final controller = MarkdownEditingController(text: '第一行\n第二行');
     addTearDown(controller.dispose);
 
     await _pump(tester, controller);
@@ -55,7 +55,7 @@ void main() {
   });
 
   testWidgets('空正文不显示字数，写了才显示', (tester) async {
-    final controller = TextEditingController();
+    final controller = MarkdownEditingController();
     addTearDown(controller.dispose);
 
     await _pump(tester, controller);
@@ -65,9 +65,32 @@ void main() {
     await tester.pump();
     expect(find.text('5 字'), findsOneWidget);
   });
+
+  testWidgets('切预览：输入框让位给只读渲染，符号消失', (tester) async {
+    final controller = MarkdownEditingController(text: '## 标题\n\n正文**重点**');
+    addTearDown(controller.dispose);
+
+    await _pump(tester, controller);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.byType(SelectableText), findsNothing);
+
+    await tester.tap(find.byTooltip('预览效果'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byType(SelectableText), findsOneWidget);
+    // 预览是只读的，源文不能被改掉
+    expect(controller.text, '## 标题\n\n正文**重点**');
+    expect(find.textContaining('##'), findsNothing);
+
+    // 回来还能继续写
+    await tester.tap(find.byTooltip('回到编辑'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget);
+  });
 }
 
-Future<void> _pump(WidgetTester tester, TextEditingController controller) async {
+Future<void> _pump(WidgetTester tester, MarkdownEditingController controller) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);

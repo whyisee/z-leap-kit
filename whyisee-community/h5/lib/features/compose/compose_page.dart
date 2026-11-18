@@ -24,7 +24,7 @@ class ComposePage extends ConsumerStatefulWidget {
 
 class _ComposePageState extends ConsumerState<ComposePage> {
   final _titleController = TextEditingController();
-  final _bodyController = TextEditingController();
+  final _bodyController = MarkdownEditingController();
   final _tagController = TextEditingController();
 
   /// 一次会话固定一个幂等 id：重试不会发两篇
@@ -300,7 +300,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
                       child: MarkdownEditor(
                         controller: _bodyController,
                         enabled: !_submitting,
-                        hintText: '开始写正文，选中文字可以用下方按钮加格式',
+                        hintText: '开始写正文，标题、加粗都能点下面按钮',
                         onChanged: (_) {
                           // 正文变化要刷新返回确认逻辑（_hasContent）
                           setState(() {});

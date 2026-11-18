@@ -1,18 +1,47 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/env.dart';
+import 'markdown_spans.dart';
+
+/// 带 Markdown 样式的输入控制器。
+///
+/// 输入法组词（composing）期间必须回退成默认样式：中文候选词还在 composition
+/// 里时改字号字重，候选框会和实际文本对不齐，看起来像光标乱跳。
+class MarkdownEditingController extends TextEditingController {
+  MarkdownEditingController({super.text});
+
+  /// 超过这个长度就不上色：每帧逐行跑正则，几万字会明显拖慢输入
+  static const int maxHighlightLength = 8000;
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    final composing = value.composing;
+    final isComposing =
+        composing.isValid && composing.start >= 0 && composing.end > composing.start;
+    final base = style ?? const TextStyle();
+
+    if (isComposing || text.length > maxHighlightLength) {
+      return super.buildTextSpan(context: context, style: style, withComposing: withComposing);
+    }
+
+    return TextSpan(style: base, children: markdownSpans(text, base: base, showSyntax: true));
+  }
+}
 
 /// 手机端 Markdown 正文编辑器。
 ///
 /// 不引入 flutter_quill / appflowy_editor 这类富文本引擎：它们存的是自己的
 /// 文档模型（delta / 节点树），落库前还得转回 Markdown，转出来和网页端
-/// 编辑器渲染的结果对不上。这里直接编辑 Markdown 源文，只在键盘上方加一排
-/// 快捷按钮 —— 手机上打 `**` 比点一下按钮难得多，这是唯一真需要帮的部分。
+/// 编辑器渲染的结果对不上。这里直接编辑 Markdown 源文：
 ///
-/// 行为：
-/// - 选中文字点「粗」「代码」→ 给选区包裹；没选中 → 插入成对标记，光标停中间。
-/// - 点「小标题」「列表」「引用」→ 改当前行行首，已经有这个前缀就取消（可反复点）。
-/// - 点「分割线」→ 光标处插入 `---`。
+/// - 编辑态看到的已经是排好版的样子 —— 标题变大加粗、`**` 之类的符号淡成背景，
+///   不需要在心里把源码翻译一遍；
+/// - 点工具条右侧的眼睛切预览，符号完全隐藏，看到的就是发出去的效果；
+/// - 「选中文字点按钮」比在手机上打 `**` 现实得多，这是唯一真需要帮的部分。
 class MarkdownEditor extends StatefulWidget {
   const MarkdownEditor({
     super.key,
@@ -23,7 +52,7 @@ class MarkdownEditor extends StatefulWidget {
     this.onChanged,
   });
 
-  final TextEditingController controller;
+  final MarkdownEditingController controller;
   final FocusNode? focusNode;
   final String hintText;
   final bool enabled;
@@ -35,10 +64,11 @@ class MarkdownEditor extends StatefulWidget {
 
 class _MarkdownEditorState extends State<MarkdownEditor> {
   final _ownFocus = FocusNode();
+  bool _preview = false;
 
   FocusNode get _focus => widget.focusNode ?? _ownFocus;
 
-  TextEditingController get _controller => widget.controller;
+  MarkdownEditingController get _controller => widget.controller;
 
   @override
   void initState() {
@@ -66,6 +96,11 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
       baseOffset: selection.start.clamp(0, length),
       extentOffset: selection.end.clamp(0, length),
     );
+  }
+
+  void _togglePreview() {
+    if (!_preview) FocusScope.of(context).unfocus();
+    setState(() => _preview = !_preview);
   }
 
   /// 包裹型：`**粗体**`、`` `代码` ``
@@ -141,30 +176,34 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     return Column(
       children: [
         Expanded(
-          child: TextField(
-            controller: _controller,
-            focusNode: _focus,
-            enabled: widget.enabled,
-            maxLines: null,
-            expands: true,
-            textAlignVertical: TextAlignVertical.top,
-            keyboardType: TextInputType.multiline,
-            textCapitalization: TextCapitalization.sentences,
-            style: const TextStyle(fontSize: 15, height: 1.75, color: Color(Env.text)),
-            onChanged: widget.onChanged,
-            // 点工具条不该收起键盘：M3 默认点外部就 unfocus，这里关掉
-            onTapOutside: (_) {},
-            decoration: InputDecoration(
-              hintText: widget.hintText,
-              hintStyle: const TextStyle(fontSize: 14, height: 1.75, color: Color(0xFF4A5462)),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            ),
-          ),
+          child: _preview
+              ? _MarkdownPreview(text: _controller.text)
+              : TextField(
+                  controller: _controller,
+                  focusNode: _focus,
+                  enabled: widget.enabled,
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  keyboardType: TextInputType.multiline,
+                  textCapitalization: TextCapitalization.sentences,
+                  style: const TextStyle(fontSize: 15, height: 1.75, color: Color(Env.text)),
+                  onChanged: widget.onChanged,
+                  // 点工具条不该收起键盘：M3 默认点外部就 unfocus，这里关掉
+                  onTapOutside: (_) {},
+                  decoration: InputDecoration(
+                    hintText: widget.hintText,
+                    hintStyle: const TextStyle(fontSize: 14, height: 1.75, color: Color(0xFF4A5462)),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                  ),
+                ),
         ),
         _Toolbar(
+          preview: _preview,
           enabled: widget.enabled,
           length: _controller.text.trim().length,
+          onTogglePreview: _togglePreview,
           onBold: () => _wrap('**'),
           onCode: () => _wrap('`'),
           onHeading: () => _toggleLinePrefix('## '),
@@ -178,10 +217,41 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   }
 }
 
+/// 预览态：符号全部隐藏，只读。
+class _MarkdownPreview extends StatelessWidget {
+  const _MarkdownPreview({required this.text});
+
+  final String text;
+
+  static const _base = TextStyle(fontSize: 15, height: 1.78, color: Color(Env.text));
+
+  @override
+  Widget build(BuildContext context) {
+    if (text.trim().isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+        child: Text(
+          '还没有内容。回到编辑写一点，这里显示发出去的样子。',
+          style: TextStyle(fontSize: 13, height: 1.7, color: Color(0xFF5F6875)),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      child: SelectableText.rich(
+        TextSpan(style: _base, children: markdownSpans(text, base: _base, showSyntax: false)),
+      ),
+    );
+  }
+}
+
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
+    required this.preview,
     required this.enabled,
     required this.length,
+    required this.onTogglePreview,
     required this.onBold,
     required this.onCode,
     required this.onHeading,
@@ -191,8 +261,10 @@ class _Toolbar extends StatelessWidget {
     required this.onDivider,
   });
 
+  final bool preview;
   final bool enabled;
   final int length;
+  final VoidCallback onTogglePreview;
   final VoidCallback onBold;
   final VoidCallback onCode;
   final VoidCallback onHeading;
@@ -203,6 +275,8 @@ class _Toolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canEdit = enabled && !preview;
+
     return Container(
       height: 44,
       padding: const EdgeInsets.only(left: 4, right: 12),
@@ -212,32 +286,69 @@ class _Toolbar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _ToolButton(icon: Icons.title, tooltip: '小标题', onTap: enabled ? onHeading : null),
-          _ToolButton(icon: Icons.format_bold, tooltip: '加粗', onTap: enabled ? onBold : null),
-          _ToolButton(
-            icon: Icons.format_list_bulleted,
-            tooltip: '列表',
-            onTap: enabled ? onList : null,
-          ),
-          _ToolButton(icon: Icons.format_quote, tooltip: '引用', onTap: enabled ? onQuote : null),
-          _ToolButton(icon: Icons.code, tooltip: '行内代码', onTap: enabled ? onCode : null),
-          _ToolButton(
-            icon: Icons.data_object,
-            tooltip: '代码块',
-            onTap: enabled ? onCodeBlock : null,
-          ),
-          _ToolButton(
-            icon: Icons.horizontal_rule,
-            tooltip: '分割线',
-            onTap: enabled ? onDivider : null,
-          ),
-          const Spacer(),
-          // 只有真写了才显示字数：空白页面上挂个 0 字很吵
-          if (length > 0)
-            Text(
-              '$length 字',
-              style: const TextStyle(fontSize: 11, color: Color(0xFF5F6875)),
+          if (preview)
+            Expanded(
+              child: Row(
+                children: [
+                  _ToolButton(
+                    icon: Icons.edit_outlined,
+                    tooltip: '回到编辑',
+                    onTap: enabled ? onTogglePreview : null,
+                  ),
+                  const Text(
+                    '预览（只读）',
+                    style: TextStyle(fontSize: 11.5, color: Color(0xFF5F6875)),
+                  ),
+                ],
+              ),
+            )
+          else ...[
+            _ToolButton(
+              icon: Icons.title,
+              tooltip: '小标题',
+              onTap: canEdit ? onHeading : null,
             ),
+            _ToolButton(icon: Icons.format_bold, tooltip: '加粗', onTap: canEdit ? onBold : null),
+            _ToolButton(
+              icon: Icons.format_list_bulleted,
+              tooltip: '列表',
+              onTap: canEdit ? onList : null,
+            ),
+            _ToolButton(
+              icon: Icons.format_quote,
+              tooltip: '引用',
+              onTap: canEdit ? onQuote : null,
+            ),
+            _ToolButton(icon: Icons.code, tooltip: '行内代码', onTap: canEdit ? onCode : null),
+            _ToolButton(
+              icon: Icons.data_object,
+              tooltip: '代码块',
+              onTap: canEdit ? onCodeBlock : null,
+            ),
+            _ToolButton(
+              icon: Icons.horizontal_rule,
+              tooltip: '分割线',
+              onTap: canEdit ? onDivider : null,
+            ),
+            // 字数占掉剩余空间：窄屏挤压时先压它，不挤按钮
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  length > 0 ? '$length 字' : '',
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.fade,
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF5F6875)),
+                ),
+              ),
+            ),
+            _ToolButton(
+              icon: Icons.visibility_outlined,
+              tooltip: '预览效果',
+              onTap: enabled ? onTogglePreview : null,
+            ),
+          ],
         ],
       ),
     );
@@ -259,7 +370,7 @@ class _ToolButton extends StatelessWidget {
         onTap: onTap,
         radius: 20,
         child: SizedBox(
-          width: 42,
+          width: 38,
           height: 44,
           child: Icon(
             icon,
