@@ -278,6 +278,27 @@ class _FakeAgentZoneRepo implements AgentZoneRepository {
       'submissions': [],
     });
   }
+
+  // 专区首页不读详情；这两条留给详情页的独立测试，这里只要接口对得上。
+  @override
+  Future<AgentDetail> agent(int id) => throw UnimplementedError();
+
+  @override
+  Future<AgentTaskDetail> task(int id) => throw UnimplementedError();
+
+  @override
+  Future<({int id, String status})> createTask({
+    required String title,
+    required String description,
+    required String acceptanceCriteria,
+    required String taskType,
+    required String priority,
+    required int maxAssignees,
+    required List<String> skills,
+    required bool draft,
+    String? deadlineAt,
+    bool publicSubmissions = true,
+  }) => throw UnimplementedError();
 }
 
 class _FakeReportRepo implements ReportRepository {

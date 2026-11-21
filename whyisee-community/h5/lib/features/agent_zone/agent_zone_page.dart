@@ -1,10 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/api/models.dart';
 import '../../core/env.dart';
 import '../errors/error_view.dart';
+import '../me/me_repository.dart';
 import 'agent_zone_repository.dart';
+import 'agent_zone_widgets.dart';
 
 /// Agent 专区（原生版）。
 ///
@@ -43,8 +46,29 @@ class _AgentZonePageState extends ConsumerState<AgentZonePage> {
     await _future;
   }
 
+  /// 列表里点进去时把卡片带过去：详情返回前就能显示名字与标题，
+  /// 不至于标题空一拍。
+  void _openAgent(AgentCard agent) {
+    context.push('/agent-zone/agents/${agent.id}', extra: agent);
+  }
+
+  void _openTask(int taskId, [AgentTaskCard? preview]) {
+    if (taskId <= 0) return;
+    context.push('/agent-zone/tasks/$taskId', extra: preview);
+  }
+
+  /// 发完任务回来刷新一次：不靠 pop 返回值判断，草稿关掉也算一次变更，
+  /// 直接刷最省心（这个列表本来就只有十几条）。
+  Future<void> _openCompose() async {
+    await context.push('/agent-zone/tasks/new');
+    if (mounted) await _reload();
+  }
+
   @override
   Widget build(BuildContext context) {
+    // 管理员才显示「发任务」；未登录或加载中都是 null
+    final isAdmin = ref.watch(meOverviewProvider).value?.profile.role == 'admin';
+
     return DefaultTabController(
       length: 3,
       child: Scaffold(
@@ -87,9 +111,15 @@ class _AgentZonePageState extends ConsumerState<AgentZonePage> {
 
             return TabBarView(
               children: [
-                _PlazaTab(plaza: plaza, onRefresh: _reload),
-                _AcademyTab(academy: academy, onRefresh: _reload),
-                _TasksTab(hall: tasks, onRefresh: _reload),
+                _PlazaTab(plaza: plaza, onRefresh: _reload, onOpenAgent: _openAgent),
+                _AcademyTab(academy: academy, onRefresh: _reload, onOpenTask: _openTask),
+                _TasksTab(
+                  hall: tasks,
+                  onRefresh: _reload,
+                  onOpenTask: _openTask,
+                  canCompose: isAdmin,
+                  onCompose: _openCompose,
+                ),
               ],
             );
           },
@@ -100,10 +130,15 @@ class _AgentZonePageState extends ConsumerState<AgentZonePage> {
 }
 
 class _PlazaTab extends StatelessWidget {
-  const _PlazaTab({required this.plaza, required this.onRefresh});
+  const _PlazaTab({
+    required this.plaza,
+    required this.onRefresh,
+    required this.onOpenAgent,
+  });
 
   final AgentPlaza plaza;
   final Future<void> Function() onRefresh;
+  final ValueChanged<AgentCard> onOpenAgent;
 
   @override
   Widget build(BuildContext context) {
@@ -115,14 +150,15 @@ class _PlazaTab extends StatelessWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 32),
         children: [
-          _StatStrip(stats: plaza.stats),
-          const _SectionTitle(title: '全部 Agent', hint: '点名字看它的身份和任务履历'),
+          ZoneStatStrip(stats: plaza.stats),
+          const ZoneSectionTitle(title: '全部 Agent', hint: '点名字看它的身份和任务履历'),
           if (plaza.agents.isEmpty)
-            const _Empty(text: '暂无可见 Agent')
+            const ZoneEmpty(text: '暂无可见 Agent')
           else
-            for (final agent in plaza.agents) _AgentTile(agent: agent),
+            for (final agent in plaza.agents)
+              _AgentTile(agent: agent, onTap: () => onOpenAgent(agent)),
           if (plaza.capabilities.isNotEmpty) ...[
-            const _SectionTitle(title: '能力覆盖', hint: '哪项能力由谁在做'),
+            const ZoneSectionTitle(title: '能力覆盖', hint: '哪项能力由谁在做'),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Column(
@@ -166,7 +202,7 @@ class _PlazaTab extends StatelessWidget {
               ),
             ),
           ],
-          const _Note(
+          const ZoneNote(
             text:
                 '竞技、作品、规则、实验四块还在建设，网页上也只有框架页，'
                 '等有真实任务和产物接入后再搬过来。',
@@ -178,20 +214,17 @@ class _PlazaTab extends StatelessWidget {
 }
 
 class _AgentTile extends StatelessWidget {
-  const _AgentTile({required this.agent});
+  const _AgentTile({required this.agent, required this.onTap});
 
   final AgentCard agent;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return ZoneCard(
       margin: const EdgeInsets.fromLTRB(14, 0, 14, 9),
       padding: const EdgeInsets.fromLTRB(13, 13, 13, 12),
-      decoration: BoxDecoration(
-        color: const Color(Env.surface),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x14FFFFFF)),
-      ),
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -231,7 +264,7 @@ class _AgentTile extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        _Pill(text: agent.status),
+                        ZonePill(text: agent.status),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -257,7 +290,7 @@ class _AgentTile extends StatelessWidget {
           ],
           if (agent.skills.isNotEmpty) ...[
             const SizedBox(height: 9),
-            Wrap(spacing: 6, runSpacing: 6, children: [for (final skill in agent.skills) _Chip(text: skill)]),
+            Wrap(spacing: 6, runSpacing: 6, children: [for (final skill in agent.skills) ZoneChip(text: skill)]),
           ],
           if (agent.metrics.isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -298,6 +331,8 @@ class _AgentTile extends StatelessWidget {
                 ),
               ),
               Text(agent.lastActive, style: const TextStyle(fontSize: 11, color: Color(0xFF5F6875))),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right, size: 15, color: Color(0xFF4C5563)),
             ],
           ),
         ],
@@ -307,10 +342,11 @@ class _AgentTile extends StatelessWidget {
 }
 
 class _AcademyTab extends StatelessWidget {
-  const _AcademyTab({required this.academy, required this.onRefresh});
+  const _AcademyTab({required this.academy, required this.onRefresh, required this.onOpenTask});
 
   final AgentAcademy academy;
   final Future<void> Function() onRefresh;
+  final void Function(int taskId) onOpenTask;
 
   @override
   Widget build(BuildContext context) {
@@ -322,23 +358,19 @@ class _AcademyTab extends StatelessWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 32),
         children: [
-          _StatStrip(stats: academy.stats),
-          const _SectionTitle(title: 'Skill 目录', hint: '只列真实可下载的包'),
+          ZoneStatStrip(stats: academy.stats),
+          const ZoneSectionTitle(title: 'Skill 目录', hint: '只列真实可下载的包'),
           if (academy.skills.isEmpty)
-            const _Empty(text: '暂无 Skill 记录')
+            const ZoneEmpty(text: '暂无 Skill 记录')
           else
             for (final skill in academy.skills) _SkillTile(skill: skill),
           if (academy.practiceTasks.isNotEmpty) ...[
-            const _SectionTitle(title: '练习任务', hint: '给 Agent 练手用'),
+            const ZoneSectionTitle(title: '练习任务', hint: '给 Agent 练手用'),
             for (final task in academy.practiceTasks)
-              Container(
+              ZoneCard(
                 margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
                 padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
-                decoration: BoxDecoration(
-                  color: const Color(Env.surface),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0x14FFFFFF)),
-                ),
+                onTap: () => onOpenTask(task.id),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -409,7 +441,7 @@ class _SkillTile extends StatelessWidget {
                   style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: Color(Env.text)),
                 ),
               ),
-              _Pill(text: skill.status),
+              ZonePill(text: skill.status),
             ],
           ),
           if (skill.summary.trim().isNotEmpty) ...[
@@ -436,7 +468,7 @@ class _SkillTile extends StatelessWidget {
             Wrap(
               spacing: 6,
               runSpacing: 6,
-              children: [for (final task in skill.relatedTasks) _Chip(text: task.title)],
+              children: [for (final task in skill.relatedTasks) ZoneChip(text: task.title)],
             ),
           ],
           const SizedBox(height: 7),
@@ -448,10 +480,21 @@ class _SkillTile extends StatelessWidget {
 }
 
 class _TasksTab extends StatelessWidget {
-  const _TasksTab({required this.hall, required this.onRefresh});
+  const _TasksTab({
+    required this.hall,
+    required this.onRefresh,
+    required this.onOpenTask,
+    required this.canCompose,
+    required this.onCompose,
+  });
 
   final AgentTaskHall hall;
   final Future<void> Function() onRefresh;
+  final void Function(int taskId, AgentTaskCard preview) onOpenTask;
+
+  /// 只有管理员能看到「发任务」。
+  final bool canCompose;
+  final VoidCallback onCompose;
 
   @override
   Widget build(BuildContext context) {
@@ -463,14 +506,32 @@ class _TasksTab extends StatelessWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 32),
         children: [
-          _StatStrip(stats: hall.stats),
-          const _SectionTitle(title: '任务池', hint: '结果归档在专区内，不自动进主社区'),
+          ZoneStatStrip(stats: hall.stats),
+          if (canCompose)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+              child: OutlinedButton.icon(
+                onPressed: onCompose,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('发任务', style: TextStyle(fontSize: 13)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(Env.blue),
+                  side: const BorderSide(color: Color(0x3F8AB4F8)),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+          const ZoneSectionTitle(title: '任务池', hint: '结果归档在专区内，不自动进主社区'),
           if (hall.tasks.isEmpty)
-            const _Empty(text: '暂无 Agent 任务')
+            const ZoneEmpty(text: '暂无 Agent 任务')
           else
-            for (final task in hall.tasks) _TaskTile(task: task),
+            for (final task in hall.tasks)
+              _TaskTile(task: task, onTap: () => onOpenTask(task.id, task)),
           if (hall.submissions.isNotEmpty) ...[
-            const _SectionTitle(title: '结果队列', hint: '提交状态与得分'),
+            const ZoneSectionTitle(title: '结果队列', hint: '提交状态与得分'),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Column(
@@ -523,20 +584,17 @@ class _TasksTab extends StatelessWidget {
 }
 
 class _TaskTile extends StatelessWidget {
-  const _TaskTile({required this.task});
+  const _TaskTile({required this.task, required this.onTap});
 
   final AgentTaskCard task;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return ZoneCard(
       margin: const EdgeInsets.fromLTRB(14, 0, 14, 9),
       padding: const EdgeInsets.fromLTRB(13, 13, 13, 12),
-      decoration: BoxDecoration(
-        color: const Color(Env.surface),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x14FFFFFF)),
-      ),
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -557,7 +615,7 @@ class _TaskTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _Pill(text: task.statusLabel),
+              ZonePill(text: task.statusLabel),
             ],
           ),
           if (task.acceptance.trim().isNotEmpty) ...[
@@ -574,9 +632,9 @@ class _TaskTile extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
-              _Chip(text: task.priority),
-              _Chip(text: task.type),
-              for (final skill in task.skills) _Chip(text: skill),
+              ZoneChip(text: task.priority),
+              ZoneChip(text: task.type),
+              for (final skill in task.skills) ZoneChip(text: skill),
             ],
           ),
           const SizedBox(height: 9),
@@ -595,123 +653,6 @@ class _TaskTile extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _StatStrip extends StatelessWidget {
-  const _StatStrip({required this.stats});
-
-  final List<AgentZoneStat> stats;
-
-  @override
-  Widget build(BuildContext context) {
-    if (stats.isEmpty) return const SizedBox(height: 8);
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(Env.surface),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x14FFFFFF)),
-      ),
-      child: Row(
-        children: [
-          for (final stat in stats)
-            Expanded(
-              child: Column(
-                children: [
-                  Text(
-                    stat.value,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(Env.text)),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(stat.label, style: const TextStyle(fontSize: 10.5, color: Color(0xFF737D8B))),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title, required this.hint});
-
-  final String title;
-  final String hint;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 9),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.3,
-              color: Color(Env.text),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              hint,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10.5, color: Color(0xFF5F6875)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(color: const Color(0x1F8AB4F8), borderRadius: BorderRadius.circular(5)),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 9.5,
-          height: 1.5,
-          fontWeight: FontWeight.w600,
-          color: Color(Env.blue),
-        ),
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: const Color(0x0FFFFFFF),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0x14FFFFFF)),
-      ),
-      child: Text(text, style: const TextStyle(fontSize: 10.5, color: Color(0xFF9AA3B0))),
     );
   }
 }
@@ -738,38 +679,6 @@ class _MiniMetric extends StatelessWidget {
           Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF5F6875))),
         ],
       ),
-    );
-  }
-}
-
-class _Empty extends StatelessWidget {
-  const _Empty({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 34, 20, 18),
-      child: Center(
-        child: Text(text, style: const TextStyle(fontSize: 12.5, color: Color(0xFF5F6875))),
-      ),
-    );
-  }
-}
-
-class _Note extends StatelessWidget {
-  const _Note({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(14, 18, 14, 8),
-      padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
-      decoration: BoxDecoration(color: const Color(0x0AFFFFFF), borderRadius: BorderRadius.circular(10)),
-      child: Text(text, style: const TextStyle(fontSize: 11, height: 1.6, color: Color(0xFF5F6875))),
     );
   }
 }

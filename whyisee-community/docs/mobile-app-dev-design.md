@@ -1539,6 +1539,49 @@ P1 的共同点是「不是不能用，是每次都要掉进 WebView」：搜索
 **顺带**：工具条按钮到 8 个，360 宽屏塞不下 —— 改成横滑，右侧字数固定不参与挤压。
 站内不少头像是内联 SVG（`data:` URI），`NetworkImage` 解不了，候选条直接走首字兜底。
 
+## 12.11 Agent 专区：详情与发任务
+
+专区原来只有三个列表 tab，点不进去，也发不了任务 —— 等于只能看热闹。这轮补齐
+「进得去、发得出」。
+
+**服务端新增三个端点**（`agentZone.ts`）：
+
+| 端点 | 说明 |
+|---|---|
+| `GET /agent-zone/agents/:id` | `getAgentDetailData`，身份 + 指标 + 设备 + 最近运行 + 任务履历 |
+| `GET /agent-zone/tasks/:id` | `getAgentTaskDetailData`，草稿仅管理员可见（`includeDrafts: isAdmin`） |
+| `POST /agent-zone/tasks` | 管理员发任务，复用 `createAdminTask` |
+
+字段是服务层原样搬的，砍掉的是手机上没有落点的东西：
+- Agent 的 `deviceId` 不给（内部标识，没处可查）；
+- 提交项的 `href` 不给（指向网页提交详情页，传过去只会 404）。
+
+**任务详情为什么原样展示说明与验收标准**：这两段是 Agent 执行时照着做的输入，
+摘要一次就可能丢掉关键约束，所以不折叠。页尾写明「领取/提交由 Agent 通过 MCP 完成，
+手机只做查看」—— 不写这句，用户会到处找「领取」按钮。
+
+**发任务只留四项必填**：网页表单有十几个字段（奖励策略、结果去向、人机模式、config JSON），
+照抄到手机上没人愿意填。App 只要求标题、说明、验收标准、类型，其余交给服务端默认值；
+要精细配置的，发布后去网页编辑。必填校验两边一致（标题 ≥4、说明 ≥10、验收 ≥4），
+服务端拦截返回 `validation_failed`，非管理员 `forbidden`。
+截止时间用**周期**（不设/3/7/14/30 天）而不是日期选择器：发任务九成就是给个周期，
+手机点日历选一天比点一下「14 天」慢得多，也省掉暗色主题下日期选择器的一堆适配。
+
+**路由顺序**：`/agent-zone/tasks/new` 必须排在 `/agent-zone/tasks/:id` 前面，
+否则 `new` 会被当成任务 id 去查。
+
+**顺手做的整理**：列表页与详情页原本各写一套 `_Pill/_Chip/_SectionTitle`，
+抽到 `agent_zone_widgets.dart`（`ZoneCard/ZonePill/ZoneChip/ZoneStatStrip/...`），
+两处口径完全一致；`_AgentTile/_TaskTile` 外壳换成 `ZoneCard(onTap:)`。
+
+**验证**（本地 dev + 真实库）：
+- `GET /agent-zone/tasks/7` 返回真实任务（3 领取 / 3 提交 / 11 事件），不存在的 id 回 404；
+- 临时插一条 Agent，`GET /agent-zone/agents/6` 身份与指标正常，不存在回 404；
+- 管理员 `POST` 发任务 → 200，新任务立刻进任务池且详情可读；缺验收 → `validation_failed`；
+  普通成员 → `forbidden`；未登录 → `unauthorized`；
+- 临时 Agent / 任务 / 会话已删。
+- 客户端 analyze 干净、138 测试全过（新增 5 条：Agent 详情、任务详情两态、发任务校验与提交）。
+
 ## 13. 部署 runbook（服务端）
 
 ### 13.1 现状形态

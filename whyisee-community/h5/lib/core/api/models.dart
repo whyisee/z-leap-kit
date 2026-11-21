@@ -2096,6 +2096,316 @@ class AgentTaskHall {
   );
 }
 
+/// Agent 身份页里的一台设备。只留设备名与最后在线，
+/// deviceId 是内部标识，手机上没有拿它去查的地方。
+class AgentDeviceSummary {
+  const AgentDeviceSummary({
+    required this.id,
+    required this.deviceName,
+    required this.status,
+    required this.lastSeen,
+    required this.createdAt,
+  });
+
+  final int id;
+  final String deviceName;
+  final String status;
+  final String lastSeen;
+  final String createdAt;
+
+  factory AgentDeviceSummary.fromJson(Map<String, dynamic> json) =>
+      AgentDeviceSummary(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        deviceName: json['deviceName'] as String? ?? '',
+        status: json['status'] as String? ?? '',
+        lastSeen: json['lastSeen'] as String? ?? '',
+        createdAt: json['createdAt'] as String? ?? '',
+      );
+}
+
+/// Agent 的一次运行记录（内容生产链路）。
+class AgentRun {
+  const AgentRun({
+    required this.id,
+    required this.runKey,
+    required this.skillVersion,
+    required this.task,
+    required this.status,
+    required this.outputSummary,
+    required this.qualityScore,
+    required this.createdAt,
+  });
+
+  final int id;
+  final String runKey;
+  final String skillVersion;
+  final String task;
+  final String status;
+  final String outputSummary;
+  final String qualityScore;
+  final String createdAt;
+
+  factory AgentRun.fromJson(Map<String, dynamic> json) => AgentRun(
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    runKey: json['runKey'] as String? ?? '',
+    skillVersion: json['skillVersion'] as String? ?? '',
+    task: json['task'] as String? ?? '',
+    status: json['status'] as String? ?? '',
+    outputSummary: json['outputSummary'] as String? ?? '',
+    qualityScore: json['qualityScore'] as String? ?? '',
+    createdAt: json['createdAt'] as String? ?? '',
+  );
+}
+
+/// Agent 领过的任务。`taskId` 用来点进任务详情。
+class AgentAssignmentRef {
+  const AgentAssignmentRef({
+    required this.id,
+    required this.taskId,
+    required this.title,
+    required this.type,
+    required this.taskStatus,
+    required this.assignmentStatus,
+    required this.claimedAt,
+    required this.completedAt,
+    required this.submissionStatus,
+    required this.submittedAt,
+  });
+
+  final int id;
+  final int taskId;
+  final String title;
+  final String type;
+  final String taskStatus;
+  final String assignmentStatus;
+  final String claimedAt;
+  final String completedAt;
+  final String submissionStatus;
+  final String submittedAt;
+
+  factory AgentAssignmentRef.fromJson(Map<String, dynamic> json) =>
+      AgentAssignmentRef(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        taskId: (json['taskId'] as num?)?.toInt() ?? 0,
+        title: json['title'] as String? ?? '',
+        type: json['type'] as String? ?? '',
+        taskStatus: json['taskStatus'] as String? ?? '',
+        assignmentStatus: json['assignmentStatus'] as String? ?? '',
+        claimedAt: json['claimedAt'] as String? ?? '',
+        completedAt: json['completedAt'] as String? ?? '',
+        submissionStatus: json['submissionStatus'] as String? ?? '',
+        submittedAt: json['submittedAt'] as String? ?? '',
+      );
+}
+
+class AgentDetail {
+  const AgentDetail({
+    required this.agent,
+    required this.stats,
+    required this.devices,
+    required this.runs,
+    required this.assignments,
+  });
+
+  final AgentCard agent;
+  final List<AgentZoneStat> stats;
+  final List<AgentDeviceSummary> devices;
+  final List<AgentRun> runs;
+  final List<AgentAssignmentRef> assignments;
+
+  factory AgentDetail.fromJson(Map<String, dynamic> json) => AgentDetail(
+    agent: AgentCard.fromJson(
+      (json['agent'] as Map?)?.cast<String, dynamic>() ?? const {},
+    ),
+    stats: _statList(json['stats']),
+    devices: ((json['devices'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => AgentDeviceSummary.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+    runs: ((json['runs'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => AgentRun.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+    assignments: ((json['assignments'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => AgentAssignmentRef.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+  );
+}
+
+/// 任务详情里的完整任务。
+///
+/// 卡片字段（标题/状态/优先级/奖励/截止…）复用 [AgentTaskCard]，这里只补
+/// 只有详情接口才返回的长文本与配置项。
+class AgentTaskInfo {
+  const AgentTaskInfo({
+    required this.card,
+    required this.taskKey,
+    required this.description,
+    required this.acceptanceCriteria,
+    required this.submissionFormat,
+    required this.executorType,
+    required this.resultDestination,
+    required this.humanInteractionMode,
+    required this.submissionVisibility,
+    required this.canViewSubmissions,
+    required this.maxAssignees,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final AgentTaskCard card;
+  final String taskKey;
+  final String description;
+  final String acceptanceCriteria;
+  final String submissionFormat;
+  final String executorType;
+  final String resultDestination;
+  final String humanInteractionMode;
+
+  /// `public` / `private`
+  final String submissionVisibility;
+  final bool canViewSubmissions;
+  final int maxAssignees;
+  final String createdAt;
+  final String updatedAt;
+
+  factory AgentTaskInfo.fromJson(Map<String, dynamic> json) => AgentTaskInfo(
+    card: AgentTaskCard.fromJson(json),
+    taskKey: json['taskKey'] as String? ?? '',
+    description: json['description'] as String? ?? '',
+    acceptanceCriteria: json['acceptanceCriteria'] as String? ?? '',
+    submissionFormat: json['submissionFormat'] as String? ?? '',
+    executorType: json['executorType'] as String? ?? '',
+    resultDestination: json['resultDestination'] as String? ?? '',
+    humanInteractionMode: json['humanInteractionMode'] as String? ?? '',
+    submissionVisibility: json['submissionVisibility'] as String? ?? 'private',
+    canViewSubmissions: json['canViewSubmissions'] == true,
+    maxAssignees: (json['maxAssignees'] as num?)?.toInt() ?? 1,
+    createdAt: json['createdAt'] as String? ?? '',
+    updatedAt: json['updatedAt'] as String? ?? '',
+  );
+}
+
+class TaskAssignee {
+  const TaskAssignee({
+    required this.id,
+    required this.agentName,
+    required this.status,
+    required this.claimedAt,
+    required this.dueAt,
+    required this.completedAt,
+  });
+
+  final int id;
+  final String agentName;
+  final String status;
+  final String claimedAt;
+  final String dueAt;
+  final String completedAt;
+
+  factory TaskAssignee.fromJson(Map<String, dynamic> json) => TaskAssignee(
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    agentName: json['agentName'] as String? ?? '',
+    status: json['status'] as String? ?? '',
+    claimedAt: json['claimedAt'] as String? ?? '',
+    dueAt: json['dueAt'] as String? ?? '',
+    completedAt: json['completedAt'] as String? ?? '',
+  );
+}
+
+class TaskResult {
+  const TaskResult({
+    required this.id,
+    required this.agentName,
+    required this.status,
+    required this.score,
+    required this.decision,
+    required this.bodySummary,
+    required this.selfReview,
+    required this.submittedAt,
+  });
+
+  final int id;
+  final String agentName;
+  final String status;
+  final String score;
+  final String decision;
+  final String bodySummary;
+  final String selfReview;
+  final String submittedAt;
+
+  factory TaskResult.fromJson(Map<String, dynamic> json) => TaskResult(
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    agentName: json['agentName'] as String? ?? '',
+    status: json['status'] as String? ?? '',
+    score: json['score'] as String? ?? '',
+    decision: json['decision'] as String? ?? '',
+    bodySummary: json['bodySummary'] as String? ?? '',
+    selfReview: json['selfReview'] as String? ?? '',
+    submittedAt: json['submittedAt'] as String? ?? '',
+  );
+}
+
+class TaskEvent {
+  const TaskEvent({
+    required this.id,
+    required this.actorName,
+    required this.eventType,
+    required this.detail,
+    required this.createdAt,
+  });
+
+  final int id;
+  final String actorName;
+  final String eventType;
+  final String detail;
+  final String createdAt;
+
+  factory TaskEvent.fromJson(Map<String, dynamic> json) => TaskEvent(
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    actorName: json['actorName'] as String? ?? '',
+    eventType: json['eventType'] as String? ?? '',
+    detail: json['detail'] as String? ?? '',
+    createdAt: json['createdAt'] as String? ?? '',
+  );
+}
+
+class AgentTaskDetail {
+  const AgentTaskDetail({
+    required this.task,
+    required this.stats,
+    required this.assignments,
+    required this.submissions,
+    required this.events,
+  });
+
+  final AgentTaskInfo task;
+  final List<AgentZoneStat> stats;
+  final List<TaskAssignee> assignments;
+  final List<TaskResult> submissions;
+  final List<TaskEvent> events;
+
+  factory AgentTaskDetail.fromJson(Map<String, dynamic> json) => AgentTaskDetail(
+    task: AgentTaskInfo.fromJson(
+      (json['task'] as Map?)?.cast<String, dynamic>() ?? const {},
+    ),
+    stats: _statList(json['stats']),
+    assignments: ((json['assignments'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => TaskAssignee.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+    submissions: ((json['submissions'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => TaskResult.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+    events: ((json['events'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => TaskEvent.fromJson(e.cast<String, dynamic>()))
+        .toList(growable: false),
+  );
+}
+
 List<AgentZoneStat> _statList(Object? raw) => ((raw as List?) ?? const [])
     .whereType<Map>()
     .map((e) => AgentZoneStat.fromJson(e.cast<String, dynamic>()))

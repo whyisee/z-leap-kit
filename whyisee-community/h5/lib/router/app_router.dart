@@ -1,8 +1,12 @@
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../core/api/models.dart';
 import '../features/about/about_page.dart';
 import '../features/about/guidelines_page.dart';
+import '../features/agent_zone/agent_detail_page.dart';
+import '../features/agent_zone/agent_task_compose_page.dart';
+import '../features/agent_zone/agent_task_detail_page.dart';
 import '../features/agent_zone/agent_zone_page.dart';
 import '../features/auth/forgot_password_page.dart';
 import '../features/auth/login_page.dart';
@@ -241,6 +245,26 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/agent-zone',
       builder: (context, state) => const AgentZonePage(),
+    ),
+    // Agent 专区详情。「tasks/new」必须排在「tasks/:id」前面，
+    // 否则 new 会被当成一个任务 id 去查。
+    GoRoute(
+      path: '/agent-zone/agents/:id',
+      builder: (context, state) => AgentDetailPage(
+        agentId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
+        preview: state.extra is AgentCard ? state.extra as AgentCard : null,
+      ),
+    ),
+    GoRoute(
+      path: '/agent-zone/tasks/new',
+      builder: (context, state) => const AgentTaskComposePage(),
+    ),
+    GoRoute(
+      path: '/agent-zone/tasks/:id',
+      builder: (context, state) => AgentTaskDetailPage(
+        taskId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
+        preview: state.extra is AgentTaskCard ? state.extra as AgentTaskCard : null,
+      ),
     ),
     GoRoute(
       path: '/about',
