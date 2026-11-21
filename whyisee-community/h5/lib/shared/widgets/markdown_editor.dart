@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 
+import '../../core/api/mention_repository.dart';
 import '../../core/env.dart';
 import 'markdown_doc.dart';
+import 'mention_suggestions.dart';
 
 export 'markdown_doc.dart';
 
@@ -22,11 +26,22 @@ class MarkdownEditor extends StatefulWidget {
     required this.controller,
     this.enabled = true,
     this.hintText = '写正文…',
+    this.onUploadImage,
+    this.onSearchMentions,
   });
 
   final MarkdownDocController controller;
   final bool enabled;
   final String hintText;
+
+  /// 选图 + 上传，返回可写进正文的地址；用户取消返回 null。
+  ///
+  /// 编辑器不自己拿相机/相册，也不碰鉴权 —— compose 页注入真实实现，
+  /// 测试里传 null 就没有图片按钮，不需要额外的平台桩。
+  final Future<String?> Function()? onUploadImage;
+
+  /// 打 `@` 时查候选。同样由外面注入，避免这个纯 UI 组件依赖 riverpod。
+  final Future<List<MentionTarget>> Function(String query)? onSearchMentions;
 
   @override
   State<MarkdownEditor> createState() => _MarkdownEditorState();
@@ -42,6 +57,19 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   /// 程序自己改文本（拆块、转块型）时不要再走一遍「用户输入」的处理链
   bool _mutating = false;
 
+  /// 正在上传的图：按钮转圈，避免连点传三张
+  bool _uploading = false;
+
+  /// 当前正在输入的 `@` 片段与它的候选
+  MentionQuery? _mention;
+  MdBlock? _mentionBlock;
+  List<MentionTarget> _mentionTargets = const [];
+  bool _mentionLoading = false;
+  Timer? _mentionDebounce;
+
+  /// 候选请求序号：慢请求回来时如果用户已经又打了一个字，丢掉旧结果
+  int _mentionSeq = 0;
+
   MarkdownDocController get _doc => widget.controller;
 
   @override
@@ -54,12 +82,15 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   @override
   void dispose() {
     _doc.removeListener(_onDocMutated);
+    _mentionDebounce?.cancel();
     _scroll.dispose();
     super.dispose();
   }
 
   void _onDocMutated() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    _refreshMention();
+    setState(() {});
   }
 
   void _attachFocus(MdBlock block) {
@@ -67,6 +98,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     block.focus.addListener(() {
       if (block.focus.hasFocus && mounted) {
         setState(() => _focused = block);
+        _refreshMention();
       }
     });
   }
@@ -117,6 +149,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     } else if (merged) {
       block.placeCaret(0);
     }
+    _refreshMention();
     setState(() {});
   }
 
@@ -211,6 +244,112 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     });
   }
 
+  // ---------------------------------------------------------------- @ 候选
+
+  /// 光标前是不是正在打 `@`；是就拉候选，不是就收起。
+  void _refreshMention() {
+    final search = widget.onSearchMentions;
+    if (search == null || !mounted) return;
+
+    final block = _focused;
+    final usable = block != null && _doc.blocks.contains(block) && block.type != MdBlockType.image;
+    final trigger = usable ? mentionQueryAt(block.text, block.caret) : null;
+
+    if (trigger == null) {
+      if (_mention == null) return;
+      _mentionSeq++;
+      _mentionDebounce?.cancel();
+      setState(() {
+        _mention = null;
+        _mentionBlock = null;
+        _mentionTargets = const [];
+        _mentionLoading = false;
+      });
+      return;
+    }
+
+    final same = _mention != null &&
+        identical(_mentionBlock, block) &&
+        _mention!.start == trigger.start &&
+        _mention!.query == trigger.query;
+    if (same) return;
+
+    setState(() {
+      _mention = trigger;
+      _mentionBlock = block;
+      _mentionLoading = true;
+    });
+
+    _mentionDebounce?.cancel();
+    final seq = ++_mentionSeq;
+    // 180ms：够把连着打的几个字母并成一次请求，又不至于让候选「迟一拍」
+    _mentionDebounce = Timer(const Duration(milliseconds: 180), () async {
+      try {
+        final targets = await search(trigger.query);
+        if (!mounted || seq != _mentionSeq) return;
+        setState(() {
+          _mentionTargets = targets;
+          _mentionLoading = false;
+        });
+      } catch (_) {
+        if (!mounted || seq != _mentionSeq) return;
+        setState(() {
+          _mentionTargets = const [];
+          _mentionLoading = false;
+        });
+      }
+    });
+  }
+
+  void _pickMention(MentionTarget target) {
+    final block = _mentionBlock;
+    final trigger = _mention;
+    if (block == null || trigger == null || !_doc.blocks.contains(block)) return;
+
+    final result = applyMention(block.text, trigger, target.username);
+    _mutating = true;
+    try {
+      block.setText(result.text, caret: result.caret);
+    } finally {
+      _mutating = false;
+    }
+
+    _mentionSeq++;
+    _mentionDebounce?.cancel();
+    block.focus.requestFocus();
+    setState(() {
+      _mention = null;
+      _mentionBlock = null;
+      _mentionTargets = const [];
+      _mentionLoading = false;
+    });
+  }
+
+  // ---------------------------------------------------------------- 图片
+
+  /// 选图 → 上传 → 在光标块后面插一张图，并留一个空段落接着写。
+  Future<void> _pickImage() async {
+    final upload = widget.onUploadImage;
+    if (upload == null || _uploading) return;
+
+    // 相册会盖住整个 app，键盘先收起来，回来时不至于遮住刚插入的图
+    FocusScope.of(context).unfocus();
+    setState(() => _uploading = true);
+
+    try {
+      final url = await upload();
+      if (!mounted || url == null || url.isEmpty) return;
+
+      final image = _doc.insertImageAfter(_activeBlock, url);
+      final next = _doc.insertAfter(image, type: MdBlockType.paragraph);
+      _attachFocus(next);
+      _focusBlock(next, atStart: true);
+      setState(() {});
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
   // ---------------------------------------------------------------- 工具栏
 
   MdBlock get _activeBlock {
@@ -267,6 +406,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         MdBlockType.h3 => 11,
         MdBlockType.h4 => 9,
         MdBlockType.quote || MdBlockType.code => 8,
+        MdBlockType.image => 10,
         _ => 6,
       };
 
@@ -350,10 +490,18 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
             },
           ),
         ),
+        if (_mention != null)
+          MentionSuggestionBar(
+            targets: _mentionTargets,
+            loading: _mentionLoading,
+            onPick: _pickMention,
+          ),
         _Toolbar(
           enabled: widget.enabled,
           length: _doc.charCount,
           currentType: _activeBlock.type,
+          uploading: _uploading,
+          canPickImage: widget.enabled && widget.onUploadImage != null,
           onHeading: _toggleType,
           onBold: () => _wrapSelection('**'),
           onBullet: () => _toggleType(MdBlockType.bullet),
@@ -361,6 +509,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
           onCode: () => _wrapSelection('`'),
           onCodeBlock: () => _toggleType(MdBlockType.code),
           onDivider: _insertDivider,
+          onImage: _pickImage,
         ),
       ],
     );
@@ -789,6 +938,10 @@ class _BlockFieldState extends State<_BlockField> {
       MdBlockType.divider => _DividerBlock(
           onRemove: () => widget.doc.removeBlock(block),
         ),
+      MdBlockType.image => _ImageBlock(
+          url: block.text,
+          onRemove: () => widget.doc.removeBlock(block),
+        ),
     };
   }
 
@@ -868,6 +1021,81 @@ class _MarkerRow extends StatelessWidget {
   }
 }
 
+/// 图片块：整块画成一张图，不提供输入框。
+///
+/// 删除按钮直接浮在右上角 —— 图片没有「正文」可以按退格，只能靠这个
+/// 或者块菜单。正文里存的是 `/uploads/...` 相对地址，显示时补站点头。
+class _ImageBlock extends StatelessWidget {
+  const _ImageBlock({required this.url, required this.onRemove});
+
+  final String url;
+  final VoidCallback onRemove;
+
+  String get _absolute {
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    return '${Env.siteBase}$url';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 340),
+              child: Image.network(
+                _absolute,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) =>
+                    progress == null ? child : const _ImagePlaceholder(text: '图片加载中…'),
+                errorBuilder: (_, _, _) => const _ImagePlaceholder(text: '图片没加载出来'),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 6,
+            right: 6,
+            child: GestureDetector(
+              onTap: onRemove,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(color: Color(0xB3000000), shape: BoxShape.circle),
+                child: const Icon(Icons.close, size: 15, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImagePlaceholder extends StatelessWidget {
+  const _ImagePlaceholder({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 150,
+      alignment: Alignment.center,
+      color: const Color(0x14FFFFFF),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 12, color: Color(0xFF6B7686)),
+      ),
+    );
+  }
+}
+
 class _DividerBlock extends StatelessWidget {
   const _DividerBlock({required this.onRemove});
 
@@ -891,6 +1119,8 @@ class _Toolbar extends StatelessWidget {
     required this.enabled,
     required this.length,
     required this.currentType,
+    required this.uploading,
+    required this.canPickImage,
     required this.onHeading,
     required this.onBold,
     required this.onBullet,
@@ -898,6 +1128,7 @@ class _Toolbar extends StatelessWidget {
     required this.onCode,
     required this.onCodeBlock,
     required this.onDivider,
+    required this.onImage,
   });
 
   final bool enabled;
@@ -905,6 +1136,10 @@ class _Toolbar extends StatelessWidget {
 
   /// 光标所在块的类型：标题菜单要标出当前是几级
   final MdBlockType currentType;
+
+  /// 图片正在上传：按钮位置换成转圈
+  final bool uploading;
+  final bool canPickImage;
   final ValueChanged<MdBlockType> onHeading;
   final VoidCallback onBold;
   final VoidCallback onBullet;
@@ -912,6 +1147,7 @@ class _Toolbar extends StatelessWidget {
   final VoidCallback onCode;
   final VoidCallback onCodeBlock;
   final VoidCallback onDivider;
+  final VoidCallback onImage;
 
   @override
   Widget build(BuildContext context) {
@@ -924,36 +1160,51 @@ class _Toolbar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _HeadingButton(current: currentType, enabled: enabled, onPick: onHeading),
-          _ToolButton(icon: Icons.format_bold, tooltip: '加粗', onTap: enabled ? onBold : null),
-          _ToolButton(
-            icon: Icons.format_list_bulleted,
-            tooltip: '列表',
-            onTap: enabled ? onBullet : null,
-          ),
-          _ToolButton(icon: Icons.format_quote, tooltip: '引用', onTap: enabled ? onQuote : null),
-          _ToolButton(icon: Icons.code, tooltip: '行内代码', onTap: enabled ? onCode : null),
-          _ToolButton(
-            icon: Icons.data_object,
-            tooltip: '代码块',
-            onTap: enabled ? onCodeBlock : null,
-          ),
-          _ToolButton(
-            icon: Icons.horizontal_rule,
-            tooltip: '分割线',
-            onTap: enabled ? onDivider : null,
-          ),
+          // 按钮已经 8 个，360 宽屏塞不下：让它自己横滑，别把右侧字数挤没
           Expanded(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                length > 0 ? '$length 字' : '',
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.fade,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF5F6875)),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _HeadingButton(current: currentType, enabled: enabled, onPick: onHeading),
+                  _ToolButton(icon: Icons.format_bold, tooltip: '加粗', onTap: enabled ? onBold : null),
+                  _ToolButton(
+                    icon: Icons.format_list_bulleted,
+                    tooltip: '列表',
+                    onTap: enabled ? onBullet : null,
+                  ),
+                  _ToolButton(icon: Icons.format_quote, tooltip: '引用', onTap: enabled ? onQuote : null),
+                  _ToolButton(icon: Icons.code, tooltip: '行内代码', onTap: enabled ? onCode : null),
+                  _ToolButton(
+                    icon: Icons.data_object,
+                    tooltip: '代码块',
+                    onTap: enabled ? onCodeBlock : null,
+                  ),
+                  _ToolButton(
+                    icon: Icons.horizontal_rule,
+                    tooltip: '分割线',
+                    onTap: enabled ? onDivider : null,
+                  ),
+                  // 没接上传能力（纯编辑器场景）就不摆这个按钮，
+                  // 摆一个永远点不动的图标比不摆更让人困惑
+                  if (canPickImage)
+                    _ToolButton(
+                      icon: Icons.image_outlined,
+                      tooltip: '图片',
+                      busy: uploading,
+                      onTap: enabled && !uploading ? onImage : null,
+                    ),
+                ],
               ),
             ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            length > 0 ? '$length 字' : '',
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.fade,
+            style: const TextStyle(fontSize: 11, color: Color(0xFF5F6875)),
           ),
         ],
       ),
@@ -1043,11 +1294,19 @@ class _HeadingButton extends StatelessWidget {
 }
 
 class _ToolButton extends StatelessWidget {
-  const _ToolButton({required this.icon, required this.tooltip, required this.onTap});
+  const _ToolButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.busy = false,
+  });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback? onTap;
+
+  /// 上传这类异步动作：转圈期间按钮不可点
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -1059,11 +1318,22 @@ class _ToolButton extends StatelessWidget {
         child: SizedBox(
           width: 38,
           height: 44,
-          child: Icon(
-            icon,
-            size: 19,
-            color: onTap == null ? const Color(0xFF3D4551) : const Color(0xFF9AA5B4),
-          ),
+          child: busy
+              ? const Center(
+                  child: SizedBox(
+                    width: 15,
+                    height: 15,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(Color(0xFF8AB4F8)),
+                    ),
+                  ),
+                )
+              : Icon(
+                  icon,
+                  size: 19,
+                  color: onTap == null ? const Color(0xFF3D4551) : const Color(0xFF9AA5B4),
+                ),
         ),
       ),
     );

@@ -103,6 +103,37 @@ class ApiClient {
         ),
       );
 
+  /// 单文件上传（目前只有图片）。
+  ///
+  /// 两个坑写在这里，别在业务层重复踩：
+  /// - `Origin` 必须带。服务端挂在 Astro 下，`security.checkOrigin` 会把没有
+  ///   同源 Origin 的 multipart POST 直接 403，而 dalvik 的 http 客户端默认不发。
+  /// - 上传比普通请求慢一个量级，默认 15 秒的 receiveTimeout 传 5MB 图会误判超时。
+  Future<ApiPayload> upload(
+    String path, {
+    required File file,
+    String field = 'image',
+    String? filename,
+    Duration receiveTimeout = const Duration(seconds: 60),
+  }) =>
+      _send(
+        () => _dio.post<dynamic>(
+          path,
+          data: FormData.fromMap({
+            field: MultipartFile.fromFileSync(file.path, filename: filename ?? _basename(file.path)),
+          }),
+          options: Options(
+            headers: {'Origin': Env.siteBase},
+            receiveTimeout: receiveTimeout,
+          ),
+        ),
+      );
+
+  static String _basename(String path) {
+    final index = path.lastIndexOf(RegExp(r'[/\\]'));
+    return index < 0 ? path : path.substring(index + 1);
+  }
+
   static Options? _timeoutOptions(Duration? receiveTimeout) =>
       receiveTimeout == null ? null : Options(receiveTimeout: receiveTimeout);
 

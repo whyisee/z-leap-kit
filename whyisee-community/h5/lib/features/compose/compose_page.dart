@@ -1,9 +1,14 @@
+import 'dart:io' show File;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/api/api_exception.dart';
+import '../../core/api/mention_repository.dart';
 import '../../core/api/models.dart';
+import '../../core/api/upload_repository.dart';
 import '../../core/env.dart';
 import '../../core/format.dart';
 import '../../core/providers.dart';
@@ -188,7 +193,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
       setState(() => _titleError = '标题至少 4 个字');
       return;
     }
-    if (!draft && body.length < 10) {
+    if (!draft && body.length < 10 && !_bodyController.hasImage) {
       _toast('正文至少 10 个字');
       return;
     }
@@ -268,6 +273,35 @@ class _ComposePageState extends ConsumerState<ComposePage> {
       if (!mounted) return;
       setState(() => _submitting = false);
       _toast('发布失败，检查网络后再试');
+    }
+  }
+
+  /// 选图 + 传图，交给编辑器插到光标后面。失败自己 toast，编辑器只管拿地址。
+  Future<String?> _uploadImage() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      // 2048 足够正文显示；原图动辄 5–10MB，手机网络上传会卡很久
+      maxWidth: 2048,
+      maxHeight: 2048,
+      imageQuality: 88,
+    );
+    if (picked == null) return null;
+
+    try {
+      final uploaded = await ref.read(uploadRepositoryProvider).image(File(picked.path));
+      return uploaded.url;
+    } on ApiException catch (e) {
+      if (!mounted) return null;
+      _toast(switch (e.code) {
+        'rate_limited' => '传得太频繁了，过会儿再试',
+        'unauthorized' => '登录过期了，重新登录一下',
+        _ => e.message,
+      });
+      return null;
+    } catch (_) {
+      if (!mounted) return null;
+      _toast('图片没传上去，检查网络后再试');
+      return null;
     }
   }
 
@@ -424,6 +458,9 @@ class _ComposePageState extends ConsumerState<ComposePage> {
                         controller: _bodyController,
                         enabled: !_submitting,
                         hintText: '开始写正文，打 # 空格就是标题',
+                        onUploadImage: _uploadImage,
+                        onSearchMentions: (query) =>
+                            ref.read(mentionRepositoryProvider).search(query),
                       ),
                     ),
                   ],

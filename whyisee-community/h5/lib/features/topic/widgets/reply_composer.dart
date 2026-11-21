@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/api/mention_repository.dart';
 import '../../../core/api/models.dart';
 import '../../../core/env.dart';
 import '../../../core/format.dart';
+import '../../../shared/widgets/mention_suggestions.dart';
 import '../topic_repository.dart';
 
 /// 打开回复层。发布成功返回新楼层，取消返回 null。
@@ -45,6 +49,12 @@ class _ReplyComposerState extends ConsumerState<_ReplyComposer> {
   bool _busy = false;
   String? _error;
 
+  MentionQuery? _mention;
+  List<MentionTarget> _mentionTargets = const [];
+  bool _mentionLoading = false;
+  Timer? _mentionDebounce;
+  int _mentionSeq = 0;
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +63,7 @@ class _ReplyComposerState extends ConsumerState<_ReplyComposer> {
 
   @override
   void dispose() {
+    _mentionDebounce?.cancel();
     _text.removeListener(_onChanged);
     _text.dispose();
     _focus.dispose();
@@ -61,7 +72,74 @@ class _ReplyComposerState extends ConsumerState<_ReplyComposer> {
 
   void _onChanged() {
     if (!mounted) return;
+    _refreshMention();
     setState(() => _error = null);
+  }
+
+  /// 和发帖页同一套触发规则：打 `@` 就查候选，光标离开 `@` 片段就收起。
+  void _refreshMention() {
+    final trigger = mentionQueryAt(_text.text, _text.selection.baseOffset);
+
+    if (trigger == null) {
+      if (_mention == null) return;
+      _mentionSeq++;
+      _mentionDebounce?.cancel();
+      setState(() {
+        _mention = null;
+        _mentionTargets = const [];
+        _mentionLoading = false;
+      });
+      return;
+    }
+
+    if (_mention != null &&
+        _mention!.start == trigger.start &&
+        _mention!.query == trigger.query) {
+      return;
+    }
+
+    setState(() {
+      _mention = trigger;
+      _mentionLoading = true;
+    });
+
+    _mentionDebounce?.cancel();
+    final seq = ++_mentionSeq;
+    _mentionDebounce = Timer(const Duration(milliseconds: 180), () async {
+      try {
+        final targets = await ref.read(mentionRepositoryProvider).search(trigger.query);
+        if (!mounted || seq != _mentionSeq) return;
+        setState(() {
+          _mentionTargets = targets;
+          _mentionLoading = false;
+        });
+      } catch (_) {
+        if (!mounted || seq != _mentionSeq) return;
+        setState(() {
+          _mentionTargets = const [];
+          _mentionLoading = false;
+        });
+      }
+    });
+  }
+
+  void _pickMention(MentionTarget target) {
+    final trigger = _mention;
+    if (trigger == null) return;
+
+    final result = applyMention(_text.text, trigger, target.username);
+    _mentionSeq++;
+    _mentionDebounce?.cancel();
+    _text.value = TextEditingValue(
+      text: result.text,
+      selection: TextSelection.collapsed(offset: result.caret),
+    );
+    _focus.requestFocus();
+    setState(() {
+      _mention = null;
+      _mentionTargets = const [];
+      _mentionLoading = false;
+    });
   }
 
   bool get _canSend => !_busy && _text.text.trim().isNotEmpty;
@@ -130,6 +208,12 @@ class _ReplyComposerState extends ConsumerState<_ReplyComposer> {
                 ),
               ),
               if (target != null) _ReplyContext(post: target),
+              if (_mention != null)
+                MentionSuggestionBar(
+                  targets: _mentionTargets,
+                  loading: _mentionLoading,
+                  onPick: _pickMention,
+                ),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),

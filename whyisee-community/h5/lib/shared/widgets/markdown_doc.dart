@@ -8,7 +8,10 @@ import 'markdown_spans.dart';
 ///
 /// 列表/标题/引用这些在飞书里是「段落属性」，不是文本内容 —— 这里同理：
 /// 用户永远打不出也看不到 `#` `-` `>`，它们只存在于落库的 Markdown 里。
-enum MdBlockType { paragraph, h1, h2, h3, h4, bullet, ordered, quote, code, divider }
+///
+/// `image` 是唯一「内容不在文本里」的块：它的 text 存的是图片地址，
+/// 编辑器把整块画成一张图，不提供输入框。
+enum MdBlockType { paragraph, h1, h2, h3, h4, bullet, ordered, quote, code, divider, image }
 
 /// 一个可编辑的块。
 ///
@@ -116,8 +119,15 @@ class MarkdownDocController extends ChangeNotifier {
   /// 整篇是否没有任何内容
   bool get isEmpty => blocks.every((block) => block.isEmpty);
 
-  /// 正文字数：`**`、`` ` `` 这类行内标记不算字，否则加粗一下数字就跳
-  int get charCount => blocks.fold<int>(0, (sum, block) => sum + _visibleLength(block.text));
+  /// 正文字数：`**`、`` ` `` 这类行内标记不算字，否则加粗一下数字就跳。
+  /// 图片块的 text 是 URL，更不能算进字数。
+  int get charCount => blocks.fold<int>(
+        0,
+        (sum, block) => block.type == MdBlockType.image ? sum : sum + _visibleLength(block.text),
+      );
+
+  /// 带图片的正文即使没有十个字也算有内容 —— 一句话配一张图是正常写法
+  bool get hasImage => blocks.any((block) => block.type == MdBlockType.image && block.text.isNotEmpty);
 
   /// 标题以外是否已有内容 —— 判断「是不是刚开的新文档」
   bool get isBlank => blocks.length == 1 && blocks.first.isEmpty;
@@ -168,6 +178,9 @@ class MarkdownDocController extends ChangeNotifier {
           lines.add('```\n${block.text}\n```');
         case MdBlockType.divider:
           lines.add('---');
+        case MdBlockType.image:
+          // alt 留空：服务端按文件名拼的 alt 是哈希串，落库反而更乱
+          lines.add('![](${block.text})');
         case MdBlockType.paragraph:
           lines.add(block.text);
       }
@@ -228,6 +241,15 @@ class MarkdownDocController extends ChangeNotifier {
     return next;
   }
 
+  /// 在 [after] 之后插一张图。[after] 为 null 就追加到末尾。
+  MdBlock insertImageAfter(MdBlock? after, String url) {
+    final image = _adopt(MdBlock(type: MdBlockType.image, text: url));
+    final index = after == null ? blocks.length : blocks.indexOf(after) + 1;
+    blocks.insert(index.clamp(0, blocks.length), image);
+    notifyListeners();
+    return image;
+  }
+
   void removeBlock(MdBlock block) {
     if (blocks.length <= 1) {
       // 最后一块删不掉，清空即可 —— 否则编辑器会变成一个白框
@@ -252,6 +274,14 @@ class MarkdownDocController extends ChangeNotifier {
     if (index <= 0) return null;
 
     final previous = blocks[index - 1];
+
+    // 图片没有正文可并：行首退格就等于「删掉上面那张图」，光标留在原块
+    if (previous.type == MdBlockType.image) {
+      blocks.removeAt(index - 1);
+      _disposeLater(previous);
+      notifyListeners();
+      return block;
+    }
 
     // 分割线没有正文，代码块边界有语义：都不合并，只删掉这一块
     if (previous.type == MdBlockType.divider || previous.type == MdBlockType.code) {
@@ -364,6 +394,7 @@ final _bulletLine = RegExp(r'^\s*[-*+]\s+(.*)$');
 final _orderedLine = RegExp(r'^\s*\d+\.\s+(.*)$');
 final _quoteLine = RegExp(r'^\s*>\s?(.*)$');
 final _dividerLine = RegExp(r'^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$');
+final _imageLine = RegExp(r'^\s{0,3}!\[[^\]]*\]\((\S+?)\)\s*$');
 
 /// Markdown → 块。服务端存的正文、草稿、别人的帖子里粘来的内容都走这里。
 List<MdBlock> parseMarkdown(String markdown) {
@@ -393,6 +424,14 @@ List<MdBlock> parseMarkdown(String markdown) {
 
     if (_dividerLine.hasMatch(line)) {
       blocks.add(MdBlock(type: MdBlockType.divider));
+      continue;
+    }
+
+    // 整行只有一张图才算图片块：`看我这张 ![x](y) 帅不帅` 仍留在段落里，
+    // 否则一句话会被拆成三段
+    final image = _imageLine.firstMatch(line);
+    if (image != null) {
+      blocks.add(MdBlock(type: MdBlockType.image, text: image.group(1)!));
       continue;
     }
 

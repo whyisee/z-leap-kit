@@ -43,6 +43,7 @@ dependencies:
   dio: ^5.11.1
   shared_preferences: ^2.5.6
   webview_flutter_android: ^4.14.1
+  image_picker: ^1.2.4
 
 # macOS 上只有 CommandLineTools、没有完整 Xcode 时，shared_preferences_foundation
 # 2.6.x 的 objective_c 构建钩子会调 xcodebuild 失败，连带 flutter test 跑不起来。
