@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../core/api/models.dart';
+import '../core/deep_link.dart';
 import '../features/about/about_page.dart';
 import '../features/about/guidelines_page.dart';
 import '../features/agent_zone/agent_detail_page.dart';
@@ -37,9 +38,15 @@ import '../features/web/web_route_page.dart';
 ///
 /// 四个 tab 全是原生页（看见 / 出发 / 关注 / 我）；WebView 只剩设置、登录这类低频页。
 /// 详情挂在第一个 branch 下，这样从 feed 进详情再返回，tab 状态不丢。
-final GoRouter appRouter = GoRouter(
-  initialLocation: '/',
-  routes: [
+final GoRouter appRouter = buildRouter();
+
+/// 冷启动带深链时要把网页地址换算成初始路由，所以路由器得能带着参数造，
+/// 不能只有一个写死 `initialLocation: '/'` 的全局实例。
+GoRouter buildRouter({String initialLocation = '/'}) {
+  return GoRouter(
+    initialLocation: initialLocation,
+    redirect: _redirectToNative,
+    routes: [
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => HomeShell(shell: shell),
       branches: [
@@ -333,8 +340,20 @@ final GoRouter appRouter = GoRouter(
         );
       },
     ),
-  ],
-);
+    ],
+  );
+}
+
+/// 深链落地：`https://whyisee.xyz/t/97` → `/t/97`，`/c/路径` 之类的编码也在里面处理。
+///
+/// 热启动（App 已在跑，用户点了链接）由引擎推一条新路由进来，走的就是这里；
+/// 冷启动在 `main()` 里先换算过一遍，作为 initialLocation 传进来。
+/// 两边共用同一个函数，规则不会各写一套。
+String? _redirectToNative(BuildContext context, GoRouterState state) {
+  final mapped = mapWebLocation(state.uri);
+  if (mapped == null || mapped == state.uri.toString()) return null;
+  return mapped;
+}
 
 /// 详情页统一用淡入过渡：feed 和「我」两条栈共用，避免两处参数慢慢写歪。
 ///

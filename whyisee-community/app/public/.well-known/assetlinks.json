@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "xyz.whyisee.app",
+      "sha256_cert_fingerprints": [
+        "92:DA:C4:79:00:8B:0B:92:10:70:A7:75:B0:88:49:EF:06:BC:E6:B6:1B:AA:7B:60:44:4D:E7:8B:C6:58:93:1E"
+      ]
+    }
+  }
+]

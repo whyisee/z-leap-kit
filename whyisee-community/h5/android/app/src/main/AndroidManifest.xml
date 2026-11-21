@@ -26,6 +26,26 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- 站内链接直接进 App（Android App Links）：
+                 https://whyisee.xyz/t/97 点开落到原生详情页，不再先开浏览器。
+                 autoVerify 要求站点提供 /.well-known/assetlinks.json 且签名指纹对得上；
+                 校验没通过时系统会退回浏览器，那时用 whyisee://open/t/97 兜底。 -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="whyisee.xyz"/>
+                <data android:scheme="http" android:host="whyisee.xyz"/>
+            </intent-filter>
+            <!-- 自定义 scheme 兜底：分享出去的短链、二维码用这个，不依赖域名校验 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="whyisee" android:host="open"/>
+            </intent-filter>
+            <!-- 显式打开：深链要按 URL 交给路由，不能只当成冷启动 -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="true" />
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

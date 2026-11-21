@@ -1582,6 +1582,78 @@ P1 的共同点是「不是不能用，是每次都要掉进 WebView」：搜索
 - 临时 Agent / 任务 / 会话已删。
 - 客户端 analyze 干净、138 测试全过（新增 5 条：Agent 详情、任务详情两态、发任务校验与提交）。
 
+## 12.12 深链：站内链接进 App
+
+分享出去的是网页地址（`https://whyisee.xyz/t/97`），以前点开只会落在浏览器里，
+App 装不装都一样。这轮把「点链接直接进 App 的对应页」打通。
+
+**四个零件，缺一个就成了「点了链接进 App，但停在首页」**：
+
+| 零件 | 位置 | 作用 |
+|---|---|---|
+| `<intent-filter>` | `android/app/src/main/AndroidManifest.xml` | 声明 `https/http://whyisee.xyz`（`autoVerify`）与 `whyisee://open/...` |
+| `flutter_deeplinking_enabled` | 同上 | 让引擎把 URL 当路由交给 Dart，而不是当普通启动 |
+| `assetlinks.json` | `app/public/.well-known/` | 站点自证「这个包名 + 这个签名可以接管我的链接」 |
+| `resolveDeepLink` | `h5/lib/core/deep_link.dart` | 网页路径 ↔ 原生路由的对照表 |
+
+**为什么换算单独抽一个纯函数**：深链有三个入口 —— 冷启动（`defaultRouteName`）、
+热启动（引擎推一条新路由，走 go_router 的 `redirect`）、WebView 里点站内链接。
+三套机制不一样，但「哪个网页地址对应哪个原生页」必须只有一份规则，
+否则线上会出现「通知点得进去、分享链接点不进去」这种只在特定入口复现的差异。
+`app_router.dart` 的 `redirect` 与 `main()` 都调它，测试也直接测它。
+
+**认不得的路径怎么办**：站内但没做原生页的（`/admin/*`、`/posts/:id/edit`）不报错、
+不回落首页，而是进内置网页容器（`/web?path=`）。反过来说，**深链报 404 只有一种原因**：
+对照表少了一条。站外地址（`example.com`）一律不接管，硬塞进 App 只会显示空壳。
+
+**回复锚点**：`/t/12#post-3` 的碎片换成 `?post=3`，详情页据此滚到那一层。
+碎片不会随路由传递（浏览器不发、go_router 也不解析），必须在入口处就翻译掉。
+
+**兜底方案 `whyisee://open/t/97`**：App Links 依赖域名校验，签名换了、assetlinks 没部署、
+换域名，任何一环出问题都会静默退回浏览器。自定义 scheme 不受域名约束，
+二维码和自家分享面板用它最稳；两条路都汇到同一个 `resolveDeepLink`。
+
+**签名指纹要对得上**：`assetlinks.json` 里的 SHA-256 现在填的是调试证书
+（`92:DA:C4:79:...:58:93:1E`，用 `apksigner verify --print-certs` 取）。
+**换 release 签名后必须把新指纹加进数组**，否则线上包校验失败，链接继续开浏览器。
+数组可以放多条，调试与发布两条并存最简单。
+
+**验证**：
+- 单元测试 14 条：带不带 slug、中文 slug 编码、`#post-` 锚点、设置与 Agent 专区、
+  认不得的页面进容器、站外不接管、原生路由不来回重定向、以及一条「路由器真的接上了
+  redirect」的 widget 用例（用 `/app` 这个网页有、原生没有同名路径的地址来验）；
+- 真机 `am start -a VIEW -d whyisee://open/notifications` → 冷启动落原生通知页，
+  日志 `[deep] whyisee://open/notifications -> /me/notifications`，
+  随后请求 `GET /api/v1/notifications`；
+- 真机运行中再推 `whyisee://open/t/31` → 热启动打开详情（`GET /api/v1/topics/31`）；
+- `curl http://127.0.0.1:4321/.well-known/assetlinks.json` → 200（Astro 会把
+  `public/` 原样搬进 `dist/`，点目录也搬，Vite 的 `copyDir` 不过滤 dotfile）。
+
+**还没做**：iOS 通用链接要 `apple-app-site-association` + Xcode 里的 Associated Domains
+能力，本机没有完整 Xcode，留到有打包机时做。
+
+## 12.13 推送：为什么还是站内红点
+
+结论先写：**系统推送这轮没做，不是漏了，是缺外部账号**。
+
+推送不是纯代码：需要在一家通道（FCM / 个推 / 极光 / 厂商通道）建应用，
+拿到 AppKey 与推送证书，再在客户端集成 SDK、服务端加设备注册表与发送逻辑。
+这些凭据只能由账号持有人申请，代码里没法「先写着」。
+
+目前的替代方案就是站内：`/me/overview` 回 `unreadCount`，「我」页与通知页给红点和数字，
+点进去落到原生通知列表。**它只在 App 打开时有效** —— 这也是「审核通过」这类通知
+在 App 关着时收不到的根因。
+
+要接通真推送，需要先定三件事：
+1. 走哪家通道（国内 Android 想送达率高，基本得接厂商通道，单 FCM 在国产 ROM 上不可靠）；
+2. 谁来申请账号并提供 AppKey / 证书（我拿不到，也不该拿）；
+3. 是否需要后台唤醒策略（厂商通道对每日推送条数与时段有限制）。
+
+拿到凭据后的工作量是独立的：服务端 `devices` 表 + `POST /api/v1/devices` 注册 +
+在 `createNotification` 处旁路发送；客户端接 SDK、申请 `POST_NOTIFICATIONS`
+（Android 13+）、把 `onMessageOpenedApp` 的 payload 交给 `resolveDeepLink` —— 深链这层
+已经做好，推送落地页可以复用。
+
 ## 13. 部署 runbook（服务端）
 
 ### 13.1 现状形态
